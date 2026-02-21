@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.accessmanagement;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -35,5 +35,6 @@ public class Role {
         joinColumns = @JoinColumn(name = "role_id"),
         inverseJoinColumns = @JoinColumn(name = "permission_id")
     )
+    @Builder.Default
     private Set<Permission> permissions = new HashSet<>();
 }

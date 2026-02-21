@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.corebanking;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -9,7 +9,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
-import java.math.BigDecimal;
 
 @Entity
 @Table(name = "client_behavior")
@@ -32,7 +31,7 @@ public class ClientBehavior {
     private Account account;
     
     @Column(name = "client_avg_tx_amount")
-    private BigDecimal clientAvgTxAmount;
+    private Double clientAvgTxAmount;
     
     @Column(name = "client_avg_tx_per_day")
     private Double clientAvgTxPerDay;

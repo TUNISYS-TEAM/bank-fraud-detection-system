@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.corebanking;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -33,11 +33,15 @@ public class Account {
     private String accountType;
     
     @Column(precision = 15, scale = 2)
+    @Builder.Default
     private BigDecimal balance = BigDecimal.ZERO;
-    
+
+    @Column(name = "currency")
+    @Builder.Default
     private String currency = "TND";
     
     @Column(name = "is_active")
+    @Builder.Default
     private Boolean isActive = true;
     
     @Column(name = "opened_date")
@@ -47,6 +51,7 @@ public class Account {
     private LocalDateTime closedDate;
     
     @Column(name = "risk_level")
+    @Builder.Default
     private String riskLevel = "LOW";
     
     // Relations

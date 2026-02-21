@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.accessmanagement;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -10,50 +10,45 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 import java.util.Map;
 
 @Entity
-@Table(name = "notification")
+@Table(name = "audit_log")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Notification {
+public class AuditLog {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(name = "notification_uuid", unique = true)
-    private UUID notificationUuid;
-    
     @ManyToOne
     @JoinColumn(name = "user_id")
     private AppUser user;
     
-    private String title;
+    private String action;
     
-    @Column(columnDefinition = "TEXT")
-    private String message;
+    @Column(name = "entity_type")
+    private String entityType;
     
-    private String type;
-    
-    @Column(name = "is_read")
-    private Boolean isRead;
-    
-    @Column(name = "read_at")
-    private LocalDateTime readAt;
-    
-    @Column(name = "action_url")
-    private String actionUrl;
+    @Column(name = "entity_id")
+    private Long entityId;
     
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private Map<String, Object> metadata;
+    @Column(name = "old_value", columnDefinition = "jsonb")
+    private Map<String, Object> oldValue;
     
-    @Column(name = "expires_at")
-    private LocalDateTime expiresAt;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "new_value", columnDefinition = "jsonb")
+    private Map<String, Object> newValue;
+    
+    @Column(name = "ip_address")
+    private String ipAddress;
+    
+    @Column(name = "user_agent")
+    private String userAgent;
     
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

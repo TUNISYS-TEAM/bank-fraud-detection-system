@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.accessmanagement;
 
 import jakarta.persistence.*;
 import lombok.Data;

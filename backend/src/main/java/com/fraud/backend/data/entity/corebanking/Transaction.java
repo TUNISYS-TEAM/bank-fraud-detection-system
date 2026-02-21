@@ -1,4 +1,6 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.corebanking;
+
+import com.fraud.backend.data.entity.frauddetection.ModelML;  
 
 import jakarta.persistence.*;
 import lombok.Data;

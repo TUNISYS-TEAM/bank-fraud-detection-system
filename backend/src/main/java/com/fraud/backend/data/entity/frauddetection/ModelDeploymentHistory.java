@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.frauddetection;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -7,6 +7,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
 
 import java.time.LocalDateTime;
 import java.util.Map;

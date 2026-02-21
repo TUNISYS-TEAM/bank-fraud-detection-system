@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.frauddetection;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -6,6 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import org.hibernate.annotations.CreationTimestamp;
+
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
 
 import java.time.LocalDateTime;
 import java.util.UUID;

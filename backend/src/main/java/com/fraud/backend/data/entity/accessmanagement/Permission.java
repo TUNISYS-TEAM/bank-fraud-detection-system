@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity;
+package com.fraud.backend.data.entity.accessmanagement;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -32,5 +32,6 @@ public class Permission {
     private String action;
     
     @ManyToMany(mappedBy = "permissions")
+    @Builder.Default
     private Set<Role> roles = new HashSet<>();
 }
