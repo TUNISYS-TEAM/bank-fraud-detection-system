@@ -1,0 +1,589 @@
+openapi: 3.0.3
+info:
+  title: Fraud Detection Platform API
+  description: API REST – Détection de fraude bancaire (endpoints principaux)
+  version: 1.0.0
+servers:
+  - url: http://localhost:8100
+    description: Dev local
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Alerts
+    description: Alertes de fraude – liste, détail, décision
+  - name: Predict
+    description: Scoring temps-réel d'une transaction
+  - name: Transactions
+    description: Consultation des transactions
+  - name: Models
+    description: Déploiement de modèles ML
+
+paths:
+
+  # ── Liste des alertes ──────────────────────
+  /api/v1/fraud-alerts:
+    get:
+      tags: [Alerts]
+      summary: Lister les alertes de fraude (résumé)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: status
+          in: query
+          description: "Filtrer par statut (PENDING, CONFIRMED, REJECTED, ESCALATED)"
+          schema: { type: string }
+        - name: riskLevel
+          in: query
+          description: "Filtrer par niveau de risque (LOW, MEDIUM, HIGH, CRITICAL)"
+          schema: { type: string }
+      responses:
+        '200':
+          description: Page d'alertes (résumé)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageInfo'
+                  - type: object
+                    properties:
+                      content:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AlertSummary'
+        '401':
+          description: JWT manquant ou invalide
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Détail d'une alerte ────────────────────
+  /api/v1/fraud-alerts/{id}:
+    get:
+      tags: [Alerts]
+      summary: Détails complets d'une alerte
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Détail de l'alerte avec transaction et scores
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertDetails'
+        '401':
+          description: JWT manquant ou invalide
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Alerte introuvable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Décision sur une alerte ────────────────
+  /api/v1/fraud-alerts/{id}/review:
+    put:
+      tags: [Alerts]
+      summary: Prendre une décision sur une alerte
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          description: Alerte mise à jour après décision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertDetails'
+        '400':
+          description: Données invalides
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: JWT manquant ou invalide
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Alerte introuvable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Scoring temps-réel ─────────────────────
+  /api/v1/predict:
+    post:
+      tags: [Predict]
+      summary: Envoyer une transaction pour scoring fraude
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PredictRequest'
+      responses:
+        '200':
+          description: Résultat du scoring
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictResponse'
+        '400':
+          description: Données invalides
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: JWT manquant ou invalide
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          description: Erreur interne (modèle indisponible)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Liste des transactions ─────────────────
+  /api/v1/transactions:
+    get:
+      tags: [Transactions]
+      summary: Lister les transactions avec filtres
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: startDate
+          in: query
+          description: Début de période (ISO 8601)
+          schema: { type: string, format: date-time }
+        - name: endDate
+          in: query
+          description: Fin de période (ISO 8601)
+          schema: { type: string, format: date-time }
+        - name: minAmount
+          in: query
+          schema: { type: number, format: double }
+        - name: maxAmount
+          in: query
+          schema: { type: number, format: double }
+        - name: minScore
+          in: query
+          description: Score de fraude minimum (0-1)
+          schema: { type: number, format: double, minimum: 0, maximum: 1 }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: accountId
+          in: query
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Page de transactions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageInfo'
+                  - type: object
+                    properties:
+                      content:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TransactionSummary'
+        '401':
+          description: JWT manquant ou invalide
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Déployer un modèle ONNX ────────────────
+  /api/v1/models/{modelId}/deploy:
+    post:
+      tags: [Models]
+      summary: Déployer / activer un modèle ONNX
+      description: |
+        Upload ou activation d'un modèle pré-entraîné (ONNX).
+        L'entraînement se fait côté pipeline Python offline.
+      parameters:
+        - name: modelId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '202':
+          description: Déploiement accepté (asynchrone)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeployResponse'
+        '400':
+          description: Paramètres invalides
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: JWT manquant ou invalide
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Modèle introuvable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+# ══════════════════════════════════════════════
+# COMPONENTS
+# ══════════════════════════════════════════════
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT Keycloak (realm fraud_detection)
+
+  schemas:
+
+    # ── DTO résumé (tableau) ─────────────────
+    AlertSummary:
+      type: object
+      required: [id, fraudScore, riskLevel, status]
+      properties:
+        id:
+          type: integer
+          format: int64
+        alertUuid:
+          type: string
+          format: uuid
+        fraudScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: Score global de fraude (0-1)
+        riskLevel:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, REJECTED, ESCALATED]
+        alertType:
+          type: string
+        transactionAmount:
+          type: number
+          format: double
+        transactionDate:
+          type: string
+          format: date-time
+        accountNumber:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── DTO détail complet ───────────────────
+    AlertDetails:
+      type: object
+      required: [id, fraudScore, riskLevel, status]
+      properties:
+        id:
+          type: integer
+          format: int64
+        alertUuid:
+          type: string
+          format: uuid
+        fraudScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        supervisedScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        anomalyScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        riskLevel:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+        alertType:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, REJECTED, ESCALATED]
+        reviewedBy:
+          type: string
+          description: Nom de l'analyste ayant reviewé
+        reviewDate:
+          type: string
+          format: date-time
+        reviewComment:
+          type: string
+        actionTaken:
+          type: string
+        featuresSnapshot:
+          type: object
+          additionalProperties: true
+          description: Snapshot des features ML au moment de la détection
+        transaction:
+          $ref: '#/components/schemas/TransactionInfo'
+        modelUsed:
+          $ref: '#/components/schemas/ModelInfo'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ── Sous-objet transaction ───────────────
+    TransactionInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        transactionUuid:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+        transactionDate:
+          type: string
+          format: date-time
+        merchantCategory:
+          type: string
+        channel:
+          type: string
+        status:
+          type: string
+        accountNumber:
+          type: string
+        ipAddress:
+          type: string
+        deviceId:
+          type: string
+
+    # ── Sous-objet modèle ML ─────────────────
+    ModelInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        modelName:
+          type: string
+        modelType:
+          type: string
+        version:
+          type: string
+
+    # ── Request body pour décision ───────────
+    ReviewRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [CONFIRMED, REJECTED, ESCALATED]
+          description: Décision de l'analyste
+        reviewComment:
+          type: string
+          minLength: 3
+          description: Commentaire justifiant la décision
+        actionTaken:
+          type: string
+          description: "Action prise (ex: BLOCK_ACCOUNT, NOTIFY_CLIENT)"
+
+    # ── Predict ──────────────────────────────
+    PredictRequest:
+      type: object
+      required: [transactionId, accountId, amount, timestamp]
+      properties:
+        transactionId:
+          type: string
+        accountId:
+          type: string
+        amount:
+          type: number
+          format: double
+          example: 123.45
+        currency:
+          type: string
+          default: TND
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-02-20T10:00:00Z'
+        merchant:
+          type: string
+        channel:
+          type: string
+          example: web
+        extraFeatures:
+          type: object
+          additionalProperties: true
+          description: Features optionnelles supplémentaires
+
+    PredictResponse:
+      type: object
+      properties:
+        transactionId:
+          type: string
+        fraudScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          example: 0.87
+        label:
+          type: string
+          enum: [legitimate, suspect, fraud]
+          example: suspect
+        explanations:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeatureExplanation'
+        modelVersion:
+          type: string
+          example: v1.0
+
+    FeatureExplanation:
+      type: object
+      properties:
+        feature:
+          type: string
+          example: clientAmountDeviation
+        impact:
+          type: number
+          format: double
+          example: 0.24
+
+    # ── Transactions ─────────────────────────
+    TransactionSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        transactionUuid:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+        transactionDate:
+          type: string
+          format: date-time
+        merchantCategory:
+          type: string
+        channel:
+          type: string
+        status:
+          type: string
+        isFraud:
+          type: boolean
+        fraudScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        accountId:
+          type: integer
+          format: int64
+
+    # ── Deploy ───────────────────────────────
+    DeployRequest:
+      type: object
+      required: [environment]
+      properties:
+        environment:
+          type: string
+          enum: [STAGING, PRODUCTION]
+        notes:
+          type: string
+
+    DeployResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: Identifiant du job de déploiement
+        modelId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          example: DEPLOYING
+
+    # ── Pagination Spring ────────────────────
+    PageInfo:
+      type: object
+      required: [totalElements, totalPages, size, number]
+      properties:
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        size:
+          type: integer
+        number:
+          type: integer
+
+    # ── Erreur standard ──────────────────────
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string

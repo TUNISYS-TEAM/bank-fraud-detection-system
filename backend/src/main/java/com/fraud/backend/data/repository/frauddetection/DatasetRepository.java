@@ -1,0 +1,26 @@
+package com.fraud.backend.data.repository.frauddetection;
+
+import com.fraud.backend.data.entity.frauddetection.Dataset;
+import com.fraud.backend.data.enums.DatasetStatus;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface DatasetRepository extends JpaRepository<Dataset, Long> {
+
+    Optional<Dataset> findByDatasetUuid(UUID datasetUuid);
+
+    Optional<Dataset> findByDatasetCode(String datasetCode);
+
+    Page<Dataset> findByStatus(String status, Pageable pageable);
+
+    Page<Dataset> findByDatasetNameContainingIgnoreCase(String keyword, Pageable pageable);
+
+    Page<Dataset> findByImportedAtAfter(LocalDateTime date, Pageable pageable);
+}

@@ -16,21 +16,18 @@ import java.util.Set;
 @AllArgsConstructor
 @Builder
 public class Permission {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     @Column(unique = true)
     private String name;
-    
+
     private String description;
-    
-    @Column(name = "resource_type")
-    private String resourceType;
-    
+
     private String action;
-    
+
     @ManyToMany(mappedBy = "permissions")
     @Builder.Default
     private Set<Role> roles = new HashSet<>();

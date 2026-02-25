@@ -12,6 +12,7 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+    
   
   flyway:
     enabled: true
@@ -20,6 +21,19 @@ spring:
     locations: classpath:db/migration
     clean-disabled: false
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8180/realms/fraud-detection
+
+keycloak:
+  server-url: http://localhost:8180
+  realm: fraud-detection
+  client-id: fraud-backend
+  client-secret: oFQ9ky6RLeSVZyiXMdCkOGKJAxkCRB28
+  admin-username: admin
+  admin-password: admin
 
 server:
-  port:  8100
+  port: 8100
