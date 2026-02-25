@@ -1,7 +1,7 @@
-package com.fraud.backend.api.dto.accessmanagement;
+package com.fraud.backend.api.dto.accessmanagement.user;
 
-import com.fraud.backend.api.dto.accessmanagement.response.UserResponse;
-import com.fraud.backend.api.dto.accessmanagement.response.UserSummaryResponse;
+import com.fraud.backend.api.dto.accessmanagement.user.response.UserResponse;
+import com.fraud.backend.api.dto.accessmanagement.user.response.UserSummaryResponse;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import org.springframework.stereotype.Component;
 

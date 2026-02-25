@@ -1,4 +1,4 @@
-package com.fraud.backend.api.dto.accessmanagement.request;
+package com.fraud.backend.api.dto.accessmanagement.user.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

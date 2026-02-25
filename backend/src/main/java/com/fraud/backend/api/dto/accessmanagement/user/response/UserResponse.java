@@ -1,4 +1,4 @@
-package com.fraud.backend.api.dto.accessmanagement.response;
+package com.fraud.backend.api.dto.accessmanagement.user.response;
 
 import lombok.Builder;
 import lombok.Data;

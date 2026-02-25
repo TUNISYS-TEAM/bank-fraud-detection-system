@@ -1,11 +1,11 @@
 package com.fraud.backend.api.controller;
 
-import com.fraud.backend.api.dto.accessmanagement.UserMapper;
-import com.fraud.backend.api.dto.accessmanagement.request.ChangeRoleRequest;
-import com.fraud.backend.api.dto.accessmanagement.request.CreateUserRequest;
-import com.fraud.backend.api.dto.accessmanagement.request.UpdateUserRequest;
-import com.fraud.backend.api.dto.accessmanagement.response.UserResponse;
-import com.fraud.backend.api.dto.accessmanagement.response.UserSummaryResponse;
+import com.fraud.backend.api.dto.accessmanagement.user.request.ChangeRoleRequest;
+import com.fraud.backend.api.dto.accessmanagement.user.request.CreateUserRequest;
+import com.fraud.backend.api.dto.accessmanagement.user.request.UpdateUserRequest;
+import com.fraud.backend.api.dto.accessmanagement.user.response.UserResponse;
+import com.fraud.backend.api.dto.accessmanagement.user.response.UserSummaryResponse;
+import com.fraud.backend.api.dto.accessmanagement.user.UserMapper;
 import com.fraud.backend.data.service.accessmanagement.UserService;
 
 import jakarta.validation.Valid;
