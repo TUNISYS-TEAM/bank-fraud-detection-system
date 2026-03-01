@@ -1,4 +1,4 @@
-package com.fraud.backend.api.controller;
+package com.fraud.backend.api.controller.accessmanagement;
 
 import com.fraud.backend.api.dto.accessmanagement.permission.request.CreatePermissionRequest;
 import com.fraud.backend.api.dto.accessmanagement.permission.request.UpdatePermissionRequest;

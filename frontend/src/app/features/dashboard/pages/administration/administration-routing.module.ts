@@ -6,36 +6,32 @@ import { DatasetsComponent } from './admin-sections/datasets/datasets.component'
 import { LogsComponent } from './admin-sections/logs/logs.component';
 import { SettingsComponent } from './admin-sections/settings/settings.component';
 import { permissionGuard } from '../../../../core/guards/auth.guard';
-/*import { RolesComponent } from './admin-sections/roles/roles.component';
-import { SessionsComponent } from './admin-sections/sessions/sessions.component';*/
+import { RolesComponent } from './admin-sections/roles/roles.component';
+import { SessionsComponent } from './admin-sections/sessions/sessions.component';
 
 const routes: Routes = [
   {
     path: '',
     component: AdministrationComponent,
-    // La route principale nécessite ACCESS_ADMINISTRATION
     canActivate: [permissionGuard],
     data: { 
       permission: 'ACCESS_ADMINISTRATION',
       permissionFailRedirect: '/dashboard/overview'
     },
     children: [
-      { 
-        path: '', 
-        redirectTo: 'users', 
-        pathMatch: 'full' 
-      },
+      { path: '', redirectTo: 'users', pathMatch: 'full' },
+      
       { 
         path: 'users', 
         component: UsersComponent,
-        // Nécessite MANAGE_USERS pour voir les utilisateurs
         canActivate: [permissionGuard],
         data: { 
           permission: 'MANAGE_USERS',
           permissionFailRedirect: '/dashboard/administration'
         }
       },
-      /*{ 
+      
+      { 
         path: 'roles', 
         component: RolesComponent,
         canActivate: [permissionGuard],
@@ -44,6 +40,7 @@ const routes: Routes = [
           permissionFailRedirect: '/dashboard/administration'
         }
       },
+      
       { 
         path: 'sessions', 
         component: SessionsComponent,
@@ -52,17 +49,28 @@ const routes: Routes = [
           permission: 'VIEW_SESSIONS',
           permissionFailRedirect: '/dashboard/administration'
         }
-      },*/
+      },
+      
+      { 
+        path: 'datasets', 
+        component: DatasetsComponent,
+        canActivate: [permissionGuard],
+        data: { 
+          permission: 'MANAGE_DATASETS', // À ajuster selon votre permission
+          permissionFailRedirect: '/dashboard/administration'
+        }
+      },
+      
       { 
         path: 'logs', 
         component: LogsComponent,
-        // Nécessite VIEW_AUDIT pour voir les logs
         canActivate: [permissionGuard],
         data: { 
           permission: 'VIEW_AUDIT',
           permissionFailRedirect: '/dashboard/administration'
         }
       },
+      
       { 
         path: 'settings', 
         component: SettingsComponent,

@@ -14,6 +14,12 @@ import java.math.BigDecimal;
 
 public interface AccountRepository extends JpaRepository<Account, Long> {
 
+    @Query("SELECT a FROM Account a JOIN FETCH a.client WHERE a.id = :id")
+    Optional<Account> findByIdWithClient(@Param("id") Long id);
+
+    @Query("SELECT a FROM Account a JOIN FETCH a.client WHERE a.accountNumber = :accountNumber")
+    Optional<Account> findByAccountNumberWithClient(@Param("accountNumber") String accountNumber);
+
     Optional<Account> findByAccountNumber(String accountNumber);
 
     List<Account> findByClientId(Long clientId);
@@ -25,6 +31,9 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     Page<Account> findByClientIdAndIsActiveTrue(Long clientId, Pageable pageable);
 
     @Query("SELECT COALESCE(SUM(a.balance), 0) FROM Account a " +
-           "WHERE a.client.id = :clientId AND a.isActive = true")
+            "WHERE a.client.id = :clientId AND a.isActive = true")
     BigDecimal sumActiveBalanceByClient(@Param("clientId") Long clientId);
+
+    long countByClientId(Long clientId);
+
 }

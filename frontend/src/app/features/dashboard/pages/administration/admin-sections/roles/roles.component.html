@@ -1,0 +1,118 @@
+<div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-white">
+        <div>
+            <h3 class="text-xl font-semibold text-gray-900">Gestion des Rôles</h3>
+            <p class="text-sm text-gray-500 mt-0.5">Gérer les rôles et leurs permissions</p>
+        </div>
+        @if (authStore.hasPermission('CREATE_ROLE')) {
+            <button class="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                <span>Nouveau Rôle</span>
+            </button>
+        }
+    </div>
+
+    <!-- Loading State -->
+    @if (isLoading()) {
+        <div class="flex justify-center items-center py-20">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+    }
+
+    <!-- Roles List -->
+    @if (!isLoading()) {
+        <div class="divide-y divide-gray-100">
+            @for (role of roles(); track role.id) {
+                <div class="hover:bg-gray-50 transition-colors">
+                    <!-- Role Header -->
+                    <div class="px-6 py-4 flex items-center justify-between cursor-pointer"
+                         (click)="toggleRole(role.id)">
+                        <div class="flex items-center space-x-4 flex-1">
+                            <!-- Expand/Collapse Icon -->
+                            <svg xmlns="http://www.w3.org/2000/svg" 
+                                 class="w-5 h-5 text-gray-400 transition-transform duration-200"
+                                 [class.rotate-90]="expandedRole() === role.id"
+                                 viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                            
+                            <!-- Role Info -->
+                            <div class="flex-1 grid grid-cols-12 gap-4 items-center">
+                                <div class="col-span-2">
+                                    <span class="text-sm font-medium text-gray-900">#{{ role.id }}</span>
+                                </div>
+                                <div class="col-span-3">
+                                    <span class="text-sm font-semibold text-gray-900">{{ role.name }}</span>
+                                </div>
+                                <div class="col-span-4">
+                                    <span class="text-sm text-gray-600">{{ role.description || 'Aucune description' }}</span>
+                                </div>
+                                <div class="col-span-3">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                        {{ getPermissionCount(role.permissions) }} permission(s)
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Actions -->
+                        <div class="flex items-center space-x-2">
+                            @if (authStore.hasPermission('EDIT_ROLE')) {
+                                <button (click)="$event.stopPropagation(); editRole(role)"
+                                        class="p-1.5 text-gray-400 hover:text-blue-600 transition-colors"
+                                        title="Modifier">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                </button>
+                            }
+                            @if (authStore.hasPermission('REFRESH_ROLE')) {
+                                <button (click)="$event.stopPropagation(); refreshRole(role.id)"
+                                        class="p-1.5 text-gray-400 hover:text-green-600 transition-colors"
+                                        title="Rafraîchir">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Permissions List (Expanded) -->
+                    @if (expandedRole() === role.id) {
+                        <div class="px-6 pb-4 pl-16">
+                            @if (role.permissions.length > 0) {
+                                <div class="bg-gray-50 rounded-lg p-4">
+                                    <h4 class="text-sm font-medium text-gray-700 mb-3">Permissions associées</h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        @for (perm of role.permissions; track perm.id) {
+                                            <div class="flex items-center space-x-2 p-2 bg-white rounded-lg border border-gray-100">
+                                                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                                <div class="flex-1 min-w-0">
+                                                    <p class="text-xs font-medium text-gray-900 truncate">{{ perm.name }}</p>
+                                                    <p class="text-xs text-gray-500 truncate">{{ perm.description || 'Aucune description' }}</p>
+                                                </div>
+                                                <span class="text-xs text-gray-400">{{ perm.action }}</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            } @else {
+                                <div class="text-center py-4 text-gray-500 text-sm">
+                                    Aucune permission associée à ce rôle
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            } @empty {
+                <div class="px-6 py-12 text-center text-gray-500">
+                    <p>Aucun rôle trouvé</p>
+                </div>
+            }
+        </div>
+    }
+</div>

@@ -1,4 +1,4 @@
-package com.fraud.backend.api.controller;
+package com.fraud.backend.api.controller.accessmanagement;
 
 import com.fraud.backend.api.dto.accessmanagement.auth.LoginRequest;
 import com.fraud.backend.api.dto.accessmanagement.auth.LoginResponse;

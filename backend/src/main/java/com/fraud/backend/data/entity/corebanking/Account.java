@@ -1,10 +1,8 @@
 package com.fraud.backend.data.entity.corebanking;
 
+import com.fraud.backend.data.enums.AccountType;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -15,21 +13,26 @@ import java.util.List;
 
 @Entity
 @Table(name = "account")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString(exclude = { "client", "transactions", "clientBehaviors" })
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Account {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
     private Long id;
 
     @Column(name = "account_number", unique = true, nullable = false)
     private String accountNumber;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "account_type", nullable = false)
-    private String accountType;
+    private AccountType accountType;
 
     @Column(precision = 15, scale = 2)
     @Builder.Default

@@ -1,5 +1,6 @@
 package com.fraud.backend.data.entity.accessmanagement;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -29,7 +30,8 @@ public class Role {
     @Column(name = "keycloak_role_name")
     private String keycloakRoleName;
     
-    @ManyToMany
+    @JsonIgnore  
+    @ManyToMany(fetch = FetchType.LAZY)  
     @JoinTable(
         name = "role_permission",
         joinColumns = @JoinColumn(name = "role_id"),

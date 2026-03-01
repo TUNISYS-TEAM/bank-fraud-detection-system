@@ -1,11 +1,10 @@
 package com.fraud.backend.data.entity.corebanking;
 
 import com.fraud.backend.data.entity.frauddetection.ModelML;
+import com.fraud.backend.data.enums.TransactionChannel;
+import com.fraud.backend.data.enums.TransactionStatus;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -15,10 +14,13 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "transaction")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString(exclude = { "account", "model" })
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Transaction {
 
     @Id
@@ -40,10 +42,12 @@ public class Transaction {
     @Column(name = "merchant_category")
     private String merchantCategory;
 
-    private String channel;
+    @Enumerated(EnumType.STRING)
+    private TransactionChannel channel;
 
+    @Enumerated(EnumType.STRING)
     @Builder.Default
-    private String status = "PENDING";
+    private TransactionStatus status = TransactionStatus.PENDING;
 
     @Column(name = "postal_code_merchant")
     private String postalCodeMerchant;
@@ -67,12 +71,11 @@ public class Transaction {
     @Column(name = "device_id")
     private String deviceId;
 
-    // Relation vers Account
+    // Relations
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id", nullable = false)
     private Account account;
 
-    // Relation vers ModelML
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "model_id")
     private ModelML model;

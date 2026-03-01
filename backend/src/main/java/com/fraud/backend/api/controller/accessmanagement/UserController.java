@@ -1,4 +1,4 @@
-package com.fraud.backend.api.controller;
+package com.fraud.backend.api.controller.accessmanagement;
 
 import com.fraud.backend.api.dto.accessmanagement.user.request.ChangeRoleRequest;
 import com.fraud.backend.api.dto.accessmanagement.user.request.CreateUserRequest;
@@ -57,7 +57,7 @@ public class UserController {
 
     // GET /api/users/email/{email}
     @GetMapping("/email/{email}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<UserResponse> getByEmail(@PathVariable String email) {
         return ResponseEntity.ok(userMapper.toResponse(userService.getByEmail(email)));
     }

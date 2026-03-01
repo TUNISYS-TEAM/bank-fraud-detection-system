@@ -65,7 +65,6 @@ const PERMISSION_ORDER: Record<string, number> = {
   'MANAGE_DATASETS': 75,
   'MANAGE_SETTINGS': 76,
 
-  
   // Actions avancées
   'MANAGE_ML_MODELS': 111,
   'MANAGE_ALERTS': 112,
@@ -73,27 +72,27 @@ const PERMISSION_ORDER: Record<string, number> = {
   'RUN_SIMULATION': 114
 };
 
-// Configuration des pages parentes pour les tabs
-const PARENT_PAGES: Record<string, string> = {
+// Configuration des pages parentes pour les tabs avec routes RELATIVES
+const PARENT_PAGES: Record<string, { parentRoute: string; relativeRoute: string }> = {
   // Administration
-  'MANAGE_USERS': '/dashboard/administration',
-  'MANAGE_ROLES': '/dashboard/administration',
-  'MANAGE_SESSIONS': '/dashboard/administration',
-  'MANAGE_LOGS': '/dashboard/administration',
-  'MANAGE_SETTINGS': '/dashboard/administration',
-  'MANAGE_DATASETS': '/dashboard/administration',
+  'MANAGE_USERS': { parentRoute: '/dashboard/administration', relativeRoute: 'users' },
+  'MANAGE_ROLES': { parentRoute: '/dashboard/administration', relativeRoute: 'roles' },
+  'MANAGE_SESSIONS': { parentRoute: '/dashboard/administration', relativeRoute: 'sessions' },
+  'MANAGE_LOGS': { parentRoute: '/dashboard/administration', relativeRoute: 'logs' },
+  'MANAGE_SETTINGS': { parentRoute: '/dashboard/administration', relativeRoute: 'settings' },
+  'MANAGE_DATASETS': { parentRoute: '/dashboard/administration', relativeRoute: 'datasets' },
   
   // Modèles ML
-  'MANAGE_ML_MODELS': '/dashboard/ml-models',
+  'MANAGE_ML_MODELS': { parentRoute: '/dashboard/ml-models', relativeRoute: 'manage' },
   
   // Alertes
-  'MANAGE_ALERTS': '/dashboard/alerts',
+  'MANAGE_ALERTS': { parentRoute: '/dashboard/alerts', relativeRoute: 'manage' },
   
   // Import
-  'IMPORT_DATA': '/dashboard/import-data',
+  'IMPORT_DATA': { parentRoute: '/dashboard/import-data', relativeRoute: 'advanced' },
   
   // Simulation
-  'RUN_SIMULATION': '/dashboard/simulation'
+  'RUN_SIMULATION': { parentRoute: '/dashboard/simulation', relativeRoute: 'run' }
 };
 
 export interface AuthState {
@@ -125,7 +124,6 @@ function loadState(): AuthState {
     }
     return state;
   } catch (error) {
-    console.error('Error loading auth state:', error);
     return initialAuthState;
   }
 }
@@ -134,7 +132,7 @@ function saveState(state: AuthState): void {
   try {
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(state));
   } catch (error) {
-    console.error('Error saving auth state:', error);
+    // Silently handle error
   }
 }
 
@@ -144,30 +142,20 @@ export const AuthStore = signalStore(
   withState(loadState()),
 
   withComputed((store) => {
-    console.log('👤 Store user:', store.user());
-    console.log('📦 Store permissions:', store.user()?.permissions);
-
     const permissionNames = computed(() => {
-      const names = store.user()?.permissions.map(p => p.name) ?? [];
-      console.log('📝 Permission names:', names);
-      return names;
+      return store.user()?.permissions.map(p => p.name) ?? [];
     });
 
     const permissions = computed(() => {
-      const perms = store.user()?.permissions ?? [];
-      console.log('🔑 Permissions objects:', perms);
-      return perms;
+      return store.user()?.permissions ?? [];
     });
 
     // Tous les éléments de menu
     const menuItems = computed(() => {
       const userPermissions = permissions();
-      console.log('🏗️ Building menu items from:', userPermissions);
-      
       const items: MenuItem[] = [];
 
       for (const perm of userPermissions) {
-        console.log('  → Processing permission:', perm.name, perm.action);
         if (perm.action) {
           const menuItem = {
             id: perm.id,
@@ -177,48 +165,46 @@ export const AuthStore = signalStore(
             order: PERMISSION_ORDER[perm.name] || 999,
             permissionName: perm.name
           };
-          console.log('    ✅ Added menu item:', menuItem);
           items.push(menuItem);
-        } else {
-          console.log('    ❌ No action for permission:', perm.name);
         }
       }
-      console.log('📊 Final menu items:', items);
       return items.sort((a, b) => a.order - b.order);
     });
 
     // Pages principales pour la sidebar (uniquement les ACCESS_* permissions)
     const mainPages = computed(() => {
-      const pages = menuItems().filter(item => 
+      return menuItems().filter(item => 
         item.permissionName.startsWith('ACCESS_') &&
         item.route.startsWith('/dashboard/')
       ).sort((a, b) => a.order - b.order);
-      console.log('📌 Main pages (sidebar):', pages);
-      return pages;
     });
 
-    // Tabs organisés par page parente
+    // Tabs organisés par page parente avec routes relatives
     const tabsByParentPage = computed(() => {
       const tabs: Record<string, MenuItem[]> = {};
       for (const item of menuItems()) {
-        const parentRoute = PARENT_PAGES[item.permissionName];
-        if (parentRoute) {
-          if (!tabs[parentRoute]) tabs[parentRoute] = [];
-          tabs[parentRoute].push(item);
+        const parentConfig = PARENT_PAGES[item.permissionName];
+        if (parentConfig) {
+          if (!tabs[parentConfig.parentRoute]) tabs[parentConfig.parentRoute] = [];
+          
+          // Créer un nouvel item avec la route relative
+          const tabItem: MenuItem = {
+            ...item,
+            route: parentConfig.relativeRoute
+          };
+          
+          tabs[parentConfig.parentRoute].push(tabItem);
         }
       }
       for (const parent in tabs) {
         tabs[parent].sort((a, b) => a.order - b.order);
       }
-      console.log('📑 Tabs by parent page:', tabs);
       return tabs;
     });
 
     // Créer un signal pour chaque page
     const administrationTabs = computed(() => {
-      const tabs = tabsByParentPage()['/dashboard/administration'] || [];
-      console.log('🏢 Administration tabs:', tabs);
-      return tabs;
+      return tabsByParentPage()['/dashboard/administration'] || [];
     });
     
     const mlModelsTabs = computed(() => tabsByParentPage()['/dashboard/ml-models'] || []);
@@ -272,14 +258,12 @@ export const AuthStore = signalStore(
       patchState(store, { loading: true, error: null });
       authService.login(credentials).subscribe({
         next: ({ response, user }) => {
-          console.log('✅ Login successful, user:', user);
           const newState: AuthState = { user, token: response.access_token, isAuthenticated: true, loading: false, error: null };
           patchState(store, newState);
           saveState(newState);
           router.navigate(['/dashboard/overview']);
         },
         error: (error) => {
-          console.error('❌ Login error:', error);
           const errorState = { loading: false, error: error.message || 'Erreur de connexion' };
           patchState(store, errorState);
           setTimeout(() => {

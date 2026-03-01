@@ -1,10 +1,7 @@
 package com.fraud.backend.data.entity.corebanking;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -15,10 +12,13 @@ import java.util.List;
 
 @Entity
 @Table(name = "client")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString(exclude = "accounts")
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Client {
 
     @Id
