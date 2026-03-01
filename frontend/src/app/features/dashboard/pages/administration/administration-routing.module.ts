@@ -46,7 +46,7 @@ const routes: Routes = [
         component: SessionsComponent,
         canActivate: [permissionGuard],
         data: { 
-          permission: 'VIEW_SESSIONS',
+          permission: 'MANAGE_SESSIONS',
           permissionFailRedirect: '/dashboard/administration'
         }
       },
@@ -66,7 +66,7 @@ const routes: Routes = [
         component: LogsComponent,
         canActivate: [permissionGuard],
         data: { 
-          permission: 'VIEW_AUDIT',
+          permission: 'MANAGE_LOGS', 
           permissionFailRedirect: '/dashboard/administration'
         }
       },

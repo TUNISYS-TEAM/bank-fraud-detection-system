@@ -5,25 +5,25 @@ import { AuthService } from '../services/auth.service';
 import { AuthUser, LoginRequest, MenuItem } from '../models/auth.model';
 
 const PERMISSION_ICONS: Record<string, string> = {
-  // Pages principales
-  'ACCESS_ADMINISTRATION': 'cogs',
-  'ACCESS_IMPORT_DATA': 'upload',
-  'ACCESS_ML_MODELS': 'brain',
-  'ACCESS_ALERTS': 'bell',
-  'ACCESS_PERFORMANCE': 'chart-line',
-  'ACCESS_SIMULATION': 'flask',
+  // Pages principales - icônes uniques
+  'ACCESS_ADMINISTRATION': 'settings',     
+  'ACCESS_IMPORT_DATA': 'upload',           
+  'ACCESS_ML_MODELS': 'activity',           
+  'ACCESS_ALERTS': 'bell',                  
+  'ACCESS_PERFORMANCE': 'bar-chart-2',      
+  'ACCESS_SIMULATION': 'play-circle',       
   
-  // Actions de gestion
-  'MANAGE_USERS': 'users-cog',
-  'MANAGE_ROLES': 'key',
-  'MANAGE_SESSIONS': 'history',
-  'MANAGE_ML_MODELS': 'robot',
-  'MANAGE_ALERTS': 'exclamation-triangle',
-  'IMPORT_DATA': 'file-import',
-  'RUN_SIMULATION': 'play',
-  'MANAGE_LOGS': 'scroll',
-  'MANAGE_SETTINGS': 'sliders',
-  'MANAGE_DATASETS': 'database'
+  // Actions de gestion - icônes uniques
+  'MANAGE_USERS': 'users',              
+  'MANAGE_ROLES': 'key',                  
+  'MANAGE_SESSIONS': 'clock',               
+  'MANAGE_ML_MODELS': 'cpu',               
+  'MANAGE_ALERTS': 'alert-octagon',     
+  'IMPORT_DATA': 'download',                 
+  'RUN_SIMULATION': 'play',                 
+  'MANAGE_LOGS': 'file-text',                 
+  'MANAGE_SETTINGS': 'sliders',              
+  'MANAGE_DATASETS': 'database'              
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -34,7 +34,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   'ACCESS_ALERTS': 'Alertes',
   'ACCESS_PERFORMANCE': 'Performances',
   'ACCESS_SIMULATION': 'Simulation',
-  
+
   // Actions de gestion
   'MANAGE_USERS': 'Utilisateurs',
   'MANAGE_ROLES': 'Rôles',
@@ -56,7 +56,7 @@ const PERMISSION_ORDER: Record<string, number> = {
   'ACCESS_ALERTS': 40,
   'ACCESS_PERFORMANCE': 50,
   'ACCESS_SIMULATION': 60,
-  
+
   // Actions dans Administration
   'MANAGE_USERS': 71,
   'MANAGE_ROLES': 72,
@@ -81,16 +81,16 @@ const PARENT_PAGES: Record<string, { parentRoute: string; relativeRoute: string 
   'MANAGE_LOGS': { parentRoute: '/dashboard/administration', relativeRoute: 'logs' },
   'MANAGE_SETTINGS': { parentRoute: '/dashboard/administration', relativeRoute: 'settings' },
   'MANAGE_DATASETS': { parentRoute: '/dashboard/administration', relativeRoute: 'datasets' },
-  
+
   // Modèles ML
   'MANAGE_ML_MODELS': { parentRoute: '/dashboard/ml-models', relativeRoute: 'manage' },
-  
+
   // Alertes
   'MANAGE_ALERTS': { parentRoute: '/dashboard/alerts', relativeRoute: 'manage' },
-  
+
   // Import
   'IMPORT_DATA': { parentRoute: '/dashboard/import-data', relativeRoute: 'advanced' },
-  
+
   // Simulation
   'RUN_SIMULATION': { parentRoute: '/dashboard/simulation', relativeRoute: 'run' }
 };
@@ -173,7 +173,7 @@ export const AuthStore = signalStore(
 
     // Pages principales pour la sidebar (uniquement les ACCESS_* permissions)
     const mainPages = computed(() => {
-      return menuItems().filter(item => 
+      return menuItems().filter(item =>
         item.permissionName.startsWith('ACCESS_') &&
         item.route.startsWith('/dashboard/')
       ).sort((a, b) => a.order - b.order);
@@ -186,13 +186,13 @@ export const AuthStore = signalStore(
         const parentConfig = PARENT_PAGES[item.permissionName];
         if (parentConfig) {
           if (!tabs[parentConfig.parentRoute]) tabs[parentConfig.parentRoute] = [];
-          
+
           // Créer un nouvel item avec la route relative
           const tabItem: MenuItem = {
             ...item,
             route: parentConfig.relativeRoute
           };
-          
+
           tabs[parentConfig.parentRoute].push(tabItem);
         }
       }
@@ -206,7 +206,7 @@ export const AuthStore = signalStore(
     const administrationTabs = computed(() => {
       return tabsByParentPage()['/dashboard/administration'] || [];
     });
-    
+
     const mlModelsTabs = computed(() => tabsByParentPage()['/dashboard/ml-models'] || []);
     const alertsTabs = computed(() => tabsByParentPage()['/dashboard/alerts'] || []);
     const importDataTabs = computed(() => tabsByParentPage()['/dashboard/import-data'] || []);
@@ -242,7 +242,7 @@ export const AuthStore = signalStore(
       menuItems,
       mainPages,
       tabsByParentPage,
-      
+
       // Signals spécifiques pour chaque page
       administrationTabs,
       mlModelsTabs,

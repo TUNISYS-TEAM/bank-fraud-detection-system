@@ -5,6 +5,25 @@ import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { AuthInterceptor } from './core/interceptors/auth.interceptor';
 
+import { FeatherModule } from 'angular-feather';
+import {
+  Shield, Grid, Upload, Globe, AlertTriangle, Activity,
+  ExternalLink, Settings, LogOut, Bell, X, Mail, Lock,
+  Eye, EyeOff, Users, Database, FileText, Plus, Download, 
+  CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, Info, Clock,
+  AlertOctagon, Sliders, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight,
+  Power, RefreshCw, Copy, Chrome, 
+
+} from 'angular-feather/icons';
+
+const icons = {
+  Shield, Grid, Upload, Globe, AlertTriangle, Activity,
+  ExternalLink, Settings, LogOut, Bell, X, Mail, Lock,
+  Eye, EyeOff, Users, Database, FileText, Plus, Download,
+  CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome,
+  AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight 
+};
+
 @NgModule({
   declarations: [
     AppComponent
@@ -12,7 +31,8 @@ import { AuthInterceptor } from './core/interceptors/auth.interceptor';
   imports: [
     BrowserModule,
     AppRoutingModule,
-    HttpClientModule
+    HttpClientModule,
+    FeatherModule.pick(icons)
   ],
   providers: [
     {

@@ -22,8 +22,8 @@
                    [routerLinkActiveOptions]="{exact: item.route === '/dashboard/overview'}"
                    class="flex items-center px-4 py-3 text-gray-600 transition-all duration-200 rounded-xl hover:bg-gray-50 group">
                     
-                    <!-- Font Awesome icon - version corrigée -->
-                    <i class="fas fa-{{ item.icon }} w-5 h-5 mr-3 transition-colors group-hover:text-indigo-600"></i>
+                    <!-- Angular Feather icon - dynamique -->
+                    <i-feather [name]="item.icon" class="w-5 h-5 mr-3 transition-colors group-hover:text-indigo-600"></i-feather>
                     
                     <span class="font-medium">{{ item.label }}</span>
                 </a>
@@ -51,7 +51,7 @@
             <button (click)="logout()"
                 class="ml-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                 title="Déconnexion">
-                <i class="fas fa-sign-out-alt w-5 h-5"></i>
+                <i-feather name="log-out" class="w-5 h-5"></i-feather>
             </button>
         </div>
     </div>

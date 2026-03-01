@@ -1,5 +1,6 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FeatherModule } from 'angular-feather';
 import { AdministrationRoutingModule } from './administration-routing.module';
 import { AdministrationComponent } from './administration.component';
 import { UsersComponent } from './admin-sections/users/users.component';
@@ -13,15 +14,16 @@ import { SessionsComponent } from './admin-sections/sessions/sessions.component'
   declarations: [
     AdministrationComponent,
     UsersComponent,
-    RolesComponent,
-    SessionsComponent,
-    DatasetsComponent,  
+    DatasetsComponent,
     LogsComponent,
-    SettingsComponent
+    SettingsComponent,
+    RolesComponent,   
+    SessionsComponent  
   ],
   imports: [
     CommonModule,
-    AdministrationRoutingModule
+    AdministrationRoutingModule,
+    FeatherModule      
   ]
 })
 export class AdministrationModule { }

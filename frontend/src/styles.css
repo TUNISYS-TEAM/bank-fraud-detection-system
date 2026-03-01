@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Feather Icons Support ── */
+i-feather {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+i-feather svg {
+    width: 100%;
+    height: 100%;
+}
+
 /* ── Electron Window Dragging ── */
 .drag-area {
     -webkit-app-region: drag;

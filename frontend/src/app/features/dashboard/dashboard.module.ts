@@ -1,5 +1,6 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FeatherModule } from 'angular-feather';
 
 import { DashboardRoutingModule } from './dashboard-routing.module';
 import { LayoutModule } from '../../layout/layout.module';
@@ -23,7 +24,8 @@ import { SimulationComponent } from './pages/simulation/simulation.component';
   imports: [
     CommonModule,
     DashboardRoutingModule,
-    LayoutModule
+    LayoutModule,
+    FeatherModule
   ]
 })
 export class DashboardModule { }

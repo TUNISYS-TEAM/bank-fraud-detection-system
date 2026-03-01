@@ -1,1 +1,166 @@
-<p>sessions works!</p>
+<div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-white">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-indigo-100 rounded-lg">
+                <i-feather name="clock" class="w-4 h-4 text-indigo-600"></i-feather>
+            </div>
+            <div>
+                <h3 class="text-xl font-semibold text-gray-900">Sessions Actives</h3>
+                <p class="text-sm text-gray-500 mt-0.5">Gérer les sessions utilisateurs</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            @if (authStore.hasPermission('MANAGE_SESSIONS')) {
+                <button (click)="terminateAllSessions()"
+                        class="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    <i-feather name="power" class="w-4 h-4"></i-feather>
+                    <span>Terminer toutes</span>
+                </button>
+            }
+            <button (click)="refreshSessions()"
+                    class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Rafraîchir">
+                <i-feather name="refresh-cw" class="w-5 h-5"></i-feather>
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    @if (isLoading()) {
+        <div class="flex justify-center items-center py-20">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+    }
+
+    <!-- Sessions Table -->
+    @if (!isLoading()) {
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">Session ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">IP Address</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">Navigateur</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">OS</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">Login Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">Logout Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">Durée</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">Statut</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wide">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    @for (session of sessions(); track session.id) {
+                        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-4">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs font-mono text-gray-600">{{ session.sessionId | slice:0:8 }}...</span>
+                                    <button (click)="copyToClipboard(session.sessionId)"
+                                            class="text-gray-400 hover:text-gray-600"
+                                            title="Copier l'ID">
+                                        <i-feather name="copy" class="w-3 h-3"></i-feather>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="text-sm text-gray-600">{{ session.ipAddress }}</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center space-x-2">
+                                    @switch (getBrowserInfo(session.userAgent)) {
+                                        @case ('Chrome') {
+                                            <i-feather name="chrome" class="w-4 h-4 text-blue-500"></i-feather>
+                                        }
+                                        @case ('Firefox') {
+                                            <i-feather name="firefox" class="w-4 h-4 text-orange-500"></i-feather>
+                                        }
+                                        @default {
+                                            <i-feather name="globe" class="w-4 h-4 text-gray-500"></i-feather>
+                                        }
+                                    }
+                                    <span class="text-sm text-gray-600">{{ getBrowserInfo(session.userAgent) }}</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="text-sm text-gray-600">{{ getOSInfo(session.userAgent) }}</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">
+                                {{ formatDate(session.loginTime) }}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">
+                                {{ formatDate(session.logoutTime) }}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">
+                                {{ getDuration(session.loginTime, session.logoutTime) }}
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
+                                      [ngClass]="getStatusBadgeClass(session.isActive)">
+                                    <span class="w-1.5 h-1.5 rounded-full mr-1.5"
+                                          [class.bg-green-500]="session.isActive"
+                                          [class.bg-gray-400]="!session.isActive"></span>
+                                    {{ getStatusText(session.isActive) }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                @if (session.isActive && authStore.hasPermission('MANAGE_SESSIONS')) {
+                                    <button (click)="terminateSession(session)"
+                                            class="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+                                            title="Terminer la session">
+                                        <i-feather name="log-out" class="w-4 h-4"></i-feather>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    } @empty {
+                        <tr>
+                            <td colspan="9" class="px-6 py-12 text-center text-gray-500">
+                                <div class="flex flex-col items-center">
+                                    <i-feather name="clock" class="w-12 h-12 text-gray-300 mb-3"></i-feather>
+                                    <p>Aucune session trouvée</p>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- Terminate Session Dialog -->
+    @if (showTerminateDialog()) {
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="p-2 bg-red-100 rounded-full">
+                        <i-feather name="alert-triangle" class="w-6 h-6 text-red-600"></i-feather>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-900">Terminer la session</h3>
+                </div>
+                
+                <p class="text-gray-600 mb-6">
+                    Êtes-vous sûr de vouloir terminer cette session ?
+                    @if (selectedSession()) {
+                        <br>
+                        <span class="text-sm text-gray-500">
+                            IP: {{ selectedSession()?.ipAddress }} - 
+                            {{ formatDate(selectedSession()?.loginTime || '') }}
+                        </span>
+                    }
+                </p>
+
+                <div class="flex justify-end space-x-3">
+                    <button (click)="cancelTerminate()"
+                            class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                        Annuler
+                    </button>
+                    <button (click)="confirmTerminate()"
+                            class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                        Terminer
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
