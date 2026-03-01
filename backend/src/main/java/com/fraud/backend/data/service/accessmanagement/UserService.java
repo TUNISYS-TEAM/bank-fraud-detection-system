@@ -2,8 +2,10 @@ package com.fraud.backend.data.service.accessmanagement;
 
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
+import com.fraud.backend.data.entity.accessmanagement.Role;
 import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
+import com.fraud.backend.data.repository.accessmanagement.RoleRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,7 @@ public class UserService {
 
     private final AppUserRepository appUserRepository;
     private final KeycloakMappingRepository keycloakMappingRepository;
+    private final RoleRepository roleRepository;  // Ajouté
     private final KeycloakService keycloakService;
     private final BCryptPasswordEncoder passwordEncoder;  
 
@@ -47,22 +50,27 @@ public class UserService {
         return appUserRepository.findByEmail(email).orElseThrow(() -> new EntityNotFoundException("Utilisateur non trouvé " + email));
     }
 
-    public Page<AppUser> getByRole(String role, Pageable pageable) {
-        return appUserRepository.findByRole(role, pageable);
+    // Modifié pour utiliser roleId
+    public Page<AppUser> getByRoleId(Long roleId, Pageable pageable) {
+        return appUserRepository.findByRoleId(roleId, pageable);
     }
 
-    // Create
+    // Create - modifié pour utiliser roleId
     @Transactional
     public AppUser createUser(String email, String password, String firstName,
                                String lastName, String phoneNumber,
-                               LocalDate dateOfBirth, String address, String role) {
+                               LocalDate dateOfBirth, String address, Long roleId) {
 
         if (appUserRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email déjà existant: " + email);
         }
 
-        // Création dans keycloak
-        String keycloakId = keycloakService.createUser(email, firstName, lastName, password, role);
+        // Récupérer le rôle
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new EntityNotFoundException("Rôle non trouvé: " + roleId));
+
+        // Création dans keycloak (utilise le nom du rôle)
+        String keycloakId = keycloakService.createUser(email, firstName, lastName, password, role.getName());
 
         // Création dans la base de données
         AppUser user = AppUser.builder()
@@ -74,7 +82,7 @@ public class UserService {
                 .phoneNumber(phoneNumber)
                 .dateOfBirth(dateOfBirth)
                 .address(address)
-                .role(role)
+                .role(role)  // Maintenant c'est un objet Role
                 .isActive(true)
                 .build();
 
@@ -91,56 +99,59 @@ public class UserService {
 
         keycloakMappingRepository.save(mapping);
 
-        log.info("Utilisateur créé avec succès: {} avec l'ID: {}", email, keycloakId);
+        log.info("Utilisateur créé avec succès: {} avec l'ID: {} et rôle: {}", email, keycloakId, role.getName());
         return savedUser;
     }
 
-    // Modification
+    // Modification (inchangé)
     @Transactional
     public AppUser updateUser(Long id, String firstName, String lastName,
                                String phoneNumber, String address, LocalDate dateOfBirth) {
         AppUser user = getById(id);
 
-        // Synchronisation avec Keycloak
-        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id).orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
+                .orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
 
         keycloakService.updateUser(mapping.getKeycloakId(), firstName, lastName, user.getEmail());
 
-        // Mise à jour de la base de données
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setPhoneNumber(phoneNumber);
         user.setAddress(address);
         user.setDateOfBirth(dateOfBirth);
 
-        // Synchronisation timestamp
         mapping.setLastSync(LocalDateTime.now());
         keycloakMappingRepository.save(mapping);
 
         return appUserRepository.save(user);
     }
 
-    // Change role
+    // Change role - modifié pour utiliser roleId
     @Transactional
-    public AppUser changeRole(Long id, String newRole) {
+    public AppUser changeRole(Long id, Long newRoleId) {
         AppUser user = getById(id);
+        
+        Role newRole = roleRepository.findById(newRoleId)
+                .orElseThrow(() -> new EntityNotFoundException("Rôle non trouvé: " + newRoleId));
 
-        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id).orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
+                .orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
 
         // Supprimer l'ancien rôle et assigner le nouveau rôle dans Keycloak
-        keycloakService.removeRole(mapping.getKeycloakId(), user.getRole());
-        keycloakService.assignRole(mapping.getKeycloakId(), newRole);
+        keycloakService.removeRole(mapping.getKeycloakId(), user.getRole().getName());
+        keycloakService.assignRole(mapping.getKeycloakId(), newRole.getName());
 
         user.setRole(newRole);
         return appUserRepository.save(user);
     }
 
-    // Activer ou désactiver utilisateur
+    // Activer ou désactiver utilisateur (inchangé)
     @Transactional
     public void desactivateUser(Long id) {
         AppUser user = getById(id);
 
-        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id).orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
+                .orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
 
         keycloakService.disableUser(mapping.getKeycloakId());
         user.setIsActive(false);
@@ -152,7 +163,8 @@ public class UserService {
     public void activateUser(Long id) {
         AppUser user = getById(id);
 
-        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id).orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
+                .orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
 
         keycloakService.enableUser(mapping.getKeycloakId());  
         user.setIsActive(true);
@@ -160,16 +172,28 @@ public class UserService {
         log.info("Utilisateur activé: {}", user.getEmail());
     }
 
-    // Supprimer utilisateur
+    // Supprimer utilisateur (inchangé)
     @Transactional
     public void deleteUser(Long id) {
         AppUser user = getById(id);
 
-        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id).orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
+                .orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
 
         keycloakService.deleteUser(mapping.getKeycloakId());
         keycloakMappingRepository.delete(mapping);  
         appUserRepository.delete(user);             
         log.info("Utilisateur supprimé: {}", user.getEmail());
+    }
+
+    // Méthodes utilitaires pour obtenir roleId
+    public Long getRoleIdByUserId(Long userId) {
+        AppUser user = getById(userId);
+        return user.getRole().getId();
+    }
+
+    public String getRoleNameByUserId(Long userId) {
+        AppUser user = getById(userId);
+        return user.getRole().getName();
     }
 }

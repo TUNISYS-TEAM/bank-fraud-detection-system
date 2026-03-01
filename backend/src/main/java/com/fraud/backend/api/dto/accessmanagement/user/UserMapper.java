@@ -18,7 +18,7 @@ public class UserMapper {
                 .phoneNumber(user.getPhoneNumber())
                 .address(user.getAddress())
                 .dateOfBirth(user.getDateOfBirth())
-                .role(user.getRole())
+                .roleId(user.getRole() != null ? user.getRole().getId() : null)  
                 .isActive(user.getIsActive())
                 .lastLogin(user.getLastLogin())
                 .createdAt(user.getCreatedAt())
@@ -33,8 +33,9 @@ public class UserMapper {
                 .email(user.getEmail())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
-                .role(user.getRole())
+                .roleId(user.getRole() != null ? user.getRole().getId() : null)  
                 .isActive(user.getIsActive())
+                .lastLogin(user.getLastLogin())
                 .build();
     }
 }

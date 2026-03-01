@@ -113,4 +113,47 @@ public class KeycloakService {
         getRealm().users().get(keycloakId).remove();
         log.info("User deleted from Keycloak: {}", keycloakId);
     }
+
+
+
+    // ========== Role Management Methods ==========
+
+    // Création de rôle dans Keycloak
+    public String createRole(String roleName, String description) {
+        RoleRepresentation role = new RoleRepresentation();
+        role.setName(roleName);
+        role.setDescription(description);
+        
+        getRealm().roles().create(role);
+        
+        // Trouver l'ID du rôle créé
+        RoleRepresentation createdRole = getRealm().roles().get(roleName).toRepresentation();
+        log.info("Role created in Keycloak: {} with ID: {}", roleName, createdRole.getId());
+        
+        return createdRole.getId();
+    }
+
+    // Mise à jour de rôle dans Keycloak
+    public void updateRole(String roleName, String description) {
+        RoleRepresentation role = getRealm().roles().get(roleName).toRepresentation();
+        role.setDescription(description);
+        getRealm().roles().get(roleName).update(role);
+        log.info("Role updated in Keycloak: {}", roleName);
+    }
+
+    // Suppression de rôle dans Keycloak
+    public void deleteRole(String roleName) {
+        getRealm().roles().deleteRole(roleName);
+        log.info("Role deleted from Keycloak: {}", roleName);
+    }
+
+    // Trouver tous les rôles
+    public List<RoleRepresentation> getAllRoles() {
+        return getRealm().roles().list();
+    }
+
+    // Trouver un rôle par son nom
+    public RoleRepresentation getRole(String roleName) {
+        return getRealm().roles().get(roleName).toRepresentation();
+    }
 }

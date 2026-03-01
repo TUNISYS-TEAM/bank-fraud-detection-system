@@ -29,7 +29,7 @@ public class UserController {
     private final UserService userService;
     private final UserMapper userMapper;
 
-    // GET /api/v1/users
+    // GET /api/users
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<UserSummaryResponse>> getAll(
@@ -41,21 +41,28 @@ public class UserController {
                 userService.getAllUsers(pageable).map(userMapper::toSummaryResponse));
     }
 
-    // GET /api/v1/users/{id}
+    // GET /api/users/{id}
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<UserResponse> getByUuid(@PathVariable Long id) {
+    public ResponseEntity<UserResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(userMapper.toResponse(userService.getById(id)));
     }
 
-    // GET /api/v1/users/uuid/{uuid}
+    // GET /api/users/uuid/{uuid}
     @GetMapping("/uuid/{uuid}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> getByUuid(@PathVariable UUID uuid) {
         return ResponseEntity.ok(userMapper.toResponse(userService.getByUuid(uuid)));
     }
 
-    // POST /api/v1/users
+    // GET /api/users/email/{email}
+    @GetMapping("/email/{email}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponse> getByEmail(@PathVariable String email) {
+        return ResponseEntity.ok(userMapper.toResponse(userService.getByEmail(email)));
+    }
+
+    // POST /api/users
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
@@ -69,10 +76,10 @@ public class UserController {
                                 request.getPhoneNumber(),
                                 request.getDateOfBirth(),
                                 request.getAddress(),
-                                request.getRole())));
+                                request.getRoleId())));  
     }
 
-    // PUT /api/v1/users/{id}
+    // PUT /api/users/{id}
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
@@ -87,15 +94,16 @@ public class UserController {
                                 request.getDateOfBirth())));
     }
 
-    // PATCH /api/v1/users/{id}/role
+    // PATCH /api/users/{id}/role
     @PatchMapping("/{id}/role")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> changeRole(@PathVariable Long id,
             @Valid @RequestBody ChangeRoleRequest request) {
-        return ResponseEntity.ok(userMapper.toResponse(userService.changeRole(id, request.getRole())));
+        return ResponseEntity.ok(userMapper.toResponse(
+                userService.changeRole(id, request.getRoleId())));  
     }
 
-    // PATCH /api/v1/users/{id}/activate
+    // PATCH /api/users/{id}/activate
     @PatchMapping("/{id}/activate")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> activate(@PathVariable Long id) {
@@ -103,7 +111,7 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    // PATCH /api/v1/users/{id}/deactivate
+    // PATCH /api/users/{id}/deactivate
     @PatchMapping("/{id}/deactivate")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deactivate(@PathVariable Long id) {
@@ -111,7 +119,7 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    // DELETE /api/v1/users/{id}
+    // DELETE /api/users/{id}
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {

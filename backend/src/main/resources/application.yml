@@ -26,6 +26,18 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8180/realms/fraud-detection
+  task:
+    scheduling:
+      pool:
+        size: 2
+
+# Session management configuration
+session:
+  # Session timeout in hours (sessions inactive for this duration will be marked as stale)
+  timeout-hours: 24
+  
+  # Cleanup stale sessions every hour (cron expression)
+  cleanup-cron: "0 0 * * * *"
 
 keycloak:
   server-url: http://localhost:8180

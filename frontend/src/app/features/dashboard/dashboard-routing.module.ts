@@ -1,9 +1,31 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
-import { HelloTestComponent } from './hello-test/hello-test.component';
+import { DashboardLayoutComponent } from '../../layout/dashboard-layout/dashboard-layout.component';
+import { OverviewComponent } from './pages/overview/overview.component';
+import { AlertsComponent } from './pages/alerts/alerts.component';
+import { MlModelsComponent } from './pages/ml-models/ml-models.component';
+import { ImportDataComponent } from './pages/import-data/import-data.component';
+import { PerformanceComponent } from './pages/performance/performance.component';
+import { SimulationComponent } from './pages/simulation/simulation.component';
 
 const routes: Routes = [
-  { path: '', component: HelloTestComponent }
+  {
+    path: '',
+    component: DashboardLayoutComponent,
+    children: [
+      { path: '', redirectTo: 'overview', pathMatch: 'full' },
+      { path: 'overview', component: OverviewComponent },
+      { path: 'alerts', component: AlertsComponent },
+      { path: 'ml-models', component: MlModelsComponent },
+      { path: 'import-data', component: ImportDataComponent },
+      { path: 'performance', component: PerformanceComponent },
+      { path: 'simulation', component: SimulationComponent },
+      {
+        path: 'administration',
+        loadChildren: () => import('./pages/administration/administration.module').then(m => m.AdministrationModule)
+      }
+    ]
+  }
 ];
 
 @NgModule({

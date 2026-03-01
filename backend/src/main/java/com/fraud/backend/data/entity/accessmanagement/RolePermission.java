@@ -27,12 +27,3 @@ public class RolePermission {
     @JoinColumn(name = "permission_id")
     private Permission permission;
 }
-
-@Embeddable
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-class RolePermissionId implements java.io.Serializable {
-    private Long roleId;
-    private Long permissionId;
-}

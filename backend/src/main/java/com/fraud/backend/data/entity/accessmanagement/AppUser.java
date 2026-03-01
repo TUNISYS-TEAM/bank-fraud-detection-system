@@ -47,7 +47,9 @@ public class AppUser {
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
     
-    private String role;
+    @ManyToOne
+    @JoinColumn(name = "role_id")
+    private Role role;
     
     @Column(name = "is_active")
     private Boolean isActive;
