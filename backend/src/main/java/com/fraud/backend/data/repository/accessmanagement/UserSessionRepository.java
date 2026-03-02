@@ -2,6 +2,7 @@ package com.fraud.backend.data.repository.accessmanagement;
 
 import com.fraud.backend.data.entity.accessmanagement.UserSession;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -41,4 +42,9 @@ public interface UserSessionRepository extends JpaRepository<UserSession, Long> 
     
     @Query("SELECT s.user.id, COUNT(s) FROM UserSession s WHERE s.isActive = true GROUP BY s.user.id")
     List<Object[]> countActiveSessionsPerUser();
+
+    @Modifying
+    @Query("DELETE FROM UserSession s WHERE s.user.id = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
+    
 }

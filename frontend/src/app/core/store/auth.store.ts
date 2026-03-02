@@ -6,6 +6,7 @@ import { AuthUser, LoginRequest, MenuItem } from '../models/auth.model';
 
 const PERMISSION_ICONS: Record<string, string> = {
   // Pages principales - icônes uniques
+  'ACCESS_OVERVIEW': 'grid',           
   'ACCESS_ADMINISTRATION': 'settings',     
   'ACCESS_IMPORT_DATA': 'upload',           
   'ACCESS_ML_MODELS': 'activity',           
@@ -28,6 +29,7 @@ const PERMISSION_ICONS: Record<string, string> = {
 
 const PERMISSION_LABELS: Record<string, string> = {
   // Pages principales
+  'ACCESS_OVERVIEW': 'Dashboard',           
   'ACCESS_ADMINISTRATION': 'Administration',
   'ACCESS_IMPORT_DATA': 'Import Données',
   'ACCESS_ML_MODELS': 'Modèles ML',
@@ -50,6 +52,7 @@ const PERMISSION_LABELS: Record<string, string> = {
 
 const PERMISSION_ORDER: Record<string, number> = {
   // Pages principales
+  'ACCESS_OVERVIEW': 5,                     
   'ACCESS_ADMINISTRATION': 10,
   'ACCESS_IMPORT_DATA': 20,
   'ACCESS_ML_MODELS': 30,
@@ -155,6 +158,18 @@ export const AuthStore = signalStore(
       const userPermissions = permissions();
       const items: MenuItem[] = [];
 
+      // Ajouter Overview pour tous les utilisateurs (même sans permission)
+      const overviewItem: MenuItem = {
+        id: 0,
+        label: PERMISSION_LABELS['ACCESS_OVERVIEW'] || 'Overview',
+        route: '/dashboard/overview',
+        icon: PERMISSION_ICONS['ACCESS_OVERVIEW'] || 'activity',
+        order: PERMISSION_ORDER['ACCESS_OVERVIEW'] || 5,
+        permissionName: 'ACCESS_OVERVIEW'
+      };
+      items.push(overviewItem);
+
+      // Ajouter les autres permissions
       for (const perm of userPermissions) {
         if (perm.action) {
           const menuItem = {
@@ -171,8 +186,9 @@ export const AuthStore = signalStore(
       return items.sort((a, b) => a.order - b.order);
     });
 
-    // Pages principales pour la sidebar (uniquement les ACCESS_* permissions)
+    // Pages principales pour la sidebar (avec Overview toujours inclus)
     const mainPages = computed(() => {
+      // Prendre tous les items qui commencent par ACCESS_ (y compris Overview)
       return menuItems().filter(item =>
         item.permissionName.startsWith('ACCESS_') &&
         item.route.startsWith('/dashboard/')
@@ -288,17 +304,24 @@ export const AuthStore = signalStore(
     },
 
     hasPermission(permissionName: string): boolean {
+      // Overview est accessible à tous
+      if (permissionName === 'ACCESS_OVERVIEW') return true;
       return store.permissionNames().includes(permissionName);
     },
 
     hasAnyPermission(permissionNames: string[]): boolean {
+      // Si Overview est dans la liste, toujours true
+      if (permissionNames.includes('ACCESS_OVERVIEW')) return true;
       const userPerms = store.permissionNames();
       return permissionNames.some(name => userPerms.includes(name));
     },
 
     hasAllPermissions(permissionNames: string[]): boolean {
+      // Si Overview est dans la liste, on le retire car il est toujours vrai
+      const perms = permissionNames.filter(p => p !== 'ACCESS_OVERVIEW');
+      if (perms.length === 0) return true;
       const userPerms = store.permissionNames();
-      return permissionNames.every(name => userPerms.includes(name));
+      return perms.every(name => userPerms.includes(name));
     },
 
     setLoading(loading: boolean): void {

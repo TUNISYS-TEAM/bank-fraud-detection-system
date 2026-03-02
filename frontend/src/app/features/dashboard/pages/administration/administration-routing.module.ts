@@ -76,7 +76,7 @@ const routes: Routes = [
         component: SettingsComponent,
         canActivate: [permissionGuard],
         data: { 
-          permission: 'VIEW_SETTINGS',
+          permission: 'MANAGE_SETTINGS',
           permissionFailRedirect: '/dashboard/administration'
         }
       }

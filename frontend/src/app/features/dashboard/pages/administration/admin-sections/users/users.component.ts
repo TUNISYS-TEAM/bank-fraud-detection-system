@@ -2,6 +2,8 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../../../environments/environment';
 import { AuthStore } from '../../../../../../core/store/auth.store';
+import { CreateUserData } from '../../../../../../shared/modals/admin-sections/users/user-create-modal/user-create-modal.component';
+import { DeleteUserData } from '../../../../../../shared/modals/admin-sections/users/user-delete-modal/user-delete-modal.component';
 
 interface User {
   id: number;
@@ -49,6 +51,13 @@ export class UsersComponent implements OnInit {
   private rolesCache = signal<Map<number, Role>>(new Map());
   rolesLoaded = signal(false);
 
+  // Modals state
+  showCreateModal = signal(false);
+  showDeleteModal = signal(false);
+  showViewModal = signal(false); // AJOUTÉ
+  userToDelete = signal<DeleteUserData | null>(null);
+  selectedUserId = signal<number | null>(null); // AJOUTÉ
+
   // Computed values
   displayRange = computed(() => {
     const start = this.currentPage() * this.pageSize + 1;
@@ -80,7 +89,7 @@ export class UsersComponent implements OnInit {
     this.loadRoles();
   }
 
-  // Charger les rôles une seule fois (cachés)
+  // Charger les rôles une seule fois
   loadRoles(): void {
     if (this.rolesLoaded()) return;
 
@@ -89,16 +98,16 @@ export class UsersComponent implements OnInit {
         const roleMap = new Map(roles.map(role => [role.id, role]));
         this.rolesCache.set(roleMap);
         this.rolesLoaded.set(true);
-        // Charger les utilisateurs après les rôles
         this.loadUsers();
       },
       error: (error) => {
         console.error('Error loading roles:', error);
-        this.loadUsers(); // Charger quand même les utilisateurs
+        this.loadUsers();
       }
     });
   }
 
+  // Charger les utilisateurs
   loadUsers(): void {
     this.loading.set(true);
     const url = `${environment.apiUrl}/users?page=${this.currentPage()}&size=${this.pageSize}`;
@@ -133,20 +142,62 @@ export class UsersComponent implements OnInit {
     });
   }
 
-  editUser(user: User): void {
-    console.log('Edit user:', user);
+  // Create Modal methods
+  openCreateModal(): void {
+    this.showCreateModal.set(true);
   }
 
-  deleteUser(user: User): void {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur ${user.firstName} ${user.lastName} ?`)) {
-      console.log('Delete user:', user);
-    }
+  closeCreateModal(): void {
+    this.showCreateModal.set(false);
+  }
+
+  onUserCreated(userData: CreateUserData): void {
+    this.loadUsers();
+    this.closeCreateModal();
+  }
+
+  // Delete Modal methods
+  openDeleteModal(user: User): void {
+    this.userToDelete.set({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email
+    });
+    this.showDeleteModal.set(true);
+  }
+
+  closeDeleteModal(): void {
+    this.showDeleteModal.set(false);
+    setTimeout(() => this.userToDelete.set(null), 300);
+  }
+
+  onUserDeleted(userId: number): void {
+    this.loadUsers();
+    this.closeDeleteModal();
+  }
+
+  // View Modal methods - AJOUTÉS
+  openViewModal(user: User): void {
+    this.selectedUserId.set(user.id);
+    this.showViewModal.set(true);
+  }
+
+  closeViewModal(): void {
+    this.showViewModal.set(false);
+    setTimeout(() => this.selectedUserId.set(null), 300);
+  }
+
+  editUser(user: User): void {
+    console.log('Edit user:', user);
+    // TODO: Implémenter le modal d'édition
   }
 
   toggleUserStatus(user: User): void {
     const action = user.isActive ? 'désactiver' : 'activer';
     if (confirm(`Êtes-vous sûr de vouloir ${action} l'utilisateur ${user.firstName} ${user.lastName} ?`)) {
       console.log('Toggle status for user:', user);
+      // TODO: Implémenter l'appel API
     }
   }
 

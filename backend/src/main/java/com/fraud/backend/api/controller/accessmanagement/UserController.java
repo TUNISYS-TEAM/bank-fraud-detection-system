@@ -76,7 +76,8 @@ public class UserController {
                                 request.getPhoneNumber(),
                                 request.getDateOfBirth(),
                                 request.getAddress(),
-                                request.getRoleId())));  
+                                request.getRoleId(),
+                                request.getIsActive())));
     }
 
     // PUT /api/users/{id}
@@ -100,7 +101,7 @@ public class UserController {
     public ResponseEntity<UserResponse> changeRole(@PathVariable Long id,
             @Valid @RequestBody ChangeRoleRequest request) {
         return ResponseEntity.ok(userMapper.toResponse(
-                userService.changeRole(id, request.getRoleId())));  
+                userService.changeRole(id, request.getRoleId())));
     }
 
     // PATCH /api/users/{id}/activate

@@ -30,4 +30,6 @@ public class CreateUserRequest {
     
     @NotNull  
     private Long roleId;
+
+    private Boolean isActive;
 }
