@@ -10,4 +10,7 @@ public class UpdateUserRequest {
     private String phoneNumber;
     private String address;
     private LocalDate dateOfBirth;
+    private String email;
+    private Long roleId;
+    private Boolean isActive;
 }

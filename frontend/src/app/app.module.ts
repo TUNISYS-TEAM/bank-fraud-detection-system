@@ -15,8 +15,6 @@ import {
   AlertOctagon, Sliders, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight,
   Power, RefreshCw, Copy, Chrome, 
 } from 'angular-feather/icons';
-import { CardsComponent } from './shared/cards/cards.component';
-import { UserViewModalComponent } from './shared/modals/admin-sections/users/user-view-modal/user-view-modal.component';
 
 
 const icons = {
@@ -30,7 +28,6 @@ const icons = {
 @NgModule({
   declarations: [
     AppComponent,
-    CardsComponent,
   ],
   imports: [
     BrowserModule,

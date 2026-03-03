@@ -1,1 +1,32 @@
-<p>cards works!</p>
+<div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+    <div class="flex items-start justify-between">
+        <div class="space-y-4">
+            <span class="text-m font-medium text-gray-500 block">{{ data().label }}</span>
+            <div class="flex items-baseline space-x-2">
+                <h3 class="text-3xl font-bold text-gray-800">{{ data().value }}</h3>
+            </div>
+
+            @if (data().trend || data().description) {
+            <div class="flex items-center space-x-1.5 pt-1">
+                @if (data().trend) {
+                <span [ngClass]="data().trendUp ? 'text-emerald-500' : 'text-amber-500'"
+                    class="flex items-center text-sm font-semibold">
+                    <i-feather [name]="data().trendUp ? 'trending-up' : 'alert-triangle'"
+                        class="w-4 h-4 mr-1"></i-feather>
+                    {{ data().trend }}
+                </span>
+                }
+                @if (data().description) {
+                <span class="text-sm text-gray-400 font-medium">{{ data().description }}</span>
+                }
+            </div>
+            }
+        </div>
+
+        <!-- Icône avec fond dynamique -->
+        <div [style.background-color]="data().color ? data().color + '15' : 'rgba(79, 70, 229, 0.08)'"
+            class="p-4 rounded-2xl">
+            <i-feather [name]="data().icon" [style.color]="data().color || '#4f46e5'" class="w-7 h-7"></i-feather>
+        </div>
+    </div>
+</div>

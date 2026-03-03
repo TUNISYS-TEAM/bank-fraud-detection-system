@@ -13,7 +13,7 @@ public class UserSummaryResponse {
     private String email;
     private String firstName;
     private String lastName;
-    private Long roleId;      
+    private Long roleId;
     private Boolean isActive;
     private LocalDateTime lastLogin;
 }

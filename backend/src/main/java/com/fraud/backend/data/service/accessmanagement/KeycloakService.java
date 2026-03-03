@@ -128,9 +128,8 @@ public class KeycloakService {
         
         // Trouver l'ID du rôle créé
         RoleRepresentation createdRole = getRealm().roles().get(roleName).toRepresentation();
-        log.info("Role created in Keycloak: {} with ID: {}", roleName, createdRole.getId());
         
-        return createdRole.getId();
+        return createdRole.getName();
     }
 
     // Mise à jour de rôle dans Keycloak

@@ -1,13 +1,12 @@
 <!-- Backdrop avec flou -->
 <div class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300"
-     [class.opacity-0]="!isVisible()" [class.opacity-100]="isVisible()" (click)="closeModal()">
-    
+    [class.opacity-0]="!isVisible()" [class.opacity-100]="isVisible()" (click)="closeModal()">
+
     <!-- Modal -->
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transition-all duration-300 transform border border-gray-100"
-         [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()"
-         (click)="$event.stopPropagation()">
-        
-        <!-- Modal Header - Version danger -->
+        [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()" (click)="$event.stopPropagation()">
+
+        <!-- Header - Version danger -->
         <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-red-50 to-orange-50">
             <div class="flex items-center space-x-3">
                 <div class="p-2 bg-red-100 rounded-full">

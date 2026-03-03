@@ -41,6 +41,13 @@ public class UserController {
                 userService.getAllUsers(pageable).map(userMapper::toSummaryResponse));
     }
 
+    // GET /api/users/count/active
+    @GetMapping("/count/active")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Long> getActiveCount() {
+        return ResponseEntity.ok(userService.countActiveUsers());
+    }
+
     // GET /api/users/{id}
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -90,9 +97,12 @@ public class UserController {
                                 id,
                                 request.getFirstName(),
                                 request.getLastName(),
+                                request.getEmail(),
                                 request.getPhoneNumber(),
                                 request.getAddress(),
-                                request.getDateOfBirth())));
+                                request.getDateOfBirth(),
+                                request.getRoleId(),
+                                request.getIsActive())));
     }
 
     // PATCH /api/users/{id}/role
@@ -126,5 +136,18 @@ public class UserController {
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         userService.deleteUser(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // GET /api/users/by-role/{roleId}
+    @GetMapping("/by-role/{roleId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Page<UserSummaryResponse>> getByRoleId(
+            @PathVariable Long roleId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "5") int size) {
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("id").ascending());
+        return ResponseEntity.ok(
+                userService.getUsersByRoleId(roleId, pageable).map(userMapper::toSummaryResponse));
     }
 }

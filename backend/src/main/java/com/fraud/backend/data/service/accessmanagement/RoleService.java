@@ -7,6 +7,7 @@ import com.fraud.backend.data.entity.accessmanagement.RolePermissionId;
 import com.fraud.backend.data.repository.accessmanagement.PermissionRepository;
 import com.fraud.backend.data.repository.accessmanagement.RolePermissionRepository;
 import com.fraud.backend.data.repository.accessmanagement.RoleRepository;
+import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import org.keycloak.representations.idm.RoleRepresentation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -26,6 +28,7 @@ public class RoleService {
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final RolePermissionRepository rolePermissionRepository;
+    private final AppUserRepository userRepository;
     private final KeycloakService keycloakService;
 
     public List<Role> getAllRoles() {
@@ -46,7 +49,7 @@ public class RoleService {
      * Récupère les permissions par ID de rôle depuis la table role_permission
      */
     public List<Permission> getPermissionsByRoleId(Long roleId) {
-        return rolePermissionRepository.findPermissionsByRoleId(roleId);
+        return new ArrayList<>(rolePermissionRepository.findPermissionsByRoleId(roleId));
     }
 
     /**
@@ -58,7 +61,7 @@ public class RoleService {
 
     @Transactional
     public Role createRole(String name, String description, List<Long> permissionIds) {
-        
+
         if (roleRepository.existsByName(name)) {
             throw new IllegalArgumentException("Role already exists: " + name);
         }
@@ -72,7 +75,7 @@ public class RoleService {
                 .build();
 
         Role savedRole = roleRepository.save(role);
-        
+
         if (permissionIds != null && !permissionIds.isEmpty()) {
             for (Long permissionId : permissionIds) {
                 addPermissionToRole(savedRole.getId(), permissionId);
@@ -80,7 +83,7 @@ public class RoleService {
         }
 
         log.info("Role created successfully: {} with Keycloak name: {}", name, keycloakRoleName);
-        
+
         return savedRole;
     }
 
@@ -92,7 +95,7 @@ public class RoleService {
 
         role.setDescription(description);
         roleRepository.save(role);
-        
+
         if (permissionIds != null) {
             rolePermissionRepository.deleteByIdRoleId(id);
             for (Long permissionId : permissionIds) {
@@ -101,7 +104,7 @@ public class RoleService {
         }
 
         log.info("Role updated successfully: {}", role.getName());
-        
+
         return role;
     }
 
@@ -114,14 +117,14 @@ public class RoleService {
 
         Role role = roleRepository.getReferenceById(roleId);
         Permission permission = permissionRepository.getReferenceById(permissionId);
-        
+
         RolePermissionId id = new RolePermissionId(roleId, permissionId);
         RolePermission rolePermission = RolePermission.builder()
                 .id(id)
                 .role(role)
                 .permission(permission)
                 .build();
-        
+
         rolePermissionRepository.save(rolePermission);
         log.info("Permission {} added to role {}", permissionId, roleId);
     }
@@ -141,36 +144,46 @@ public class RoleService {
             throw new IllegalArgumentException("Cannot delete system role: " + role.getName());
         }
 
-        rolePermissionRepository.deleteByIdRoleId(id);
-        keycloakService.deleteRole(role.getKeycloakRoleName());
+        if (userRepository.existsByRoleId(id)) {
+            throw new IllegalArgumentException(
+                    "Cannot delete role '" + role.getName() + "': it is assigned to one or more users.");
+        }
+
+        // Use JPQL bulk delete only — don't also clear the collection
+        rolePermissionRepository.deleteByRoleId(id);
+        rolePermissionRepository.flush();
+
         roleRepository.delete(role);
+        roleRepository.flush();
+
+        keycloakService.deleteRole(role.getKeycloakRoleName());
+
         log.info("Role deleted: {}", role.getName());
     }
 
     @Transactional
     public void syncRolesFromKeycloak() {
         List<RoleRepresentation> keycloakRoles = keycloakService.getAllRoles();
-        
+
         for (RoleRepresentation keycloakRole : keycloakRoles) {
             roleRepository.findByKeycloakRoleName(keycloakRole.getName())
                     .ifPresentOrElse(
-                        existingRole -> {
-                            existingRole.setDescription(keycloakRole.getDescription());
-                            roleRepository.save(existingRole);
-                            log.debug("Updated role from Keycloak: {}", keycloakRole.getName());
-                        },
-                        () -> {
-                            Role newRole = Role.builder()
-                                    .name(keycloakRole.getName())
-                                    .description(keycloakRole.getDescription())
-                                    .keycloakRoleName(keycloakRole.getName())
-                                    .build();
-                            roleRepository.save(newRole);
-                            log.info("Created new role from Keycloak: {}", keycloakRole.getName());
-                        }
-                    );
+                            existingRole -> {
+                                existingRole.setDescription(keycloakRole.getDescription());
+                                roleRepository.save(existingRole);
+                                log.debug("Updated role from Keycloak: {}", keycloakRole.getName());
+                            },
+                            () -> {
+                                Role newRole = Role.builder()
+                                        .name(keycloakRole.getName())
+                                        .description(keycloakRole.getDescription())
+                                        .keycloakRoleName(keycloakRole.getName())
+                                        .build();
+                                roleRepository.save(newRole);
+                                log.info("Created new role from Keycloak: {}", keycloakRole.getName());
+                            });
         }
-        
+
         log.info("Role synchronization completed");
     }
 }

@@ -1,0 +1,218 @@
+fraud-detection-platform/
+│
+├── ml-pipeline/                          # Partie Python (Training)
+│   ├── data/
+│   │   ├── raw/
+│   │   ├── processed/
+│   │   └── features/
+│   │
+│   ├── transformers/
+│   │   ├── __init__.py
+│   │   ├── behavioral/
+│   │   │   ├── __init__.py
+│   │   │   ├── client_behavior.py        # Ton ClientBehaviorTransformer
+│   │   │   ├── temporal_features.py
+│   │   │   └── aggregation_features.py
+│   │   │
+│   │   ├── encoders/
+│   │   │   ├── __init__.py
+│   │   │   ├── categorical_encoder.py    # OneHot/Target Encoding
+│   │   │   └── ordinal_encoder.py
+│   │   │
+│   │   └── scalers/
+│   │       ├── __init__.py
+│   │       ├── robust_scaler.py
+│   │       └── monetary_scaler.py         # Scaling spécifique montants
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── supervised/
+│   │   │   ├── lightgbm_model.py
+│   │   │   └── xgboost_model.py
+│   │   │
+│   │   ├── unsupervised/
+│   │   │   ├── autoencoder.py
+│   │   │   └── ecod_detector.py
+│   │   │
+│   │   └── ensemble/
+│   │       ├── hybrid_scorer.py
+│   │       └── threshold_optimizer.py
+│   │
+│   ├── pipeline/
+│   │   ├── __init__.py
+│   │   ├── fraud_pipeline.py              # Pipeline complet
+│   │   ├── feature_store.py                # Gestion feature store
+│   │   └── onnx_exporter.py                # Export vers ONNX
+│   │
+│   ├── training/
+│   │   ├── train_supervised.py
+│   │   ├── train_unsupervised.py
+│   │   └── validate_pipeline.py
+│   │
+│   └── exported_models/                    # Modèles exportés
+│       ├── behavioral_pipeline.onnx
+│       ├── encoder.onnx
+│       ├── scaler.onnx
+│       ├── lightgbm_model.onnx
+│       ├── autoencoder.onnx
+│       └── metadata.json
+│
+├── backend/                                 # Spring Boot
+│   ├── src/main/java/com/fraud/
+│   │   ├── FraudApplication.java
+│   │   │
+│   │   ├── api/
+│   │   │   ├── controller/
+│   │   │   │   ├── TransactionController.java
+│   │   │   │   ├── FraudAlertController.java
+│   │   │   │   └── MonitoringController.java
+│   │   │   │
+│   │   │   └── dto/
+│   │   │       ├── TransactionRequest.java
+│   │   │       ├── FraudScoreResponse.java
+│   │   │       └── FraudAlertDTO.java
+│   │   │
+│   │   ├── core/
+│   │   │   ├── scoring/
+│   │   │   │   ├── FraudScoringEngine.java
+│   │   │   │   ├── EnsembleScorer.java
+│   │   │   │   └── ThresholdDecisionEngine.java
+│   │   │   │
+│   │   │   ├── feature/
+│   │   │   │   ├── FeatureBuilder.java
+│   │   │   │   ├── RollingAggregator.java
+│   │   │   │   └── FeatureStore.java
+│   │   │   │
+│   │   │   └── decision/
+│   │   │       ├── RuleEngine.java
+│   │   │       └── AlertGenerator.java
+│   │   │
+│   │   ├── ml/
+│   │   │   ├── inference/
+│   │   │   │   ├── OnnxInferenceEngine.java      # Moteur ONNX principal
+│   │   │   │   ├── PipelineExecutor.java          # Exécute le pipeline complet
+│   │   │   │   ├── BehavioralTransformer.java     # Réimplémentation Java de ton transformer
+│   │   │   │   └── ModelLoader.java
+│   │   │   │
+│   │   │   ├── models/
+│   │   │   │   ├── SupervisedModel.java
+│   │   │   │   ├── AnomalyModel.java
+│   │   │   │   └── EnsembleModel.java
+│   │   │   │
+│   │   │   └── config/
+│   │   │       └── MLModelConfig.java
+│   │   │
+│   │   ├── data/
+│   │   │   ├── entity/
+│   │   │   │   ├── Transaction.java
+│   │   │   │   ├── ClientProfile.java
+│   │   │   │   ├── FraudAlert.java
+│   │   │   │   └── FeatureHistory.java
+│   │   │   │
+│   │   │   ├── repository/
+│   │   │   │   ├── TransactionRepository.java
+│   │   │   │   ├── ClientProfileRepository.java
+│   │   │   │   └── FraudAlertRepository.java
+│   │   │   │
+│   │   │   └── service/
+│   │   │       ├── TransactionService.java
+│   │   │       ├── FeaturePersistenceService.java
+│   │   │       └── ClientHistoryService.java
+│   │   │
+│   │   └── monitoring/
+│   │       ├── metrics/
+│   │       │   ├── ScoreDistributionMetric.java
+│   │       │   ├── DriftDetector.java
+│   │       │   └── PerformanceMonitor.java
+│   │       │
+│   │       ├── actuator/
+│   │       │   └── FraudHealthIndicator.java
+│   │       │
+│   │       └── alert/
+│   │           └── AlertService.java
+│   │
+│   └── resources/
+│       ├── application.yml
+│       ├── models/                          # Modèles ONNX copiés ici
+│       │   ├── behavioral_pipeline.onnx
+│       │   ├── encoder.onnx
+│       │   ├── scaler.onnx
+│       │   ├── lightgbm_model.onnx
+│       │   └── autoencoder.onnx
+│       └── db/migration/
+│           └── V1__init_schema.sql
+│
+├── frontend/                                 # Angular
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── core/
+│   │   │   │   ├── services/
+│   │   │   │   │   ├── fraud-api.service.ts
+│   │   │   │   │   ├── websocket.service.ts
+│   │   │   │   │   └── auth.service.ts
+│   │   │   │   │
+│   │   │   │   └── interceptors/
+│   │   │   │       └── http.interceptor.ts
+│   │   │   │
+│   │   │   ├── state/                        # Gestion d'état avec Signals
+│   │   │   │   ├── transaction.store.ts
+│   │   │   │   ├── fraud-alert.store.ts
+│   │   │   │   ├── model-metrics.store.ts
+│   │   │   │   └── dashboard.store.ts
+│   │   │   │
+│   │   │   ├── features/
+│   │   │   │   ├── dashboard/
+│   │   │   │   │   ├── dashboard.component.ts
+│   │   │   │   │   ├── dashboard.component.html
+│   │   │   │   │   ├── dashboard.component.css
+│   │   │   │   │   └── components/
+│   │   │   │   │       ├── realtime-stats/
+│   │   │   │   │       ├── fraud-alerts/
+│   │   │   │   │       └── transaction-flow/
+│   │   │   │   │
+│   │   │   │   ├── fraud-monitoring/
+│   │   │   │   │   ├── fraud-monitoring.component.ts
+│   │   │   │   │   ├── fraud-monitoring.component.html
+│   │   │   │   │   └── components/
+│   │   │   │   │       ├── alert-list/
+│   │   │   │   │       ├── alert-detail/
+│   │   │   │   │       └── alert-filters/
+│   │   │   │   │
+│   │   │   │   ├── model-performance/
+│   │   │   │   │   ├── model-performance.component.ts
+│   │   │   │   │   └── components/
+│   │   │   │   │       ├── model-metrics/
+│   │   │   │   │       ├── drift-detection/
+│   │   │   │   │       └── feature-importance/
+│   │   │   │   │
+│   │   │   │   └── client-360/
+│   │   │   │       ├── client-360.component.ts
+│   │   │   │       └── components/
+│   │   │   │           ├── client-profile/
+│   │   │   │           ├── transaction-history/
+│   │   │   │           └── risk-timeline/
+│   │   │   │
+│   │   │   └── shared/
+│   │   │       ├── components/
+│   │   │       │   ├── header/
+│   │   │       │   ├── sidebar/
+│   │   │       │   └── loading-spinner/
+│   │   │       │
+│   │   │       └── utils/
+│   │   │           ├── chart.utils.ts
+│   │   │           └── date.utils.ts
+│   │   │
+│   │   ├── assets/
+│   │   └── environments/
+│   │
+│   └── package.json
+│
+├── docker/
+│   ├── Dockerfile.backend
+│   ├── Dockerfile.frontend
+│   └── docker-compose.yml
+│
+└── docs/
+    ├── architecture/
+    ├── api/
+    └── ml-pipeline/

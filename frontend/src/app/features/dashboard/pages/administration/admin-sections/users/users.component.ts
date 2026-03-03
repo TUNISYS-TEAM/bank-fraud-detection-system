@@ -51,12 +51,18 @@ export class UsersComponent implements OnInit {
   private rolesCache = signal<Map<number, Role>>(new Map());
   rolesLoaded = signal(false);
 
+  // Computed pour convertir la Map en tableau (pour le template)
+  rolesList = computed(() => Array.from(this.rolesCache().values()));
+
   // Modals state
   showCreateModal = signal(false);
   showDeleteModal = signal(false);
-  showViewModal = signal(false); // AJOUTÉ
+  showViewModal = signal(false);
+  showUpdateModal = signal(false);
+  
   userToDelete = signal<DeleteUserData | null>(null);
-  selectedUserId = signal<number | null>(null); // AJOUTÉ
+  selectedUserId = signal<number | null>(null);
+  selectedUserForUpdate = signal<User | null>(null);
 
   // Computed values
   displayRange = computed(() => {
@@ -142,7 +148,7 @@ export class UsersComponent implements OnInit {
     });
   }
 
-  // Create Modal methods
+  // ==================== CREATE MODAL METHODS ====================
   openCreateModal(): void {
     this.showCreateModal.set(true);
   }
@@ -152,11 +158,12 @@ export class UsersComponent implements OnInit {
   }
 
   onUserCreated(userData: CreateUserData): void {
+    console.log('User created:', userData);
     this.loadUsers();
     this.closeCreateModal();
   }
 
-  // Delete Modal methods
+  // ==================== DELETE MODAL METHODS ====================
   openDeleteModal(user: User): void {
     this.userToDelete.set({
       id: user.id,
@@ -173,11 +180,12 @@ export class UsersComponent implements OnInit {
   }
 
   onUserDeleted(userId: number): void {
+    console.log('User deleted:', userId);
     this.loadUsers();
     this.closeDeleteModal();
   }
 
-  // View Modal methods - AJOUTÉS
+  // ==================== VIEW MODAL METHODS ====================
   openViewModal(user: User): void {
     this.selectedUserId.set(user.id);
     this.showViewModal.set(true);
@@ -188,11 +196,27 @@ export class UsersComponent implements OnInit {
     setTimeout(() => this.selectedUserId.set(null), 300);
   }
 
-  editUser(user: User): void {
-    console.log('Edit user:', user);
-    // TODO: Implémenter le modal d'édition
+  // ==================== UPDATE MODAL METHODS ====================
+  openUpdateModal(user: User): void {
+    this.selectedUserForUpdate.set(user);
+    this.showUpdateModal.set(true);
   }
 
+  closeUpdateModal(): void {
+    this.showUpdateModal.set(false);
+    setTimeout(() => this.selectedUserForUpdate.set(null), 300);
+  }
+
+  onUserUpdated(updatedUser: User): void {
+    this.loadUsers();
+    this.closeUpdateModal();
+  }
+
+  editUser(user: User): void {
+    this.openUpdateModal(user);
+  }
+
+  // ==================== TOGGLE STATUS ====================
   toggleUserStatus(user: User): void {
     const action = user.isActive ? 'désactiver' : 'activer';
     if (confirm(`Êtes-vous sûr de vouloir ${action} l'utilisateur ${user.firstName} ${user.lastName} ?`)) {
@@ -201,6 +225,7 @@ export class UsersComponent implements OnInit {
     }
   }
 
+  // ==================== PAGINATION ====================
   getPageNumbers(): number[] {
     const total = this.totalPages();
     const current = this.currentPage() + 1;

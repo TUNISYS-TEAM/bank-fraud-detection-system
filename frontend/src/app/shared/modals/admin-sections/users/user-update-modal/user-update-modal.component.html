@@ -1,1 +1,170 @@
-<p>user-update-modal works!</p>
+<!-- Backdrop avec flou -->
+<div class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300"
+    [class.opacity-0]="!isVisible()" [class.opacity-100]="isVisible()" (click)="closeModal()">
+
+    <!-- Modal -->
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden transition-all duration-300 transform border border-gray-100"
+        [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()" (click)="$event.stopPropagation()">
+
+        <!-- Header -->
+        <div class="bg-white px-8 py-6 border-b border-gray-100 flex items-start justify-between">
+            <div class="flex flex-col">
+                <h3 class="text-2xl font-bold text-gray-900 tracking-tight">
+                    Modifier l'Utilisateur
+                </h3>
+                <p class="text-base text-gray-500 mt-1">
+                    Mettre à jour les informations de l'utilisateur
+                </p>
+            </div>
+
+            <button (click)="closeModal()"
+                class="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-xl hover:bg-gray-100"
+                aria-label="Fermer">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <form [formGroup]="updateForm" (ngSubmit)="onSubmit()" class="px-8 py-6 space-y-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+            
+            <!-- First Name & Last Name -->
+            <div class="grid grid-cols-2 gap-6">
+                <div class="space-y-2">
+                    <label class="flex items-center text-sm font-semibold text-gray-700">
+                        <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        Prénom
+                    </label>
+                    <input type="text" formControlName="firstName"
+                        class="w-full px-4 py-3 bg-blue-50/40 border border-blue-100 rounded-2xl
+                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all
+                               text-gray-900 font-medium placeholder-gray-400"
+                        placeholder="Jean">
+                </div>
+                <div class="space-y-2">
+                    <label class="flex items-center text-sm font-semibold text-gray-700">
+                        <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        Nom
+                    </label>
+                    <input type="text" formControlName="lastName"
+                        class="w-full px-4 py-3 bg-blue-50/40 border border-blue-100 rounded-2xl
+                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all
+                               text-gray-900 font-medium placeholder-gray-400"
+                        placeholder="Dupont">
+                </div>
+            </div>
+
+            <!-- Email -->
+            <div class="space-y-2">
+                <label class="flex items-center text-sm font-semibold text-gray-700">
+                    <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    Email
+                </label>
+                <input type="email" formControlName="email"
+                    class="w-full px-4 py-3 bg-blue-50/60 border border-blue-100 rounded-2xl
+                           focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all
+                           text-gray-900 font-medium placeholder-gray-400"
+                    placeholder="admin@fraud.com">
+            </div>
+
+            <!-- Role -->
+            <div class="space-y-2">
+                <label class="flex items-center text-sm font-semibold text-gray-700">
+                    <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    Rôle
+                </label>
+                <div class="relative">
+                    <select formControlName="roleId"
+                        class="w-full px-4 py-3 bg-blue-50/40 border border-blue-100 rounded-2xl
+                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all
+                               text-gray-900 font-medium appearance-none cursor-pointer pr-10">
+                        <option [ngValue]="null" selected>Sélectionner un rôle</option>
+                        @for (role of roles; track role.id) {
+                            <option [ngValue]="role.id">{{ role.name }}</option>
+                        }
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-4 flex items-center text-gray-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status -->
+            <div class="p-5 bg-white rounded-2xl border border-gray-100">
+                <div class="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Statut du compte</span>
+                </div>
+                <div class="mt-4 flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Inactif</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" formControlName="isActive" class="sr-only peer">
+                        <div class="w-12 h-6 rounded-full bg-gray-200 peer-focus:outline-none
+                              peer-checked:bg-blue-600 transition-colors"></div>
+                        <div class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white border border-gray-200
+                              transition-transform peer-checked:translate-x-6"></div>
+                    </label>
+                    <span class="text-sm text-gray-500">Actif</span>
+                </div>
+                <p class="mt-3 text-xs text-gray-400">
+                    L'utilisateur pourra se connecter s'il est actif
+                </p>
+            </div>
+
+            <!-- Error Message -->
+            @if (errorMessage()) {
+                <div class="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-3">
+                    <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" 
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" 
+                              clip-rule="evenodd" />
+                    </svg>
+                    <p class="text-sm text-red-700">{{ errorMessage() }}</p>
+                </div>
+            }
+        </form>
+
+        <!-- Footer -->
+        <div class="bg-gray-50/60 px-8 py-6 border-t border-gray-100 flex items-center justify-end gap-4">
+            <button type="button" (click)="closeModal()"
+                class="px-6 py-3 rounded-2xl font-semibold text-gray-700 bg-white border border-gray-200
+                       hover:bg-gray-50 transition-all shadow-sm">
+                Annuler
+            </button>
+
+            <button type="submit" (click)="onSubmit()" [disabled]="updateForm.invalid || isLoading()"
+                class="px-6 py-3 rounded-2xl font-semibold text-white shadow-lg transition-all
+                       bg-gradient-to-r from-blue-500 to-indigo-600
+                       hover:from-blue-600 hover:to-indigo-700
+                       disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+                @if (isLoading()) {
+                    <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <span>Mise à jour...</span>
+                } @else {
+                    <span>Enregistrer les modifications</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>

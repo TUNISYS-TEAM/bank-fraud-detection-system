@@ -126,6 +126,7 @@ export class SessionsComponent implements OnInit {
       error: (error) => {
         console.error('Error terminating session:', error);
         this.showTerminateDialog.set(false);
+        this.selectedSession.set(null);
       }
     });
   }
@@ -219,6 +220,8 @@ export class SessionsComponent implements OnInit {
   copyToClipboard(text: string): void {
     navigator.clipboard.writeText(text).then(() => {
       console.log('Copied to clipboard:', text);
+    }).catch(err => {
+      console.error('Failed to copy:', err);
     });
   }
 
@@ -249,5 +252,20 @@ export class SessionsComponent implements OnInit {
     });
 
     return rangeWithDots;
+  }
+
+  // NOUVELLE MÉTHODE AJOUTÉE
+  getUserInitials(session: Session): string {
+    if (session.userName) {
+      const names = session.userName.split(' ');
+      if (names.length >= 2) {
+        return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+      }
+      return session.userName.substring(0, 2).toUpperCase();
+    }
+    if (session.userEmail) {
+      return session.userEmail.substring(0, 2).toUpperCase();
+    }
+    return '?';
   }
 }

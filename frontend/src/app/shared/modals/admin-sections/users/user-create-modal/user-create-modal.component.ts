@@ -49,7 +49,7 @@ export class UserCreateModalComponent implements OnInit {
   loadRoles() {
     this.http.get<any[]>(`${environment.apiUrl}/roles`).subscribe({
       next: (roles) => {
-        this.roles.set(roles); // Utilisation de .set() pour les signals
+        this.roles.set(roles); 
       },
       error: (err) => {
         console.error('Error loading roles:', err);

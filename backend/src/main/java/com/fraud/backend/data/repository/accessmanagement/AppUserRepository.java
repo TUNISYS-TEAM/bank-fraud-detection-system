@@ -18,9 +18,13 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     boolean existsByEmail(String email);
 
+    boolean existsByRoleId(Long roleId);
+
     @Query("SELECT u FROM AppUser u WHERE u.role.id = :roleId")
     Page<AppUser> findByRoleId(@Param("roleId") Long roleId, Pageable pageable);
 
     @Query("SELECT u FROM AppUser u LEFT JOIN FETCH u.role WHERE u.id = :id")
     Optional<AppUser> findByIdWithRole(@Param("id") Long id);
+
+    long countByIsActiveTrue();
 }

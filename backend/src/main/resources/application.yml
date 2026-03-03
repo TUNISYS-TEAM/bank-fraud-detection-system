@@ -4,6 +4,11 @@ spring:
     username: postgres
     password: admin
     driver-class-name: org.postgresql.Driver
+
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
   
   jpa:
     hibernate:
@@ -46,6 +51,14 @@ keycloak:
   client-secret: oFQ9ky6RLeSVZyiXMdCkOGKJAxkCRB28
   admin-username: admin
   admin-password: admin
+
+storage:
+  s3:
+    endpoint: http://localhost:9000
+    region: us-east-1
+    access-key: ${MINIO_ROOT_USER:minioadmin}
+    secret-key: ${MINIO_ROOT_PASSWORD:minioadmin123}
+    bucket: fraud-datalake
 
 server:
   port: 8100

@@ -45,6 +45,9 @@ public class Dataset {
     @Column(name = "imported_at")
     private LocalDateTime importedAt;
 
+    @Column(name = "row_count")
+    private Long rowCount;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -92,9 +95,10 @@ public class Dataset {
         this.status = DatasetStatus.INACTIVE;
     }
 
-    public void updateFileStats(String filePath, BigDecimal fileSizeMb) {
+    public void updateFileStats(String filePath, BigDecimal fileSizeMb, Long rowCount) {
         this.filePath = filePath;
         this.fileSizeMb = fileSizeMb;
+        this.rowCount = rowCount;
         this.importedAt = LocalDateTime.now();
     }
 }

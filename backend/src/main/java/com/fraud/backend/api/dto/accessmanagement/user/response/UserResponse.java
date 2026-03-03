@@ -17,7 +17,7 @@ public class UserResponse {
     private String phoneNumber;
     private String address;
     private LocalDate dateOfBirth;
-    private Long roleId;          
+    private Long roleId;
     private Boolean isActive;
     private LocalDateTime lastLogin;
     private LocalDateTime createdAt;

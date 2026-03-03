@@ -2,34 +2,34 @@ import { signalStore, withState, withComputed, withMethods, patchState } from '@
 import { computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
-import { AuthUser, LoginRequest, MenuItem } from '../models/auth.model';
+import { AuthUser, LoginRequest, MenuItem, UserRole } from '../models/auth.model';
 
 const PERMISSION_ICONS: Record<string, string> = {
   // Pages principales - icônes uniques
-  'ACCESS_OVERVIEW': 'grid',           
-  'ACCESS_ADMINISTRATION': 'settings',     
-  'ACCESS_IMPORT_DATA': 'upload',           
-  'ACCESS_ML_MODELS': 'activity',           
-  'ACCESS_ALERTS': 'bell',                  
-  'ACCESS_PERFORMANCE': 'bar-chart-2',      
-  'ACCESS_SIMULATION': 'play-circle',       
-  
+  'ACCESS_OVERVIEW': 'grid',
+  'ACCESS_ADMINISTRATION': 'settings',
+  'ACCESS_IMPORT_DATA': 'upload',
+  'ACCESS_ML_MODELS': 'activity',
+  'ACCESS_ALERTS': 'bell',
+  'ACCESS_PERFORMANCE': 'bar-chart-2',
+  'ACCESS_SIMULATION': 'play-circle',
+
   // Actions de gestion - icônes uniques
-  'MANAGE_USERS': 'users',              
-  'MANAGE_ROLES': 'key',                  
-  'MANAGE_SESSIONS': 'clock',               
-  'MANAGE_ML_MODELS': 'cpu',               
-  'MANAGE_ALERTS': 'alert-octagon',     
-  'IMPORT_DATA': 'download',                 
-  'RUN_SIMULATION': 'play',                 
-  'MANAGE_LOGS': 'file-text',                 
-  'MANAGE_SETTINGS': 'sliders',              
-  'MANAGE_DATASETS': 'database'              
+  'MANAGE_USERS': 'users',
+  'MANAGE_ROLES': 'key',
+  'MANAGE_SESSIONS': 'clock',
+  'MANAGE_ML_MODELS': 'cpu',
+  'MANAGE_ALERTS': 'alert-octagon',
+  'IMPORT_DATA': 'download',
+  'RUN_SIMULATION': 'play',
+  'MANAGE_LOGS': 'file-text',
+  'MANAGE_SETTINGS': 'sliders',
+  'MANAGE_DATASETS': 'database'
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
   // Pages principales
-  'ACCESS_OVERVIEW': 'Dashboard',           
+  'ACCESS_OVERVIEW': 'Dashboard',
   'ACCESS_ADMINISTRATION': 'Administration',
   'ACCESS_IMPORT_DATA': 'Import Données',
   'ACCESS_ML_MODELS': 'Modèles ML',
@@ -52,13 +52,13 @@ const PERMISSION_LABELS: Record<string, string> = {
 
 const PERMISSION_ORDER: Record<string, number> = {
   // Pages principales
-  'ACCESS_OVERVIEW': 5,                     
-  'ACCESS_ADMINISTRATION': 10,
+  'ACCESS_OVERVIEW': 5,
   'ACCESS_IMPORT_DATA': 20,
   'ACCESS_ML_MODELS': 30,
   'ACCESS_ALERTS': 40,
   'ACCESS_PERFORMANCE': 50,
   'ACCESS_SIMULATION': 60,
+  'ACCESS_ADMINISTRATION': 70,
 
   // Actions dans Administration
   'MANAGE_USERS': 71,
@@ -326,6 +326,45 @@ export const AuthStore = signalStore(
 
     setLoading(loading: boolean): void {
       patchState(store, { loading });
+    },
+
+    refreshUserProfile(): void {
+      const email = store.userEmail();
+      if (!email) return;
+
+      authService.getUserByEmail(email).subscribe({
+        next: (userData: any) => {
+          // 1. D'abord récupérer le rôle pour avoir son nom (ex: 'ADMIN')
+          authService.getRoleById(userData.roleId).subscribe({
+            next: (roleData) => {
+              // 2. Ensuite récupérer les permissions
+              authService.getPermissionsByRoleId(userData.roleId).subscribe({
+                next: (permissions) => {
+                  const currentUser = store.user();
+                  if (currentUser) {
+                    const updatedUser: AuthUser = {
+                      ...currentUser,
+                      firstName: userData.firstName,
+                      lastName: userData.lastName,
+                      name: `${userData.firstName} ${userData.lastName}`,
+                      email: userData.email,
+                      roleId: userData.roleId,
+                      role: (roleData.name.toUpperCase() as UserRole),
+                      permissions: permissions
+                    };
+
+                    const newState = { ...loadState(), user: updatedUser };
+                    patchState(store, { user: updatedUser });
+                    saveState(newState);
+                  }
+                }
+              });
+            },
+            error: (err) => console.error('Error fetching role details:', err)
+          });
+        },
+        error: (err) => console.error('Error refreshing profile:', err)
+      });
     },
 
     // Méthode utilitaire pour obtenir les tabs d'une page

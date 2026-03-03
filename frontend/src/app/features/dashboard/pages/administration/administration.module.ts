@@ -1,6 +1,6 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms'; 
 import { FeatherModule } from 'angular-feather';
 import { AdministrationRoutingModule } from './administration-routing.module';
 import { AdministrationComponent } from './administration.component';
@@ -16,7 +16,15 @@ import { UserCreateModalComponent } from '../../../../shared/modals/admin-sectio
 import { UserUpdateModalComponent } from '../../../../shared/modals/admin-sections/users/user-update-modal/user-update-modal.component';
 import { UserDeleteModalComponent } from '../../../../shared/modals/admin-sections/users/user-delete-modal/user-delete-modal.component';
 import { UserViewModalComponent } from '../../../../shared/modals/admin-sections/users/user-view-modal/user-view-modal.component';
-
+import { RoleCreateModalComponent } from '../../../../shared/modals/admin-sections/roles/role-create-modal/role-create-modal.component';
+import { RoleUpdateModalComponent } from '../../../../shared/modals/admin-sections/roles/role-update-modal/role-update-modal.component';
+import { RoleDeleteModalComponent } from '../../../../shared/modals/admin-sections/roles/role-delete-modal/role-delete-modal.component';
+import { LogExportModalComponent } from '../../../../shared/modals/admin-sections/logs/log-export-modal/log-export-modal.component';
+import { DatasetCreateModalComponent } from '../../../../shared/modals/admin-sections/datasets/dataset-create-modal/dataset-create-modal.component';
+import { DatasetUpdateModalComponent } from '../../../../shared/modals/admin-sections/datasets/dataset-update-modal/dataset-update-modal.component';
+import { DatasetDeleteModalComponent } from '../../../../shared/modals/admin-sections/datasets/dataset-delete-modal/dataset-delete-modal.component';
+import { DatasetViewModalComponent } from '../../../../shared/modals/admin-sections/datasets/dataset-view-modal/dataset-view-modal.component';
+import { CardsComponent } from '../../../../shared/cards/cards.component';
 
 @NgModule({
   declarations: [
@@ -30,15 +38,27 @@ import { UserViewModalComponent } from '../../../../shared/modals/admin-sections
   ],
   imports: [
     CommonModule,
+    FormsModule, 
     ReactiveFormsModule,
     AdministrationRoutingModule,
     FeatherModule,
-    // Importer les modals standalone
+    //User
     UserCreateModalComponent,
-    /*UserUpdateModalComponent,*/
+    UserUpdateModalComponent,
     UserDeleteModalComponent,
-    UserViewModalComponent
+    UserViewModalComponent,
+    // Roles
+    RoleCreateModalComponent,   
+    RoleUpdateModalComponent,
+    RoleDeleteModalComponent,
+    LogExportModalComponent,
+    //Datasets
+    DatasetCreateModalComponent,
+    DatasetUpdateModalComponent,
+    DatasetDeleteModalComponent,
+    DatasetViewModalComponent, 
 
+    CardsComponent
   ]
 })
 export class AdministrationModule { }

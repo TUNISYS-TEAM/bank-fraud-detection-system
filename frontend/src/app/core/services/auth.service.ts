@@ -19,6 +19,7 @@ export interface UserResponse {
   firstName: string;
   lastName: string;
   roleId: number;
+  role: string;
 }
 
 @Injectable({
@@ -70,13 +71,9 @@ export class AuthService {
       );
   }
 
-  getUserByEmail(email: string): Observable<{ id: number; roleId: number }> {
+  getUserByEmail(email: string): Observable<UserResponse> {
     const url = `${environment.apiUrl}/users/email/${email}`;
     return this.http.get<UserResponse>(url).pipe(
-      map(user => ({
-        id: user.id,
-        roleId: user.roleId
-      })),
       catchError(error => {
         console.error('Error fetching user by email:', error);
         return throwError(() => new Error('User not found'));
@@ -92,6 +89,10 @@ export class AuthService {
         return of([]);
       })
     );
+  }
+
+  getRoleById(roleId: number): Observable<any> {
+    return this.http.get<any>(`${environment.apiUrl}/roles/${roleId}`);
   }
 
   refreshToken(): Observable<LoginResponse> {
@@ -144,9 +145,10 @@ export class AuthService {
 
   private extractRole(tokenData: any): UserRole {
     const roles = tokenData?.realm_access?.roles || [];
-    if (roles.includes('ADMIN')) return 'ADMIN';
-    if (roles.includes('MANAGER')) return 'MANAGER';
-    if (roles.includes('ANALYST')) return 'ANALYST';
+    const upperRoles = roles.map((r: string) => r.toUpperCase());
+    if (upperRoles.includes('ADMIN')) return 'ADMIN';
+    if (upperRoles.includes('MANAGER')) return 'MANAGER';
+    if (upperRoles.includes('ANALYST')) return 'ANALYST';
     return 'ANALYST';
   }
 
