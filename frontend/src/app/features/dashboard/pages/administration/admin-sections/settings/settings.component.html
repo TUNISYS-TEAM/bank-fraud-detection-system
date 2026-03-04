@@ -1,8 +1,355 @@
-<div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden animate-fadeIn">
+<div class="space-y-6">
     <!-- Section Header -->
-    <div class="p-8 border-b border-gray-50 bg-white">
-        <h3 class="text-2xl font-bold text-gray-800">Paramètres Système</h3>
-        <p class="text-base text-gray-500 mt-1">Configurer les préférences globales et les seuils de détection du système
-        </p>
+    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden animate-fadeIn">
+        <div class="p-8 border-b border-gray-50 bg-white">
+            <h3 class="text-2xl font-bold text-gray-800">Paramètres Système</h3>
+            <p class="text-base text-gray-500 mt-1">Configurer les préférences globales et les seuils de détection du système
+            </p>
+        </div>
     </div>
+
+    <!-- Loading State -->
+    @if (isLoading()) {
+    <div class="flex justify-center items-center py-20">
+        <div class="relative">
+            <div class="animate-spin rounded-full h-16 w-16 border-4 border-indigo-200 border-t-indigo-600"></div>
+        </div>
+    </div>
+    }
+
+    <!-- Settings Grid -->
+    @if (!isLoading()) {
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Card 1: Sécurité -->
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all">
+            <div class="p-6 border-b border-gray-50 bg-gradient-to-r from-indigo-50 to-purple-50">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-indigo-100 rounded-xl">
+                        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4 class="text-xl font-bold text-gray-800">Sécurité</h4>
+                        <p class="text-sm text-gray-500">Paramètres de sécurité et authentification</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-6 space-y-6">
+                <!-- Expiration session -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-medium text-gray-700">Expiration session</label>
+                        <span class="text-xs text-gray-500">Déconnexion automatique après inactivité</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <select [(ngModel)]="settings.security.sessionTimeout" (change)="updateSetting('session_timeout', settings.security.sessionTimeout)"
+                            class="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white">
+                            <option value="15">15 minutes</option>
+                            <option value="30">30 minutes</option>
+                            <option value="60">1 heure</option>
+                            <option value="120">2 heures</option>
+                            <option value="240">4 heures</option>
+                            <option value="480">8 heures</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Journalisation -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-medium text-gray-700">Journalisation</label>
+                        <span class="text-xs text-gray-500">Enregistrement de toutes les actions</span>
+                    </div>
+                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                        <div class="flex items-center space-x-3">
+                            <div class="relative">
+                                <input type="checkbox" id="auditLogEnabled" 
+                                    [checked]="settings.security.auditLogEnabled"
+                                    (change)="toggleAuditLog($event)"
+                                    class="sr-only peer">
+                                <label for="auditLogEnabled" 
+                                    class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
+                                </label>
+                            </div>
+                            <span class="text-sm text-gray-700">Activer la journalisation</span>
+                        </div>
+                        <span class="text-xs px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg font-medium">
+                            {{ settings.security.auditLogEnabled ? 'Activé' : 'Désactivé' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Système -->
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all">
+            <div class="p-6 border-b border-gray-50 bg-gradient-to-r from-blue-50 to-cyan-50">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-blue-100 rounded-xl">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4 class="text-xl font-bold text-gray-800">Système</h4>
+                        <p class="text-sm text-gray-500">Configuration et paramètres généraux</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-6 space-y-6">
+                <!-- Rétention des données -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-medium text-gray-700">Rétention des données</label>
+                        <span class="text-xs text-gray-500">Durée de conservation des logs</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <select [(ngModel)]="settings.system.dataRetention" (change)="updateSetting('data_retention', settings.system.dataRetention)"
+                            class="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white">
+                            <option value="30">30 jours</option>
+                            <option value="60">60 jours</option>
+                            <option value="90">90 jours</option>
+                            <option value="180">6 mois</option>
+                            <option value="365">1 an</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Sauvegarde automatique -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <input type="checkbox" id="autoBackup" 
+                                [checked]="settings.system.autoBackup"
+                                (change)="updateSetting('auto_backup', $event)"
+                                class="sr-only peer">
+                            <label for="autoBackup" 
+                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
+                            </label>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">Sauvegarde automatique</p>
+                            <p class="text-xs text-gray-500">Backup quotidien des données</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications email -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <input type="checkbox" id="emailNotifications" 
+                                [checked]="settings.system.emailNotifications"
+                                (change)="updateSetting('email_notifications', $event)"
+                                class="sr-only peer">
+                            <label for="emailNotifications" 
+                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
+                            </label>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">Notifications email</p>
+                            <p class="text-xs text-gray-500">Alertes importantes par email</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: Notifications -->
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all">
+            <div class="p-6 border-b border-gray-50 bg-gradient-to-r from-amber-50 to-orange-50">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-amber-100 rounded-xl">
+                        <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4 class="text-xl font-bold text-gray-800">Notifications</h4>
+                        <p class="text-sm text-gray-500">Préférences de notifications</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-6 space-y-4">
+                <!-- Alertes critiques -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <input type="checkbox" id="criticalAlerts" 
+                                [checked]="settings.notifications.criticalAlerts"
+                                (change)="updateSetting('critical_alerts', $event)"
+                                class="sr-only peer">
+                            <label for="criticalAlerts" 
+                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
+                            </label>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">Alertes critiques</p>
+                            <p class="text-xs text-gray-500">Fraudes à haut risque</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rapports quotidiens -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <input type="checkbox" id="dailyReports" 
+                                [checked]="settings.notifications.dailyReports"
+                                (change)="updateSetting('daily_reports', $event)"
+                                class="sr-only peer">
+                            <label for="dailyReports" 
+                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
+                            </label>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">Rapports quotidiens</p>
+                            <p class="text-xs text-gray-500">Résumé journalier par email</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dérive du modèle -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <input type="checkbox" id="modelDrift" 
+                                [checked]="settings.notifications.modelDrift"
+                                (change)="updateSetting('model_drift', $event)"
+                                class="sr-only peer">
+                            <label for="modelDrift" 
+                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
+                            </label>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">Dérive du modèle</p>
+                            <p class="text-xs text-gray-500">Alert si performances dégradées</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Nouvelles versions -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <input type="checkbox" id="versionUpdates" 
+                                [checked]="settings.notifications.versionUpdates"
+                                (change)="updateSetting('version_updates', $event)"
+                                class="sr-only peer">
+                            <label for="versionUpdates" 
+                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
+                            </label>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">Nouvelles versions</p>
+                            <p class="text-xs text-gray-500">Mises à jour système disponibles</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 4: Data & Rollback -->
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all">
+            <div class="p-6 border-b border-gray-50 bg-gradient-to-r from-emerald-50 to-teal-50">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-emerald-100 rounded-xl">
+                        <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4 class="text-xl font-bold text-gray-800">Data & Rollback</h4>
+                        <p class="text-sm text-gray-500">Gestion des données et restauration</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-6 space-y-6">
+                <!-- État actuel -->
+                <div class="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-emerald-800">État actuel du datamart</p>
+                            <p class="text-xs text-emerald-600 mt-1">Version: v2.4.1 - 12/03/2024</p>
+                        </div>
+                        <span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-medium">Stable</span>
+                    </div>
+                </div>
+
+                <!-- Rollback disponibles -->
+                <div class="space-y-3">
+                    <p class="text-sm font-medium text-gray-700">Points de restauration disponibles</p>
+                    
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
+                            <div class="flex items-center space-x-3">
+                                <input type="radio" name="rollback" id="version1" class="text-indigo-600">
+                                <div>
+                                    <label for="version1" class="text-sm font-medium text-gray-700 cursor-pointer">Version v2.4.0</label>
+                                    <p class="text-xs text-gray-500">11/03/2024 - 08:30</p>
+                                </div>
+                            </div>
+                            <span class="text-xs px-2 py-1 bg-gray-200 text-gray-600 rounded-lg">Avant mise à jour</span>
+                        </div>
+
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
+                            <div class="flex items-center space-x-3">
+                                <input type="radio" name="rollback" id="version2" class="text-indigo-600">
+                                <div>
+                                    <label for="version2" class="text-sm font-medium text-gray-700 cursor-pointer">Version v2.3.1</label>
+                                    <p class="text-xs text-gray-500">10/03/2024 - 15:45</p>
+                                </div>
+                            </div>
+                            <span class="text-xs px-2 py-1 bg-gray-200 text-gray-600 rounded-lg">Stable</span>
+                        </div>
+
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
+                            <div class="flex items-center space-x-3">
+                                <input type="radio" name="rollback" id="version3" class="text-indigo-600">
+                                <div>
+                                    <label for="version3" class="text-sm font-medium text-gray-700 cursor-pointer">Version v2.2.0</label>
+                                    <p class="text-xs text-gray-500">09/03/2024 - 10:15</p>
+                                </div>
+                            </div>
+                            <span class="text-xs px-2 py-1 bg-gray-200 text-gray-600 rounded-lg">Archivé</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="grid grid-cols-2 gap-3 pt-4">
+                    <button (click)="previewRollback()" 
+                        class="px-4 py-2.5 border border-emerald-200 bg-emerald-50 text-emerald-700 rounded-xl text-sm font-medium hover:bg-emerald-100 transition-colors">
+                        Prévisualiser
+                    </button>
+                    <button (click)="executeRollback()" 
+                        class="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm">
+                        Restaurer
+                    </button>
+                </div>
+
+                <!-- Warning -->
+                <div class="p-3 bg-amber-50 rounded-xl border border-amber-100">
+                    <p class="text-xs text-amber-700 flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        La restauration peut entraîner une perte de données récentes
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    }
 </div>

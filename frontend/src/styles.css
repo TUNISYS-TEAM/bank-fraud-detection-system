@@ -39,4 +39,22 @@ body {
     -moz-osx-font-smoothing: grayscale;
     background-color: #f8f9fc;
     overflow: hidden;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+
+
+.app-wrapper {
+    width: calc(100% / 0.85);
+    height: calc(100% / 0.85);
+    transform: scale(0.85);
+    transform-origin: top left;
+    overflow: hidden;
+    position: fixed;  
+    top: 0;
+    left: 0;
 }

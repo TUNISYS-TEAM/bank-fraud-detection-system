@@ -4,11 +4,11 @@ SELECT 'ADMIN', 'Administrateur système', 'admin'
 WHERE NOT EXISTS (SELECT 1 FROM role WHERE name = 'ADMIN');
 
 INSERT INTO role (name, description, keycloak_role_name)
-SELECT 'MANAGER', 'Plateforme Manager', 'manager'
+SELECT 'MANAGER', 'Plateforme Manager', 'MANAGER'
 WHERE NOT EXISTS (SELECT 1 FROM role WHERE name = 'MANAGER');
 
 INSERT INTO role (name, description, keycloak_role_name)
-SELECT 'ANALYST', 'Analyste des fraudes', 'analyst'
+SELECT 'ANALYST', 'Analyste des fraudes', 'ANALYST'
 WHERE NOT EXISTS (SELECT 1 FROM role WHERE name = 'ANALYST');
 
 -- 2. Ajouter la colonne role_id si elle n'existe pas déjà

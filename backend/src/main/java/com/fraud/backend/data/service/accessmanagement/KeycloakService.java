@@ -8,6 +8,7 @@ import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
@@ -114,8 +115,6 @@ public class KeycloakService {
         log.info("User deleted from Keycloak: {}", keycloakId);
     }
 
-
-
     // ========== Role Management Methods ==========
 
     // Création de rôle dans Keycloak
@@ -123,12 +122,12 @@ public class KeycloakService {
         RoleRepresentation role = new RoleRepresentation();
         role.setName(roleName);
         role.setDescription(description);
-        
+
         getRealm().roles().create(role);
-        
+
         // Trouver l'ID du rôle créé
         RoleRepresentation createdRole = getRealm().roles().get(roleName).toRepresentation();
-        
+
         return createdRole.getName();
     }
 
@@ -154,5 +153,44 @@ public class KeycloakService {
     // Trouver un rôle par son nom
     public RoleRepresentation getRole(String roleName) {
         return getRealm().roles().get(roleName).toRepresentation();
+    }
+
+    // Settings
+    // Sync session timeout (in minutes) to Keycloak realm
+    public void updateSessionTimeout(int timeoutMinutes) {
+        RealmRepresentation realm = getRealm().toRepresentation();
+        int seconds = timeoutMinutes * 60;
+        realm.setSsoSessionIdleTimeout(seconds);
+        realm.setSsoSessionMaxLifespan(seconds * 2);
+        realm.setAccessTokenLifespan(seconds);
+        getRealm().update(realm);
+        log.info("Keycloak session timeout updated to {} minutes", timeoutMinutes);
+    }
+
+    // Sync max login attempts to Keycloak brute force protection
+    public void updateMaxLoginAttempts(int maxAttempts) {
+        RealmRepresentation realm = getRealm().toRepresentation();
+        realm.setBruteForceProtected(true);
+        realm.setFailureFactor(maxAttempts);
+        getRealm().update(realm);
+        log.info("Keycloak max login attempts updated to {}", maxAttempts);
+    }
+
+    // Sync password expiry to Keycloak password policy
+    public void updatePasswordExpiryDays(int days) {
+        RealmRepresentation realm = getRealm().toRepresentation();
+        String currentPolicy = realm.getPasswordPolicy();
+
+        // Remove existing forceExpiredPasswordChange if present
+        String cleaned = currentPolicy == null ? ""
+                : currentPolicy.replaceAll("forceExpiredPasswordChange\\(\\d+\\)", "").trim();
+
+        String newPolicy = cleaned.isEmpty()
+                ? "forceExpiredPasswordChange(" + days + ")"
+                : cleaned + " and forceExpiredPasswordChange(" + days + ")";
+
+        realm.setPasswordPolicy(newPolicy);
+        getRealm().update(realm);
+        log.info("Keycloak password expiry updated to {} days", days);
     }
 }

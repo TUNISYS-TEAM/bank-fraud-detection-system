@@ -21,6 +21,7 @@ export class DatasetCreateModalComponent {
   isVisible = signal(true);
   isLoading = signal(false);
   errorMessage = signal('');
+  isDragging = signal(false);
   selectedFile = signal<File | null>(null);
 
   datasetForm: FormGroup = this.fb.group({
@@ -30,19 +31,46 @@ export class DatasetCreateModalComponent {
   onFileSelected(event: any): void {
     const file = event.target.files[0];
     if (file) {
-      if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-        this.errorMessage.set('Veuillez sélectionner un fichier CSV valide.');
-        this.selectedFile.set(null);
-        return;
-      }
-      this.selectedFile.set(file);
-      this.errorMessage.set('');
+      this.handleFile(file);
+    }
+  }
 
-      // Auto-fill dataset name if empty
-      if (!this.datasetForm.get('datasetName')?.value) {
-        const fileName = file.name.replace(/\.[^/.]+$/, "");
-        this.datasetForm.patchValue({ datasetName: fileName });
-      }
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragging.set(true);
+  }
+
+  onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragging.set(false);
+  }
+
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragging.set(false);
+
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      this.handleFile(files[0]);
+    }
+  }
+
+  private handleFile(file: File): void {
+    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+      this.errorMessage.set('Veuillez sélectionner un fichier CSV valide.');
+      this.selectedFile.set(null);
+      return;
+    }
+    this.selectedFile.set(file);
+    this.errorMessage.set('');
+
+    // Auto-fill dataset name if empty
+    if (!this.datasetForm.get('datasetName')?.value) {
+      const fileName = file.name.replace(/\.[^/.]+$/, "");
+      this.datasetForm.patchValue({ datasetName: fileName });
     }
   }
 

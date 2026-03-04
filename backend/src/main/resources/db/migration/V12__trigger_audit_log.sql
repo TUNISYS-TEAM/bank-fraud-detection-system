@@ -4,7 +4,7 @@ BEGIN;
 -- 0) AUDIT_LOG : conserver session_id BIGINT + FK
 -- =========================================================
 
--- 0.1) session_id doit rester BIGINT 
+-- 0.1) session_id doit rester BIGINT
 ALTER TABLE audit_log
   ALTER COLUMN session_id TYPE BIGINT
   USING NULLIF(session_id::text, '')::bigint;
@@ -43,6 +43,11 @@ END $$;
 CREATE OR REPLACE FUNCTION trg_audit_user_session()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Toggle global: si audit désactivé, ne rien écrire
+  IF NOT is_audit_enabled() THEN
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     INSERT INTO audit_log (session_id, action, action_type, action_timestamp, level)
     VALUES (NEW.id, 'Connexion utilisateur', 'Authentification', NOW(), 'Info');
@@ -70,6 +75,11 @@ FOR EACH ROW EXECUTE FUNCTION trg_audit_user_session();
 CREATE OR REPLACE FUNCTION trg_audit_app_user()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Toggle global
+  IF NOT is_audit_enabled() THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     INSERT INTO audit_log (session_id, action, action_type, action_timestamp, level)
     VALUES (NULL, 'SYSTEM - Création utilisateur : ' || NEW.email, 'Gestion utilisateur', NOW(), 'Info');
@@ -119,6 +129,11 @@ FOR EACH ROW EXECUTE FUNCTION trg_audit_app_user();
 CREATE OR REPLACE FUNCTION trg_audit_model_ml()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Toggle global
+  IF NOT is_audit_enabled() THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     INSERT INTO audit_log (session_id, action, action_type, action_timestamp, level)
     VALUES (NULL, 'SYSTEM - Création modèle ML : ' || NEW.model_name, 'Modèle', NOW(), 'Info');
@@ -160,6 +175,11 @@ FOR EACH ROW EXECUTE FUNCTION trg_audit_model_ml();
 CREATE OR REPLACE FUNCTION trg_audit_deployment()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Toggle global
+  IF NOT is_audit_enabled() THEN
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     INSERT INTO audit_log (session_id, action, action_type, action_timestamp, level)
     VALUES (
@@ -191,6 +211,11 @@ FOR EACH ROW EXECUTE FUNCTION trg_audit_deployment();
 CREATE OR REPLACE FUNCTION trg_audit_fraud_alert()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Toggle global
+  IF NOT is_audit_enabled() THEN
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     INSERT INTO audit_log (session_id, action, action_type, action_timestamp, level)
     VALUES (NULL, 'SYSTEM - Nouvelle alerte fraude créée : ' || NEW.id, 'Alerte', NOW(), 'Attention');
@@ -228,6 +253,11 @@ FOR EACH ROW EXECUTE FUNCTION trg_audit_fraud_alert();
 CREATE OR REPLACE FUNCTION trg_audit_role()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Toggle global
+  IF NOT is_audit_enabled() THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     INSERT INTO audit_log (session_id, action, action_type, action_timestamp, level)
     VALUES (NULL, 'SYSTEM - Création rôle : ' || NEW.name, 'Gestion rôle', NOW(), 'Info');

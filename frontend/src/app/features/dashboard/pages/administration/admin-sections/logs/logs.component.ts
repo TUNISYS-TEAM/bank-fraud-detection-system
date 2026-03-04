@@ -46,7 +46,7 @@ export class LogsComponent implements OnInit {
   dateTo = signal<string>('');
 
   frontendPage = signal(0);
-  frontendPageSize = 10;
+  frontendPageSize = 5;
 
   showExportModal = signal(false);
   isLoading = computed(() => this.loading());
