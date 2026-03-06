@@ -10,7 +10,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import com.fraud.backend.config.security.CookieBearerTokenResolver;
 
 import java.util.Arrays;
 import java.util.List;
@@ -21,71 +24,89 @@ import java.util.stream.Collectors;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    private static final String[] PUBLIC_ENDPOINTS = {
-            "/swagger-ui/**",
-            "/v3/api-docs/**",
-            "/actuator/**",
-            "/api/auth/**",
-            "/api/public/**",
-            "/error"
-    };
+        private static final String[] PUBLIC_ENDPOINTS = {
+                "/swagger-ui/**",
+                "/swagger-ui.html",
+                "/v3/api-docs/**",
+                "/api-docs/**",
+                "/actuator/**",
+                "/auth/**",
+                "/public/**",
+                "/error",
+                "/ws/**",
+                "/ws*/**"
+        };
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                        .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt
-                                .jwtAuthenticationConverter(jwtAuthenticationConverter())));
+        private final CookieBearerTokenResolver cookieBearerTokenResolver;
 
-        return http.build();
-    }
+        // Constructor injection
+        public SecurityConfig(CookieBearerTokenResolver cookieBearerTokenResolver) {
+                this.cookieBearerTokenResolver = cookieBearerTokenResolver;
+        }
 
-    @Bean
-    public UrlBasedCorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:4200"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("authorization", "content-type", "x-auth-token"));
-        configuration.setExposedHeaders(Arrays.asList("x-auth-token"));
-        configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
+        @Bean
+        public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                http
+                                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                                .csrf(csrf -> csrf.disable())
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .authorizeHttpRequests(auth -> auth
+                                                .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                                                .anyRequest().authenticated())
+                                .oauth2ResourceServer(oauth2 -> oauth2
+                                                .bearerTokenResolver(cookieBearerTokenResolver) // Use the injected
+                                                                                                // field
+                                                .jwt(jwt -> jwt.jwtAuthenticationConverter(
+                                                                jwtAuthenticationConverter())));
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
+                return http.build();
+        }
 
-    @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            var realmAccess = jwt.getClaimAsMap("realm_access");
-            if (realmAccess == null || realmAccess.isEmpty()) {
-                return List.of();
-            }
+        // NO BEAN METHOD FOR cookieBearerTokenResolver HERE!
 
-            @SuppressWarnings("unchecked")
-            var roles = (List<String>) realmAccess.get("roles");
-            if (roles == null || roles.isEmpty()) {
-                return List.of();
-            }
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
+                CorsConfiguration configuration = new CorsConfiguration();
+                configuration.setAllowedOrigins(Arrays.asList("http://localhost:4200"));
+                configuration.setAllowedMethods(
+                                Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
+                configuration.setAllowedHeaders(Arrays.asList("authorization", "content-type", "x-auth-token",
+                                "x-xsrf-token", "x-requested-with", "accept", "origin"));
+                configuration.setExposedHeaders(Arrays.asList("Set-Cookie", "Authorization", "X-XSRF-TOKEN"));
+                configuration.setAllowCredentials(true);
+                configuration.setMaxAge(3600L);
 
-            return roles.stream()
-                    .map(role -> new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + role))
-                    .collect(Collectors.toList());
-        });
-        return converter;
-    }
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+                source.registerCorsConfiguration("/**", configuration);
+                return source;
+        }
 
-    @Bean
-    public BCryptPasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+        @Bean
+        public JwtAuthenticationConverter jwtAuthenticationConverter() {
+                JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+                converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+                        var realmAccess = jwt.getClaimAsMap("realm_access");
+                        if (realmAccess == null || realmAccess.isEmpty()) {
+                                return List.of();
+                        }
+
+                        @SuppressWarnings("unchecked")
+                        var roles = (List<String>) realmAccess.get("roles");
+                        if (roles == null || roles.isEmpty()) {
+                                return List.of();
+                        }
+
+                        return roles.stream()
+                                        .map(role -> new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                                                        "ROLE_" + role))
+                                        .collect(Collectors.toList());
+                });
+                return converter;
+        }
+
+        @Bean
+        public BCryptPasswordEncoder passwordEncoder() {
+                return new BCryptPasswordEncoder();
+        }
 }

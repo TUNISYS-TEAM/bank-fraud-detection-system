@@ -17,7 +17,6 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-    
   
   flyway:
     enabled: true
@@ -31,6 +30,7 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8180/realms/fraud-detection
+  
   task:
     scheduling:
       pool:
@@ -38,10 +38,7 @@ spring:
 
 # Session management configuration
 session:
-  # Session timeout in hours (sessions inactive for this duration will be marked as stale)
   timeout-hours: 24
-  
-  # Cleanup stale sessions every hour (cron expression)
   cleanup-cron: "0 0 * * * *"
 
 keycloak:
@@ -62,3 +59,19 @@ storage:
 
 server:
   port: 8100
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: false
+        same-site: lax
+        path: /
+        max-age: 3600
+
+# Cookie settings
+app:
+  cookie:
+    secure: false
+    same-site: lax
+    domain: localhost  
+    path: /

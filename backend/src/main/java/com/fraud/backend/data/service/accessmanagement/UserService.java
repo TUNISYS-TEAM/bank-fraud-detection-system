@@ -1,5 +1,6 @@
 package com.fraud.backend.data.service.accessmanagement;
 
+import com.fraud.backend.api.dto.accessmanagement.user.response.UserResponse;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
 import com.fraud.backend.data.entity.accessmanagement.Role;
@@ -12,9 +13,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -60,6 +65,7 @@ public class UserService {
     public long countActiveUsers() {
         return appUserRepository.countByIsActiveTrue();
     }
+    
     // ==================== CREATE METHOD ====================
     @Transactional
     public AppUser createUser(String email, String password, String firstName,
@@ -96,7 +102,6 @@ public class UserService {
         if (!active) {
             try {
                 keycloakService.disableUser(keycloakId);
-                log.info("Utilisateur désactivé dans Keycloak: {}", keycloakId);
             } catch (Exception e) {
                 log.error("Erreur lors de la désactivation dans Keycloak: {}", e.getMessage());
             }
@@ -112,12 +117,10 @@ public class UserService {
 
         keycloakMappingRepository.save(mapping);
 
-        log.info("Utilisateur créé avec succès: {} avec l'ID: {}, rôle: {}, statut: {}",
-                email, keycloakId, role.getName(), active ? "actif" : "inactif");
         return savedUser;
     }
 
-    // ==================== UPDATE METHOD (UNIFIÉE) ====================
+    // ==================== UPDATE METHOD ====================
     @Transactional
     public AppUser updateUser(Long id, String firstName, String lastName, String email,
             String phoneNumber, String address, LocalDate dateOfBirth, Long roleId, Boolean isActive) {
@@ -170,18 +173,10 @@ public class UserService {
         keycloakMappingRepository.save(mapping);
 
         // 6. UN SEUL SAVE à la fin
-        AppUser updatedUser = appUserRepository.save(user);
-
-        log.info("Utilisateur mis à jour avec succès: {} (rôle: {}, actif: {})",
-                updatedUser.getEmail(),
-                updatedUser.getRole().getName(),
-                updatedUser.getIsActive() ? "oui" : "non");
-
-        return updatedUser;
+        return appUserRepository.save(user);
     }
 
-    // ==================== UTILITY METHODS (APPELÉES PAR D'AUTRES SERVICES)
-    // ====================
+    // ==================== UTILITY METHODS ====================
     @Transactional
     public AppUser changeRole(Long id, Long newRoleId) {
         AppUser user = getById(id);
@@ -209,7 +204,6 @@ public class UserService {
         keycloakService.disableUser(mapping.getKeycloakId());
         user.setIsActive(false);
         appUserRepository.save(user);
-        log.info("Utilisateur désactivé: {}", user.getEmail());
     }
 
     @Transactional
@@ -222,7 +216,6 @@ public class UserService {
         keycloakService.enableUser(mapping.getKeycloakId());
         user.setIsActive(true);
         appUserRepository.save(user);
-        log.info("Utilisateur activé: {}", user.getEmail());
     }
 
     // ==================== DELETE METHOD ====================
@@ -231,7 +224,6 @@ public class UserService {
         AppUser user = getById(id);
 
         userSessionRepository.deleteByUserId(id);
-        log.debug("Sessions supprimées pour l'utilisateur: {}", user.getEmail());
 
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
                 .orElseThrow(
@@ -239,16 +231,12 @@ public class UserService {
 
         try {
             keycloakService.deleteUser(mapping.getKeycloakId());
-            log.debug("Utilisateur supprimé dans Keycloak: {}", mapping.getKeycloakId());
         } catch (Exception e) {
             log.error("Erreur lors de la suppression dans Keycloak: {}", e.getMessage());
         }
 
         keycloakMappingRepository.delete(mapping);
-        log.debug("Mapping Keycloak supprimé pour l'utilisateur: {}", user.getEmail());
-
         appUserRepository.delete(user);
-        log.info("Utilisateur supprimé avec succès: {}", user.getEmail());
     }
 
     // ==================== GETTERS ====================

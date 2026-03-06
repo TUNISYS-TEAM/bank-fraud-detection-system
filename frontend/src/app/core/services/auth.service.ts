@@ -1,236 +1,385 @@
+// core/services/auth.service.ts
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable, throwError, of } from 'rxjs';
-import { catchError, tap, map, switchMap } from 'rxjs/operators';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Observable, throwError, of, timer, BehaviorSubject } from 'rxjs';
+import { catchError, tap, map, switchMap, shareReplay, finalize, delay } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 import {
   LoginRequest,
-  LoginResponse,
-  RefreshTokenRequest,
   UserInfo,
   AuthUser,
   UserRole,
   Permission
 } from '../models/auth.model';
 
-export interface UserResponse {
-  id: number;
+// Shape returned by GET /api/auth/me
+interface MeResponse {
+  sub: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  roleId: number;
-  role: string;
+  email_verified?: boolean;
+  name: string;
+  preferred_username: string;
+  given_name?: string;
+  family_name?: string;
+  realm_access?: {
+    roles: string[];
+  };
 }
 
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthService {
-  private readonly TOKEN_KEY = 'access_token';
-  private readonly REFRESH_TOKEN_KEY = 'refresh_token';
-  private readonly SESSION_ID_KEY = 'session_id';
-  private readonly TOKEN_EXPIRY_KEY = 'token_expiry';
+// Shape returned by login endpoint
+interface LoginResponse {
+  username: string;
+  expires_in?: number;
+}
 
+// Shape returned by refresh endpoint
+interface RefreshResponse {
+  message?: string;
+  expires_in?: number;
+}
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private currentUser: AuthUser | null = null;
+  private sessionId: string | null = null;
+  private tokenExpiresAt: number = 0;
+  private refreshInProgress: boolean = false;
+  private refreshSubject: Observable<any> | null = null;
   private http = inject(HttpClient);
 
-  login(credentials: LoginRequest): Observable<{ response: LoginResponse; user: AuthUser }> {
-    return this.http.post<LoginResponse>(`${environment.apiUrl}/auth/login`, credentials)
-      .pipe(
-        tap(response => this.storeTokens(response)),
-        switchMap(response => {
-          const tokenData = this.parseJwt(response.access_token);
-          const role = this.extractRole(tokenData);
+  // Simple role to permission mapping
+  private rolePermissions: Record<string, Permission[]> = {
+    'ADMIN': [
+      { id: 1, name: 'ACCESS_OVERVIEW', description: 'Access Dashboard', action: '/dashboard/overview' },
+      { id: 2, name: 'ACCESS_ADMINISTRATION', description: 'Access Administration', action: '/dashboard/administration' },
+      { id: 3, name: 'ACCESS_IMPORT_DATA', description: 'Access Import Data', action: '/dashboard/import-data' },
+      { id: 4, name: 'ACCESS_ML_MODELS', description: 'Access ML Models', action: '/dashboard/ml-models' },
+      { id: 5, name: 'ACCESS_ALERTS', description: 'Access Alerts', action: '/dashboard/alerts' },
+      { id: 6, name: 'ACCESS_PERFORMANCE', description: 'Access Performance', action: '/dashboard/performance' },
+      { id: 7, name: 'ACCESS_SIMULATION', description: 'Access Simulation', action: '/dashboard/simulation' },
+      { id: 8, name: 'ACCESS_MESSAGES', description: 'Access Messages', action: '/dashboard/messages' },
+      { id: 9, name: 'MANAGE_USERS', description: 'Manage Users', action: '/dashboard/administration/users' },
+      { id: 10, name: 'MANAGE_ROLES', description: 'Manage Roles', action: '/dashboard/administration/roles' },
+      { id: 11, name: 'MANAGE_SESSIONS', description: 'Manage Sessions', action: '/dashboard/administration/sessions' },
+      { id: 12, name: 'MANAGE_ML_MODELS', description: 'Manage ML Models', action: '/dashboard/ml-models/manage' },
+      { id: 13, name: 'MANAGE_ALERTS', description: 'Manage Alerts', action: '/dashboard/alerts/manage' },
+      { id: 14, name: 'IMPORT_DATA', description: 'Import Data', action: '/dashboard/import-data/advanced' },
+      { id: 15, name: 'RUN_SIMULATION', description: 'Run Simulation', action: '/dashboard/simulation/run' },
+      { id: 16, name: 'MANAGE_LOGS', description: 'Manage Logs', action: '/dashboard/administration/logs' },
+      { id: 17, name: 'MANAGE_SETTINGS', description: 'Manage Settings', action: '/dashboard/administration/settings' },
+      { id: 18, name: 'MANAGE_DATASETS', description: 'Manage Datasets', action: '/dashboard/administration/datasets' }
+    ],
+    'MANAGER': [
+      { id: 1, name: 'ACCESS_OVERVIEW', description: 'Access Dashboard', action: '/dashboard/overview' },
+      { id: 2, name: 'ACCESS_IMPORT_DATA', description: 'Access Import Data', action: '/dashboard/import-data' },
+      { id: 3, name: 'ACCESS_ML_MODELS', description: 'Access ML Models', action: '/dashboard/ml-models' },
+      { id: 4, name: 'ACCESS_ALERTS', description: 'Access Alerts', action: '/dashboard/alerts' },
+      { id: 5, name: 'ACCESS_PERFORMANCE', description: 'Access Performance', action: '/dashboard/performance' },
+      { id: 6, name: 'ACCESS_SIMULATION', description: 'Access Simulation', action: '/dashboard/simulation' },
+      { id: 7, name: 'ACCESS_MESSAGES', description: 'Access Messages', action: '/dashboard/messages' },
+      { id: 8, name: 'IMPORT_DATA', description: 'Import Data', action: '/dashboard/import-data/advanced' },
+      { id: 9, name: 'RUN_SIMULATION', description: 'Run Simulation', action: '/dashboard/simulation/run' }
+    ],
+    'ANALYST': [
+      { id: 1, name: 'ACCESS_OVERVIEW', description: 'Access Dashboard', action: '/dashboard/overview' },
+      { id: 2, name: 'ACCESS_IMPORT_DATA', description: 'Access Import Data', action: '/dashboard/import-data' },
+      { id: 3, name: 'ACCESS_ML_MODELS', description: 'Access ML Models', action: '/dashboard/ml-models' },
+      { id: 4, name: 'ACCESS_ALERTS', description: 'Access Alerts', action: '/dashboard/alerts' },
+      { id: 5, name: 'ACCESS_PERFORMANCE', description: 'Access Performance', action: '/dashboard/performance' },
+      { id: 6, name: 'ACCESS_SIMULATION', description: 'Access Simulation', action: '/dashboard/simulation' },
+      { id: 7, name: 'ACCESS_MESSAGES', description: 'Access Messages', action: '/dashboard/messages' }
+    ]
+  };
 
-          const sessionId = this.extractSessionId(tokenData);
-          if (sessionId) {
-            localStorage.setItem(this.SESSION_ID_KEY, sessionId);
-          }
-
-          return this.getUserByEmail(credentials.email).pipe(
-            switchMap(userData => {
-              return this.getPermissionsByRoleId(userData.roleId).pipe(
-                map(permissions => {
-                  const user: AuthUser = {
-                    id: tokenData.sub || '',
-                    email: credentials.email,
-                    name: tokenData.name || credentials.email,
-                    firstName: tokenData.given_name || '',
-                    lastName: tokenData.family_name || '',
-                    role: role,
-                    permissions: permissions,
-                    userId: userData.id,
-                    roleId: userData.roleId
-                  };
-                  return { response, user };
-                })
-              );
-            })
-          );
-        }),
-        catchError(this.handleError)
-      );
-  }
-
-  getUserByEmail(email: string): Observable<UserResponse> {
-    const url = `${environment.apiUrl}/users/email/${email}`;
-    return this.http.get<UserResponse>(url).pipe(
-      catchError(error => {
-        console.error('Error fetching user by email:', error);
-        return throwError(() => new Error('User not found'));
-      })
+  // ──────────────────────────────────────────────────────────────────────────
+  // LOGIN
+  // ──────────────────────────────────────────────────────────────────────────
+  login(credentials: LoginRequest): Observable<{ user: AuthUser }> {
+    return this.http.post<any>(
+      `${environment.apiUrl}/auth/login`,
+      credentials,
+      {
+        withCredentials: true,
+        observe: 'response'
+      }
+    ).pipe(
+      tap(response => {
+        const body = response.body;
+        if (body?.expires_in) {
+          this.tokenExpiresAt = Date.now() + body.expires_in * 1000;
+        }
+      }),
+      map(response => response.body),
+      switchMap((body) => of(body).pipe(
+        delay(500),
+        switchMap(() => this.loadUserProfile(credentials.email))
+      )),
+      map(user => ({ user })),
+      catchError(err => this.handleError(err))
     );
   }
 
-  getPermissionsByRoleId(roleId: number): Observable<Permission[]> {
-    const url = `${environment.apiUrl}/roles/${roleId}/permissions`;
-    return this.http.get<Permission[]>(url).pipe(
-      catchError(error => {
-        console.error('Error fetching permissions by roleId:', error);
-        return of([]);
-      })
-    );
-  }
-
-  getRoleById(roleId: number): Observable<any> {
-    return this.http.get<any>(`${environment.apiUrl}/roles/${roleId}`);
-  }
-
-  refreshToken(): Observable<LoginResponse> {
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) {
-      return throwError(() => new Error('No refresh token available'));
+  // ──────────────────────────────────────────────────────────────────────────
+  // LOAD USER PROFILE
+  // ──────────────────────────────────────────────────────────────────────────
+  loadUserProfile(email?: string): Observable<AuthUser> {
+    if (this.currentUser && (!email || this.currentUser.email === email)) {
+      return of(this.currentUser);
     }
 
-    const payload: RefreshTokenRequest = { refresh_token: refreshToken };
-    return this.http.post<LoginResponse>(`${environment.apiUrl}/auth/refresh`, payload)
-      .pipe(
-        tap(response => {
-          this.storeTokens(response);
-          const tokenData = this.parseJwt(response.access_token);
-          const sessionId = this.extractSessionId(tokenData);
-          if (sessionId) {
-            localStorage.setItem(this.SESSION_ID_KEY, sessionId);
-          }
-        }),
-        catchError(error => {
-          this.logout();
-          return throwError(() => error);
-        })
-      );
+    return this.http.get<MeResponse>(
+      `${environment.apiUrl}/auth/me`,
+      { withCredentials: true }
+    ).pipe(
+      map(me => {
+        const resolvedEmail = email || me.email || me.preferred_username;
+        const roles = me.realm_access?.roles || [];
+        const role = this.extractRoleFromList(roles);
+        const permissions = this.getPermissionsForRole(role);
+        
+        const user: AuthUser = {
+          id: me.sub,
+          email: resolvedEmail,
+          name: me.name || resolvedEmail,
+          firstName: me.given_name || resolvedEmail.split('@')[0],
+          lastName: me.family_name || '',
+          role: role,
+          permissions: permissions,
+          userId: 0,
+          roleId: this.getRoleIdFromRole(role)
+        };
+        
+        this.currentUser = user;
+        return user;
+      }),
+      catchError(err => {
+        console.error('Failed to load user profile:', err);
+        return throwError(() => err);
+      })
+    );
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // REFRESH TOKEN
+  // ──────────────────────────────────────────────────────────────────────────
+  refreshToken(): Observable<any> {
+    if (this.refreshInProgress && this.refreshSubject) {
+      return this.refreshSubject;
+    }
+
+    if (!this.currentUser) {
+      return of({ success: true, message: 'No session to refresh' });
+    }
+
+    this.refreshInProgress = true;
+
+    this.refreshSubject = this.http.post<RefreshResponse>(
+      `${environment.apiUrl}/auth/refresh`,
+      {},
+      {
+        withCredentials: true,
+        observe: 'response'
+      }
+    ).pipe(
+      tap(response => {
+        const body = response.body;
+        if (body?.expires_in) {
+          this.tokenExpiresAt = Date.now() + body.expires_in * 1000;
+        }
+      }),
+      map(response => response.body),
+      finalize(() => {
+        this.refreshInProgress = false;
+        this.refreshSubject = null;
+      }),
+      catchError(err => {
+        console.error('Refresh failed:', err);
+        this.clearLocalState();
+        return of({ success: false, error: 'Refresh failed' });
+      }),
+      shareReplay(1)
+    );
+
+    return this.refreshSubject;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // CHECK SESSION
+  // ──────────────────────────────────────────────────────────────────────────
+  checkSession(): Observable<boolean> {
+    return this.http.get<MeResponse>(
+      `${environment.apiUrl}/auth/me`,
+      { withCredentials: true }
+    ).pipe(
+      map(() => true),
+      catchError(() => of(false))
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // AUTO REFRESH SETUP
+  // ──────────────────────────────────────────────────────────────────────────
+  setupAutoRefresh(): void {
+    timer(60000, 60000).subscribe(() => {
+      if (this.isTokenExpired() && this.isLoggedIn()) {
+        this.refreshToken().subscribe();
+      }
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // LOGOUT
+  // ──────────────────────────────────────────────────────────────────────────
   logout(): Observable<void> {
-    const refreshToken = this.getRefreshToken();
-    const sessionId = this.getSessionId();
-    const accessToken = this.getToken();
-
-    const payload: any = {};
-    if (refreshToken) payload.refresh_token = refreshToken;
-    if (sessionId) payload.session_id = sessionId;
-    if (accessToken) payload.access_token = accessToken;
-
-    return this.http.post<void>(`${environment.apiUrl}/auth/logout`, payload)
-      .pipe(
-        tap(() => {
-          this.clearTokens();
-          console.log('Logout successful');
-        }),
-        catchError(error => {
-          console.error('Logout error:', error);
-          this.clearTokens();
-          return of(void 0);
-        })
-      );
+    return this.http.post<void>(
+      `${environment.apiUrl}/auth/logout`,
+      {},
+      {
+        withCredentials: true,
+        observe: 'response'
+      }
+    ).pipe(
+      tap(() => this.clearLocalState()),
+      map(() => void 0),
+      catchError(err => {
+        console.error('Logout error:', err);
+        this.clearLocalState();
+        return of(void 0);
+      })
+    );
   }
 
-  private extractRole(tokenData: any): UserRole {
-    const roles = tokenData?.realm_access?.roles || [];
-    const upperRoles = roles.map((r: string) => r.toUpperCase());
-    if (upperRoles.includes('ADMIN')) return 'ADMIN';
-    if (upperRoles.includes('MANAGER')) return 'MANAGER';
-    if (upperRoles.includes('ANALYST')) return 'ANALYST';
-    return 'ANALYST';
-  }
-
-  private extractSessionId(tokenData: any): string | null {
-    return tokenData?.session_state || tokenData?.sid || null;
-  }
-
-  private storeTokens(response: LoginResponse): void {
-    const expiryTime = Date.now() + (response.expires_in * 1000);
-    localStorage.setItem(this.TOKEN_KEY, response.access_token);
-    localStorage.setItem(this.REFRESH_TOKEN_KEY, response.refresh_token);
-    localStorage.setItem(this.TOKEN_EXPIRY_KEY, expiryTime.toString());
-    if (response.session_state) {
-      localStorage.setItem(this.SESSION_ID_KEY, response.session_state);
-    }
-  }
-
-  getToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY);
-  }
-
-  getRefreshToken(): string | null {
-    return localStorage.getItem(this.REFRESH_TOKEN_KEY);
-  }
-
-  getSessionId(): string | null {
-    return localStorage.getItem(this.SESSION_ID_KEY);
-  }
-
+  // ──────────────────────────────────────────────────────────────────────────
+  // STATE ACCESSORS
+  // ──────────────────────────────────────────────────────────────────────────
   isLoggedIn(): boolean {
-    const token = this.getToken();
-    if (!token) return false;
-    return !this.isTokenExpired();
+    return this.currentUser !== null;
   }
 
   isTokenExpired(): boolean {
-    const expiry = localStorage.getItem(this.TOKEN_EXPIRY_KEY);
-    if (!expiry) return true;
-    const expiryTime = parseInt(expiry, 10);
-    return Date.now() >= (expiryTime - 60000);
+    if (this.tokenExpiresAt === 0) return false;
+    return Date.now() >= this.tokenExpiresAt - 60_000;
   }
 
-  parseJwt(token: string): any {
-    try {
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(
-        atob(base64)
-          .split('')
-          .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-          .join('')
-      );
-      return JSON.parse(jsonPayload);
-    } catch (error) {
-      console.error('Error parsing JWT:', error);
-      return null;
-    }
+  getCurrentUser(): AuthUser | null {
+    return this.currentUser;
+  }
+
+  getSessionId(): string | null {
+    return this.sessionId;
   }
 
   getUserInfoFromToken(): UserInfo | null {
-    const token = this.getToken();
-    return token ? this.parseJwt(token) : null;
+    if (!this.currentUser) return null;
+
+    return {
+      sub: this.currentUser.id,
+      email: this.currentUser.email,
+      email_verified: true,
+      name: this.currentUser.name,
+      preferred_username: this.currentUser.email,
+      given_name: this.currentUser.firstName,
+      family_name: this.currentUser.lastName,
+      realm_access: {
+        roles: [this.currentUser.role]
+      }
+    };
   }
 
-  private clearTokens(): void {
-    localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.REFRESH_TOKEN_KEY);
-    localStorage.removeItem(this.TOKEN_EXPIRY_KEY);
-    localStorage.removeItem(this.SESSION_ID_KEY);
+  fetchCsrfToken(): Observable<void> {
+    return this.http.get<void>(
+      `${environment.apiUrl}/auth/csrf`,
+      {
+        withCredentials: true,
+        observe: 'response'
+      }
+    ).pipe(
+      map(() => void 0),
+      catchError(err => {
+        console.error('Error fetching CSRF token:', err);
+        return of(void 0);
+      })
+    );
+  }
+
+  getToken(): string | null {
+    return null;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Private helpers
+  // ──────────────────────────────────────────────────────────────────────────
+  private extractRoleFromList(roles: string[]): UserRole {
+    const upper = roles.map(r => r.toUpperCase());
+    if (upper.includes('ADMIN')) return 'ADMIN';
+    if (upper.includes('MANAGER')) return 'MANAGER';
+    if (upper.includes('ANALYST')) return 'ANALYST';
+    return 'ANALYST';
+  }
+
+  private getPermissionsForRole(role: UserRole): Permission[] {
+    return this.rolePermissions[role] || this.rolePermissions['ANALYST'];
+  }
+
+  private getRoleIdFromRole(role: UserRole): number {
+    switch(role) {
+      case 'ADMIN': return 1;
+      case 'MANAGER': return 2;
+      case 'ANALYST': return 3;
+      default: return 3;
+    }
+  }
+
+  private clearLocalState(): void {
+    this.currentUser = null;
+    this.sessionId = null;
+    this.tokenExpiresAt = 0;
+    this.refreshInProgress = false;
+    this.refreshSubject = null;
   }
 
   private handleError(error: any): Observable<never> {
-    let errorMessage = 'Une erreur est survenue';
+    let message = 'Une erreur est survenue';
+
     if (error.error instanceof ErrorEvent) {
-      errorMessage = `Erreur: ${error.error.message}`;
-    } else {
-      if (error.status === 401) errorMessage = 'Email ou mot de passe incorrect';
-      else if (error.status === 403) errorMessage = 'Accès refusé';
-      else if (error.status === 0) errorMessage = 'Impossible de se connecter au serveur';
-      else if (error.error?.message) errorMessage = error.error.message;
+      message = `Erreur: ${error.error.message}`;
+    } else if (error instanceof HttpErrorResponse) {
+      switch (error.status) {
+        case 401:
+          message = 'Email ou mot de passe incorrect';
+          if (error.url?.includes('/auth/login')) {
+            this.clearLocalState();
+          }
+          break;
+        case 403:
+          message = 'Accès refusé';
+          break;
+        case 404:
+          message = 'Service non trouvé';
+          break;
+        case 0:
+          message = 'Impossible de se connecter au serveur';
+          break;
+        default:
+          message = error.error?.message || error.message || 'Erreur inconnue';
+      }
     }
-    console.error('Auth error:', error);
-    return throwError(() => new Error(errorMessage));
+
+    console.error('Auth error:', { status: error.status, message });
+    return throwError(() => new Error(message));
+  }
+
+  // Deprecated methods kept for backward compatibility
+  getUserByEmail(email: string): Observable<any> {
+    return of(null);
+  }
+
+  getPermissionsByRoleId(roleId: number): Observable<Permission[]> {
+    if (!this.currentUser) return of([]);
+    return of(this.getPermissionsForRole(this.currentUser.role));
+  }
+
+  getRoleById(roleId: number): Observable<any> {
+    return of({ id: roleId, name: this.currentUser?.role || 'ANALYST' });
   }
 }

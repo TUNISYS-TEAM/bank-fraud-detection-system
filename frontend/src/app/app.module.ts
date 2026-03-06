@@ -1,6 +1,7 @@
+// app.module.ts
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
-import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
+import { HttpClientModule, HttpClientXsrfModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ReactiveFormsModule } from '@angular/forms';
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
@@ -15,7 +16,6 @@ import {
   AlertOctagon, Sliders, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight,
   Power, RefreshCw, Copy, Chrome, 
 } from 'angular-feather/icons';
-
 
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
@@ -34,8 +34,12 @@ const icons = {
     AppRoutingModule,
     HttpClientModule,
     ReactiveFormsModule, 
-    FeatherModule.pick(icons)
+    FeatherModule.pick(icons),
 
+    HttpClientXsrfModule.withOptions({
+      cookieName: 'XSRF-TOKEN',
+      headerName: 'X-XSRF-TOKEN',
+    }),
   ],
   providers: [
     {

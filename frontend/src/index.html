@@ -15,6 +15,14 @@
   
   <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <script>
+    // Define global before anything loads
+    window.global = window;
+    if (typeof global === 'undefined') {
+      var global = window;
+    }
+  </script>
 </head>
 
 <body>

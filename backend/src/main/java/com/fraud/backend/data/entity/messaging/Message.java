@@ -1,4 +1,4 @@
-package com.fraud.backend.data.entity.frauddetection;
+package com.fraud.backend.data.entity.messaging;
 
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import jakarta.persistence.*;
@@ -52,4 +52,14 @@ public class Message {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (messageUuid == null) {
+            messageUuid = UUID.randomUUID();
+        }
+        if (isRead == null) {
+            isRead = false;
+        }
+    }
 }

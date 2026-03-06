@@ -34,8 +34,6 @@ public class SessionController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) Boolean activeOnly) {
         
-        log.info("Fetching all sessions - page: {}, size: {}, activeOnly: {}", page, size, activeOnly);
-        
         List<UserSession> allSessions = userSessionService.getAllSessions();
         
         // Filter by active status if requested
@@ -68,7 +66,6 @@ public class SessionController {
     @GetMapping("/statistics")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> getSessionStatistics() {
-        log.info("Fetching session statistics");
         return ResponseEntity.ok(userSessionService.getSessionStatistics());
     }
 
@@ -77,7 +74,6 @@ public class SessionController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<SessionResponse>> getRecentSessions(
             @RequestParam(defaultValue = "10") int limit) {
-        log.info("Fetching recent {} sessions", limit);
         return ResponseEntity.ok(
                 userSessionService.getRecentSessions(limit)
                         .stream()
@@ -90,7 +86,6 @@ public class SessionController {
     @GetMapping("/user/{userId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<SessionResponse>> getUserSessions(@PathVariable Long userId) {
-        log.info("Fetching sessions for user: {}", userId);
         return ResponseEntity.ok(
                 userSessionService.getActiveSessionsForUser(userId)
                         .stream()
@@ -103,7 +98,6 @@ public class SessionController {
     @GetMapping("/user/{userId}/history")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<SessionResponse>> getUserSessionHistory(@PathVariable Long userId) {
-        log.info("Fetching session history for user: {}", userId);
         return ResponseEntity.ok(
                 userSessionService.getUserSessionHistory(userId)
                         .stream()
@@ -116,7 +110,6 @@ public class SessionController {
     @GetMapping("/{sessionId}/validate")
     @PreAuthorize("hasRole('ADMIN') or hasRole('MANAGER') or hasRole('ANALYST')")
     public ResponseEntity<Map<String, Boolean>> validateSession(@PathVariable String sessionId) {
-        log.info("Validating session: {}", sessionId);
         boolean isValid = userSessionService.isSessionValid(sessionId);
         return ResponseEntity.ok(Map.of("valid", isValid));
     }
@@ -125,7 +118,6 @@ public class SessionController {
     @DeleteMapping("/{sessionId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> endSession(@PathVariable String sessionId) {
-        log.info("Ending session: {}", sessionId);
         userSessionService.endSession(sessionId);
         return ResponseEntity.noContent().build();
     }
@@ -134,7 +126,6 @@ public class SessionController {
     @DeleteMapping("/user/{userId}/all")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> terminateAllUserSessions(@PathVariable Long userId) {
-        log.info("Terminating all sessions for user: {}", userId);
         userSessionService.terminateAllUserSessions(userId);
         return ResponseEntity.noContent().build();
     }
@@ -143,7 +134,6 @@ public class SessionController {
     @DeleteMapping("/user/{userId}/inactive")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> cleanupInactiveSessions(@PathVariable Long userId) {
-        log.info("Cleaning up inactive sessions for user: {}", userId);
         userSessionService.cleanupInactiveSessions(userId);
         return ResponseEntity.noContent().build();
     }
@@ -152,7 +142,6 @@ public class SessionController {
     @PostMapping("/sync")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> syncSessionsWithKeycloak() {
-        log.info("Manually triggering session sync with Keycloak");
         userSessionService.syncSessionsWithKeycloak();
         return ResponseEntity.ok().build();
     }

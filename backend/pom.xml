@@ -151,6 +151,16 @@
 			<artifactId>itextpdf</artifactId>
 			<version>5.5.13.3</version>
 		</dependency>
+		<!-- WebSocket for messages -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
+		<!-- Spring Security Messaging -->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-messaging</artifactId>
+		</dependency>
 	</dependencies>
 
 	<build>

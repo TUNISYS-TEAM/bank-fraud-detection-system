@@ -216,3 +216,78 @@ fraud-detection-platform/
     ├── architecture/
     ├── api/
     └── ml-pipeline/
+
+
+
+ml-pipeline-v2/
+│
+├── utils/
+│   ├── __init__.py
+│   ├── logging_config.py          # Centralised logging setup
+│   ├── postal_codes.py            # PostalCodeResolver (zip → gov → region)
+│   ├── zip_gov_map.json           # 969 zips × 24 govs (cleaned)
+│   └── zip-postcodes.json         # Original raw file (kept as reference)
+│
+├── transformers/
+│   ├── __init__.py
+│   │
+│   ├── behavioral/
+│   │   ├── __init__.py
+│   │   ├── client_behavior.py     # ClientBehaviorTransformer
+│   │   │                            ✓ Welford z-score
+│   │   │                            ✓ Counter-based memory cap
+│   │   │                            ✓ Thread-safe deep-copy
+│   │   │                            ✓ Pickle-safe (Lock removed)
+│   │   │                            ✓ Real postal resolver
+│   │   └── temporal_features.py   # TemporalFeatureTransformer
+│   │                                ✓ Exact feature_names_out()
+│   │                                ✓ Configurable spike thresholds
+│   │                                ✓ Configurable risk weights
+│   │
+│   ├── encoders/
+│   │   ├── __init__.py
+│   │   ├── categorical_encoder.py # SafeOneHotEncoder
+│   │   │                            ✓ Unknown category logging
+│   │   │                            ✓ Missing column zero-fill
+│   │   └── feature_selectors.py   # Tree / CatBoost / DL selectors
+│   │                                ✓ selected_features_ stored
+│   │                                ✓ DL enforces numeric-only
+│   │
+│   └── scalers/
+│       ├── __init__.py
+│       └── monetary_scaler.py     # SafeScaler (robust/standard/minmax)
+│                                    ✓ Missing column warning
+│                                    ✓ New column passthrough warning
+│
+├── pipeline/
+│   ├── __init__.py
+│   ├── fraud_pipeline.py          # FraudFeaturePipeline wrapper
+│   │                                ✓ Atomic save (tmp → rename)
+│   │                                ✓ JSON metadata sidecar
+│   │                                ✓ Input validation
+│   │                                ✓ create_tree / catboost / dl
+│   └── data_split.py              # Temporal split (no shuffle)
+│
+├── training/
+│   ├── __init__.py
+│   ├── train_supervised.py        # End-to-end CLI training script
+│   └── validate_pipeline.py       # Leakage / AS-OF / signal checks
+│
+└── [coming next]
+    ├── models/
+    │   ├── supervised/
+    │   │   ├── lightgbm_model.py
+    │   │   └── xgboost_model.py
+    │   ├── unsupervised/
+    │   │   ├── autoencoder.py
+    │   │   └── ecod_detector.py
+    │   └── ensemble/
+    │       ├── hybrid_scorer.py
+    │       └── threshold_optimizer.py
+    │
+    ├── pipeline/
+    │   └── onnx_exporter.py
+    │
+    └── xai/
+        ├── shap_explainer.py
+        └── fraud_review_agent.py

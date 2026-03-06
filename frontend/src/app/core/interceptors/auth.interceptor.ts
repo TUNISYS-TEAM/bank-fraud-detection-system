@@ -1,7 +1,8 @@
+// core/interceptors/auth.interceptor.ts
 import { Injectable, inject } from '@angular/core';
 import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HttpErrorResponse } from '@angular/common/http';
-import { Observable, throwError, BehaviorSubject } from 'rxjs';
-import { catchError, filter, take, switchMap, finalize } from 'rxjs/operators';
+import { Observable, throwError, BehaviorSubject, EMPTY } from 'rxjs';
+import { catchError, filter, take, switchMap } from 'rxjs/operators';
 import { AuthService } from '../services/auth.service';
 import { Router } from '@angular/router';
 
@@ -9,48 +10,39 @@ import { Router } from '@angular/router';
 export class AuthInterceptor implements HttpInterceptor {
   private authService = inject(AuthService);
   private router = inject(Router);
-  
   private isRefreshing = false;
-  private refreshTokenSubject = new BehaviorSubject<string | null>(null);
+  private refreshTokenSubject = new BehaviorSubject<any>(null);
 
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    // Skip authentication for login and refresh endpoints
-    if (this.shouldSkipAuth(req)) {
-      return next.handle(req);
-    }
+    // Clone request with credentials and headers
+    const authReq = req.clone({
+      withCredentials: true,
+      setHeaders: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
 
-    // Add token to request
-    const token = this.authService.getToken();
-    if (token) {
-      req = this.addToken(req, token);
-    }
-
-    return next.handle(req).pipe(
+    return next.handle(authReq).pipe(
       catchError((error: HttpErrorResponse) => {
-        if (error.status === 401 && !this.shouldSkipAuth(req)) {
-          return this.handle401Error(req, next);
+        // SILENTLY IGNORE 401 for session check on app startup
+        // This prevents the console error when no user is logged in
+        if (error.status === 401 && req.url.includes('/api/auth/me')) {
+          // Return EMPTY to complete silently without error
+          return EMPTY;
         }
+        
+        // Don't refresh on 401 for auth endpoints
+        if (error.status === 401 && 
+            !req.url.includes('/api/auth/login') && 
+            !req.url.includes('/api/auth/csrf') && 
+            !req.url.includes('/api/auth/refresh')) {
+          return this.handle401Error(authReq, next);
+        }
+        
         return throwError(() => error);
       })
     );
-  }
-
-  private addToken(request: HttpRequest<any>, token: string): HttpRequest<any> {
-    return request.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  }
-
-  private shouldSkipAuth(request: HttpRequest<any>): boolean {
-    const skipUrls = [
-      '/auth/login',
-      '/auth/refresh',
-      '/auth/logout'
-    ];
-    
-    return skipUrls.some(url => request.url.includes(url));
   }
 
   private handle401Error(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
@@ -58,33 +50,23 @@ export class AuthInterceptor implements HttpInterceptor {
       this.isRefreshing = true;
       this.refreshTokenSubject.next(null);
 
-      const refreshToken = this.authService.getRefreshToken();
-      
-      if (!refreshToken) {
-        this.authService.logout().subscribe();
-        this.router.navigate(['/auth/login']);
-        return throwError(() => new Error('Session expired'));
-      }
-
       return this.authService.refreshToken().pipe(
-        switchMap((response) => {
-          this.refreshTokenSubject.next(response.access_token);
-          return next.handle(this.addToken(request, response.access_token));
-        }),
-        catchError((error) => {
-          this.authService.logout().subscribe();
-          this.router.navigate(['/auth/login']);
-          return throwError(() => error);
-        }),
-        finalize(() => {
+        switchMap(() => {
           this.isRefreshing = false;
+          this.refreshTokenSubject.next('refreshed');
+          return next.handle(request);
+        }),
+        catchError((err) => {
+          this.isRefreshing = false;
+          this.router.navigate(['/auth/login']);
+          return throwError(() => err);
         })
       );
     } else {
       return this.refreshTokenSubject.pipe(
         filter(token => token !== null),
         take(1),
-        switchMap(token => next.handle(this.addToken(request, token!)))
+        switchMap(() => next.handle(request))
       );
     }
   }

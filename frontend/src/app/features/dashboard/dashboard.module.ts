@@ -1,5 +1,6 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { FeatherModule } from 'angular-feather';
 
 import { DashboardRoutingModule } from './dashboard-routing.module';
@@ -11,6 +12,7 @@ import { MlModelsComponent } from './pages/ml-models/ml-models.component';
 import { ImportDataComponent } from './pages/import-data/import-data.component';
 import { PerformanceComponent } from './pages/performance/performance.component';
 import { SimulationComponent } from './pages/simulation/simulation.component';
+import { MessagesComponent } from './pages/messaging/messaging.component';
 
 @NgModule({
   declarations: [
@@ -19,13 +21,15 @@ import { SimulationComponent } from './pages/simulation/simulation.component';
     MlModelsComponent,
     ImportDataComponent,
     PerformanceComponent,
-    SimulationComponent
+    SimulationComponent,
+    MessagesComponent 
   ],
   imports: [
     CommonModule,
+    FormsModule, 
     DashboardRoutingModule,
     LayoutModule,
-    FeatherModule
+    FeatherModule,
   ]
 })
 export class DashboardModule { }
