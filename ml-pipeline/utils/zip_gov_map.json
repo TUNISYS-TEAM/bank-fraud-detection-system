@@ -1,0 +1,4847 @@
+[
+  {
+    "zip": "1000",
+    "gov": "Tunis",
+    "deleg": "Bab Bhar"
+  },
+  {
+    "zip": "1001",
+    "gov": "Tunis",
+    "deleg": "Bab Bhar"
+  },
+  {
+    "zip": "1002",
+    "gov": "Tunis",
+    "deleg": "Bab Bhar"
+  },
+  {
+    "zip": "1003",
+    "gov": "Tunis",
+    "deleg": "Cite El Khadra"
+  },
+  {
+    "zip": "1004",
+    "gov": "Tunis",
+    "deleg": "El Menzah"
+  },
+  {
+    "zip": "1005",
+    "gov": "Tunis",
+    "deleg": "El Omrane"
+  },
+  {
+    "zip": "1006",
+    "gov": "Tunis",
+    "deleg": "Bab Souika"
+  },
+  {
+    "zip": "1007",
+    "gov": "Tunis",
+    "deleg": "Essijoumi"
+  },
+  {
+    "zip": "1008",
+    "gov": "Tunis",
+    "deleg": "La Medina"
+  },
+  {
+    "zip": "1009",
+    "gov": "Tunis",
+    "deleg": "El Ouerdia"
+  },
+  {
+    "zip": "1013",
+    "gov": "Tunis",
+    "deleg": "El Menzah"
+  },
+  {
+    "zip": "1019",
+    "gov": "Tunis",
+    "deleg": "La Medina"
+  },
+  {
+    "zip": "1027",
+    "gov": "Tunis",
+    "deleg": "Sidi El Bechir"
+  },
+  {
+    "zip": "1029",
+    "gov": "Tunis",
+    "deleg": "Bab Souika"
+  },
+  {
+    "zip": "1046",
+    "gov": "Tunis",
+    "deleg": "Jebel Jelloud"
+  },
+  {
+    "zip": "1053",
+    "gov": "Tunis",
+    "deleg": "La Marsa"
+  },
+  {
+    "zip": "1054",
+    "gov": "Tunis",
+    "deleg": "Carthage"
+  },
+  {
+    "zip": "1057",
+    "gov": "Tunis",
+    "deleg": "La Marsa"
+  },
+  {
+    "zip": "1059",
+    "gov": "Tunis",
+    "deleg": "La Medina"
+  },
+  {
+    "zip": "1064",
+    "gov": "Tunis",
+    "deleg": "El Omrane Superieur"
+  },
+  {
+    "zip": "1067",
+    "gov": "Tunis",
+    "deleg": "La Goulette"
+  },
+  {
+    "zip": "1068",
+    "gov": "Tunis",
+    "deleg": "El Omrane Superieur"
+  },
+  {
+    "zip": "1069",
+    "gov": "Tunis",
+    "deleg": "Bab Bhar"
+  },
+  {
+    "zip": "1073",
+    "gov": "Tunis",
+    "deleg": "Bab Bhar"
+  },
+  {
+    "zip": "1074",
+    "gov": "Tunis",
+    "deleg": "El Kabbaria"
+  },
+  {
+    "zip": "1075",
+    "gov": "Tunis",
+    "deleg": "Bab Souika"
+  },
+  {
+    "zip": "1082",
+    "gov": "Tunis",
+    "deleg": "El Menzah"
+  },
+  {
+    "zip": "1089",
+    "gov": "Tunis",
+    "deleg": "Sidi El Bechir"
+  },
+  {
+    "zip": "1091",
+    "gov": "Tunis",
+    "deleg": "El Omrane Superieur"
+  },
+  {
+    "zip": "1095",
+    "gov": "Tunis",
+    "deleg": "Sidi Hassine"
+  },
+  {
+    "zip": "1100",
+    "gov": "Zaghouan",
+    "deleg": "Zaghouan"
+  },
+  {
+    "zip": "1110",
+    "gov": "Mannouba",
+    "deleg": "Mornaguia"
+  },
+  {
+    "zip": "1111",
+    "gov": "Zaghouan",
+    "deleg": "Bir Mcherga"
+  },
+  {
+    "zip": "1112",
+    "gov": "Zaghouan",
+    "deleg": "Hammam Zriba"
+  },
+  {
+    "zip": "1113",
+    "gov": "Mannouba",
+    "deleg": "Borj El Amri"
+  },
+  {
+    "zip": "1114",
+    "gov": "Mannouba",
+    "deleg": "El Battan"
+  },
+  {
+    "zip": "1115",
+    "gov": "Zaghouan",
+    "deleg": "Saouef"
+  },
+  {
+    "zip": "1116",
+    "gov": "Mannouba",
+    "deleg": "Mornaguia"
+  },
+  {
+    "zip": "1121",
+    "gov": "Zaghouan",
+    "deleg": "Zaghouan"
+  },
+  {
+    "zip": "1122",
+    "gov": "Zaghouan",
+    "deleg": "Hammam Zriba"
+  },
+  {
+    "zip": "1123",
+    "gov": "Zaghouan",
+    "deleg": "Bir Mcherga"
+  },
+  {
+    "zip": "1124",
+    "gov": "Mannouba",
+    "deleg": "Jedaida"
+  },
+  {
+    "zip": "1125",
+    "gov": "Ben Arous",
+    "deleg": "Rades"
+  },
+  {
+    "zip": "1130",
+    "gov": "Mannouba",
+    "deleg": "Tebourba"
+  },
+  {
+    "zip": "1131",
+    "gov": "Zaghouan",
+    "deleg": "Bir Mcherga"
+  },
+  {
+    "zip": "1132",
+    "gov": "Zaghouan",
+    "deleg": "Zaghouan"
+  },
+  {
+    "zip": "1133",
+    "gov": "Mannouba",
+    "deleg": "Tebourba"
+  },
+  {
+    "zip": "1134",
+    "gov": "Mannouba",
+    "deleg": "Jedaida"
+  },
+  {
+    "zip": "1135",
+    "gov": "Ben Arous",
+    "deleg": "Fouchana"
+  },
+  {
+    "zip": "1140",
+    "gov": "Zaghouan",
+    "deleg": "El Fahs"
+  },
+  {
+    "zip": "1141",
+    "gov": "Zaghouan",
+    "deleg": "Bir Mcherga"
+  },
+  {
+    "zip": "1142",
+    "gov": "Mannouba",
+    "deleg": "Borj El Amri"
+  },
+  {
+    "zip": "1143",
+    "gov": "Mannouba",
+    "deleg": "Tebourba"
+  },
+  {
+    "zip": "1144",
+    "gov": "Mannouba",
+    "deleg": "Tebourba"
+  },
+  {
+    "zip": "1145",
+    "gov": "Ben Arous",
+    "deleg": "Mohamadia"
+  },
+  {
+    "zip": "1146",
+    "gov": "Zaghouan",
+    "deleg": "El Fahs"
+  },
+  {
+    "zip": "1152",
+    "gov": "Zaghouan",
+    "deleg": "Hammam Zriba"
+  },
+  {
+    "zip": "1153",
+    "gov": "Mannouba",
+    "deleg": "Mornaguia"
+  },
+  {
+    "zip": "1154",
+    "gov": "Zaghouan",
+    "deleg": "Ennadhour"
+  },
+  {
+    "zip": "1155",
+    "gov": "Zaghouan",
+    "deleg": "Zaghouan"
+  },
+  {
+    "zip": "1160",
+    "gov": "Zaghouan",
+    "deleg": "Ennadhour"
+  },
+  {
+    "zip": "1162",
+    "gov": "Zaghouan",
+    "deleg": "El Fahs"
+  },
+  {
+    "zip": "1163",
+    "gov": "Zaghouan",
+    "deleg": "Ennadhour"
+  },
+  {
+    "zip": "1164",
+    "gov": "Ben Arous",
+    "deleg": "Hammam Chatt"
+  },
+  {
+    "zip": "1193",
+    "gov": "Zaghouan",
+    "deleg": "Bir Mcherga"
+  },
+  {
+    "zip": "1194",
+    "gov": "Zaghouan",
+    "deleg": "El Fahs"
+  },
+  {
+    "zip": "1200",
+    "gov": "Kasserine",
+    "deleg": "Kasserine Nord"
+  },
+  {
+    "zip": "1210",
+    "gov": "Kasserine",
+    "deleg": "Thala"
+  },
+  {
+    "zip": "1211",
+    "gov": "Kasserine",
+    "deleg": "Thala"
+  },
+  {
+    "zip": "1212",
+    "gov": "Kasserine",
+    "deleg": "Foussana"
+  },
+  {
+    "zip": "1213",
+    "gov": "Kasserine",
+    "deleg": "Feriana"
+  },
+  {
+    "zip": "1214",
+    "gov": "Kasserine",
+    "deleg": "Mejel Bel Abbes"
+  },
+  {
+    "zip": "1215",
+    "gov": "Kasserine",
+    "deleg": "Feriana"
+  },
+  {
+    "zip": "1216",
+    "gov": "Kasserine",
+    "deleg": "El Ayoun"
+  },
+  {
+    "zip": "1220",
+    "gov": "Kasserine",
+    "deleg": "Foussana"
+  },
+  {
+    "zip": "1221",
+    "gov": "Kasserine",
+    "deleg": "Haidra"
+  },
+  {
+    "zip": "1222",
+    "gov": "Kasserine",
+    "deleg": "Foussana"
+  },
+  {
+    "zip": "1223",
+    "gov": "Kasserine",
+    "deleg": "Feriana"
+  },
+  {
+    "zip": "1224",
+    "gov": "Kasserine",
+    "deleg": "Thala"
+  },
+  {
+    "zip": "1225",
+    "gov": "Kasserine",
+    "deleg": "Haidra"
+  },
+  {
+    "zip": "1226",
+    "gov": "Kasserine",
+    "deleg": "Mejel Bel Abbes"
+  },
+  {
+    "zip": "1230",
+    "gov": "Kasserine",
+    "deleg": "Kasserine Nord"
+  },
+  {
+    "zip": "1231",
+    "gov": "Kasserine",
+    "deleg": "Thala"
+  },
+  {
+    "zip": "1232",
+    "gov": "Kasserine",
+    "deleg": "Foussana"
+  },
+  {
+    "zip": "1233",
+    "gov": "Kasserine",
+    "deleg": "Kasserine Sud"
+  },
+  {
+    "zip": "1234",
+    "gov": "Kasserine",
+    "deleg": "El Ayoun"
+  },
+  {
+    "zip": "1235",
+    "gov": "Kasserine",
+    "deleg": "Thala"
+  },
+  {
+    "zip": "1237",
+    "gov": "Kasserine",
+    "deleg": "Kasserine Nord"
+  },
+  {
+    "zip": "1240",
+    "gov": "Kasserine",
+    "deleg": "Feriana"
+  },
+  {
+    "zip": "1241",
+    "gov": "Kasserine",
+    "deleg": "Hassi El Frid"
+  },
+  {
+    "zip": "1242",
+    "gov": "Kasserine",
+    "deleg": "Feriana"
+  },
+  {
+    "zip": "1243",
+    "gov": "Kasserine",
+    "deleg": "Feriana"
+  },
+  {
+    "zip": "1245",
+    "gov": "Kasserine",
+    "deleg": "Hassi El Frid"
+  },
+  {
+    "zip": "1247",
+    "gov": "Kasserine",
+    "deleg": "Hassi El Frid"
+  },
+  {
+    "zip": "1250",
+    "gov": "Kasserine",
+    "deleg": "Sbeitla"
+  },
+  {
+    "zip": "1251",
+    "gov": "Kasserine",
+    "deleg": "Sbeitla"
+  },
+  {
+    "zip": "1252",
+    "gov": "Kasserine",
+    "deleg": "Sbeitla"
+  },
+  {
+    "zip": "1253",
+    "gov": "Kasserine",
+    "deleg": "Kasserine Nord"
+  },
+  {
+    "zip": "1254",
+    "gov": "Kasserine",
+    "deleg": "Sbeitla"
+  },
+  {
+    "zip": "1255",
+    "gov": "Kasserine",
+    "deleg": "Sbeitla"
+  },
+  {
+    "zip": "1256",
+    "gov": "Kasserine",
+    "deleg": "Sbeitla"
+  },
+  {
+    "zip": "1261",
+    "gov": "Kasserine",
+    "deleg": "Thala"
+  },
+  {
+    "zip": "1263",
+    "gov": "Kasserine",
+    "deleg": "Sbeitla"
+  },
+  {
+    "zip": "1270",
+    "gov": "Kasserine",
+    "deleg": "Sbiba"
+  },
+  {
+    "zip": "1271",
+    "gov": "Kasserine",
+    "deleg": "Sbiba"
+  },
+  {
+    "zip": "1273",
+    "gov": "Kasserine",
+    "deleg": "Sbiba"
+  },
+  {
+    "zip": "1279",
+    "gov": "Kasserine",
+    "deleg": "Ezzouhour  (Kasserine)"
+  },
+  {
+    "zip": "1280",
+    "gov": "Kasserine",
+    "deleg": "Jediliane"
+  },
+  {
+    "zip": "1281",
+    "gov": "Kasserine",
+    "deleg": "Jediliane"
+  },
+  {
+    "zip": "1285",
+    "gov": "Kasserine",
+    "deleg": "Haidra"
+  },
+  {
+    "zip": "1293",
+    "gov": "Kasserine",
+    "deleg": "Mejel Bel Abbes"
+  },
+  {
+    "zip": "1294",
+    "gov": "Kasserine",
+    "deleg": "Mejel Bel Abbes"
+  },
+  {
+    "zip": "2000",
+    "gov": "Tunis",
+    "deleg": "El Omrane"
+  },
+  {
+    "zip": "2009",
+    "gov": "Tunis",
+    "deleg": "Le Bardo"
+  },
+  {
+    "zip": "2010",
+    "gov": "Mannouba",
+    "deleg": "Mannouba"
+  },
+  {
+    "zip": "2011",
+    "gov": "Mannouba",
+    "deleg": "Mannouba"
+  },
+  {
+    "zip": "2012",
+    "gov": "Mannouba",
+    "deleg": "Jedaida"
+  },
+  {
+    "zip": "2013",
+    "gov": "Ben Arous",
+    "deleg": "Ben Arous"
+  },
+  {
+    "zip": "2014",
+    "gov": "Ben Arous",
+    "deleg": "Megrine"
+  },
+  {
+    "zip": "2015",
+    "gov": "Tunis",
+    "deleg": "El Kram"
+  },
+  {
+    "zip": "2016",
+    "gov": "Tunis",
+    "deleg": "Carthage"
+  },
+  {
+    "zip": "2017",
+    "gov": "Tunis",
+    "deleg": "Le Bardo"
+  },
+  {
+    "zip": "2018",
+    "gov": "Ben Arous",
+    "deleg": "Rades"
+  },
+  {
+    "zip": "2020",
+    "gov": "Ariana",
+    "deleg": "Sidi Thabet"
+  },
+  {
+    "zip": "2021",
+    "gov": "Mannouba",
+    "deleg": "Oued Ellil"
+  },
+  {
+    "zip": "2022",
+    "gov": "Ariana",
+    "deleg": "Kalaat Landlous"
+  },
+  {
+    "zip": "2023",
+    "gov": "Tunis",
+    "deleg": "Jebel Jelloud"
+  },
+  {
+    "zip": "2024",
+    "gov": "Ben Arous",
+    "deleg": "Megrine"
+  },
+  {
+    "zip": "2025",
+    "gov": "Tunis",
+    "deleg": "Carthage"
+  },
+  {
+    "zip": "2026",
+    "gov": "Tunis",
+    "deleg": "Carthage"
+  },
+  {
+    "zip": "2027",
+    "gov": "Ariana",
+    "deleg": "Ariana Ville"
+  },
+  {
+    "zip": "2028",
+    "gov": "Mannouba",
+    "deleg": "Mornaguia"
+  },
+  {
+    "zip": "2031",
+    "gov": "Mannouba",
+    "deleg": "Oued Ellil"
+  },
+  {
+    "zip": "2032",
+    "gov": "Ariana",
+    "deleg": "Sidi Thabet"
+  },
+  {
+    "zip": "2033",
+    "gov": "Ben Arous",
+    "deleg": "Megrine"
+  },
+  {
+    "zip": "2034",
+    "gov": "Ben Arous",
+    "deleg": "Ezzahra"
+  },
+  {
+    "zip": "2035",
+    "gov": "Ariana",
+    "deleg": "La Soukra"
+  },
+  {
+    "zip": "2036",
+    "gov": "Ariana",
+    "deleg": "La Soukra"
+  },
+  {
+    "zip": "2037",
+    "gov": "Ariana",
+    "deleg": "Ariana Ville"
+  },
+  {
+    "zip": "2040",
+    "gov": "Ben Arous",
+    "deleg": "Rades"
+  },
+  {
+    "zip": "2041",
+    "gov": "Ariana",
+    "deleg": "Ettadhamen"
+  },
+  {
+    "zip": "2042",
+    "gov": "Tunis",
+    "deleg": "Ettahrir"
+  },
+  {
+    "zip": "2043",
+    "gov": "Ben Arous",
+    "deleg": "Ben Arous"
+  },
+  {
+    "zip": "2044",
+    "gov": "Ben Arous",
+    "deleg": "Mornag"
+  },
+  {
+    "zip": "2045",
+    "gov": "Tunis",
+    "deleg": "La Marsa"
+  },
+  {
+    "zip": "2046",
+    "gov": "Tunis",
+    "deleg": "La Marsa"
+  },
+  {
+    "zip": "2050",
+    "gov": "Ben Arous",
+    "deleg": "Hammam Lif"
+  },
+  {
+    "zip": "2051",
+    "gov": "Tunis",
+    "deleg": "El Hrairia"
+  },
+  {
+    "zip": "2052",
+    "gov": "Tunis",
+    "deleg": "El Hrairia"
+  },
+  {
+    "zip": "2053",
+    "gov": "Tunis",
+    "deleg": "El Kabbaria"
+  },
+  {
+    "zip": "2054",
+    "gov": "Ben Arous",
+    "deleg": "Mornag"
+  },
+  {
+    "zip": "2055",
+    "gov": "Ben Arous",
+    "deleg": "Hammam Chatt"
+  },
+  {
+    "zip": "2056",
+    "gov": "Ariana",
+    "deleg": "Raoued"
+  },
+  {
+    "zip": "2057",
+    "gov": "Ariana",
+    "deleg": "Sidi Thabet"
+  },
+  {
+    "zip": "2058",
+    "gov": "Ariana",
+    "deleg": "Ariana Ville"
+  },
+  {
+    "zip": "2059",
+    "gov": "Ben Arous",
+    "deleg": "El Mourouj"
+  },
+  {
+    "zip": "2060",
+    "gov": "Tunis",
+    "deleg": "La Goulette"
+  },
+  {
+    "zip": "2061",
+    "gov": "Ariana",
+    "deleg": "Kalaat Landlous"
+  },
+  {
+    "zip": "2062",
+    "gov": "Tunis",
+    "deleg": "El Omrane Superieur"
+  },
+  {
+    "zip": "2063",
+    "gov": "Ben Arous",
+    "deleg": "Nouvelle Medina"
+  },
+  {
+    "zip": "2064",
+    "gov": "Ben Arous",
+    "deleg": "Mornag"
+  },
+  {
+    "zip": "2065",
+    "gov": "Ben Arous",
+    "deleg": "Ezzahra"
+  },
+  {
+    "zip": "2066",
+    "gov": "Tunis",
+    "deleg": "El Kabbaria"
+  },
+  {
+    "zip": "2071",
+    "gov": "Mannouba",
+    "deleg": "Mornaguia"
+  },
+  {
+    "zip": "2072",
+    "gov": "Tunis",
+    "deleg": "Essijoumi"
+  },
+  {
+    "zip": "2073",
+    "gov": "Ariana",
+    "deleg": "La Soukra"
+  },
+  {
+    "zip": "2074",
+    "gov": "Ben Arous",
+    "deleg": "El Mourouj"
+  },
+  {
+    "zip": "2075",
+    "gov": "Mannouba",
+    "deleg": "Jedaida"
+  },
+  {
+    "zip": "2076",
+    "gov": "Tunis",
+    "deleg": "La Marsa"
+  },
+  {
+    "zip": "2078",
+    "gov": "Tunis",
+    "deleg": "La Marsa"
+  },
+  {
+    "zip": "2080",
+    "gov": "Ariana",
+    "deleg": "Ariana Ville"
+  },
+  {
+    "zip": "2081",
+    "gov": "Ariana",
+    "deleg": "Raoued"
+  },
+  {
+    "zip": "2082",
+    "gov": "Ben Arous",
+    "deleg": "Fouchana"
+  },
+  {
+    "zip": "2083",
+    "gov": "Ariana",
+    "deleg": "Raoued"
+  },
+  {
+    "zip": "2084",
+    "gov": "Ben Arous",
+    "deleg": "Hammam Chatt"
+  },
+  {
+    "zip": "2085",
+    "gov": "Tunis",
+    "deleg": "Carthage"
+  },
+  {
+    "zip": "2086",
+    "gov": "Mannouba",
+    "deleg": "Douar Hicher"
+  },
+  {
+    "zip": "2087",
+    "gov": "Tunis",
+    "deleg": "El Hrairia"
+  },
+  {
+    "zip": "2088",
+    "gov": "Ariana",
+    "deleg": "Raoued"
+  },
+  {
+    "zip": "2089",
+    "gov": "Tunis",
+    "deleg": "El Kram"
+  },
+  {
+    "zip": "2090",
+    "gov": "Ben Arous",
+    "deleg": "Mornag"
+  },
+  {
+    "zip": "2091",
+    "gov": "Ariana",
+    "deleg": "Ariana Ville"
+  },
+  {
+    "zip": "2092",
+    "gov": "Tunis",
+    "deleg": "El Menzah"
+  },
+  {
+    "zip": "2093",
+    "gov": "Ben Arous",
+    "deleg": "Hammam Lif"
+  },
+  {
+    "zip": "2094",
+    "gov": "Ariana",
+    "deleg": "Mnihla"
+  },
+  {
+    "zip": "2096",
+    "gov": "Ben Arous",
+    "deleg": "Nouvelle Medina"
+  },
+  {
+    "zip": "2097",
+    "gov": "Ben Arous",
+    "deleg": "Bou Mhel El Bassatine"
+  },
+  {
+    "zip": "2098",
+    "gov": "Ben Arous",
+    "deleg": "Rades"
+  },
+  {
+    "zip": "2099",
+    "gov": "Ben Arous",
+    "deleg": "Hammam Lif"
+  },
+  {
+    "zip": "2100",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Sud"
+  },
+  {
+    "zip": "2110",
+    "gov": "Gafsa",
+    "deleg": "Moulares"
+  },
+  {
+    "zip": "2111",
+    "gov": "Gafsa",
+    "deleg": "El Ksar"
+  },
+  {
+    "zip": "2112",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Sud"
+  },
+  {
+    "zip": "2113",
+    "gov": "Gafsa",
+    "deleg": "Metlaoui"
+  },
+  {
+    "zip": "2114",
+    "gov": "Gafsa",
+    "deleg": "Moulares"
+  },
+  {
+    "zip": "2115",
+    "gov": "Gafsa",
+    "deleg": "Belkhir"
+  },
+  {
+    "zip": "2116",
+    "gov": "Gafsa",
+    "deleg": "Sned"
+  },
+  {
+    "zip": "2120",
+    "gov": "Gafsa",
+    "deleg": "Redeyef"
+  },
+  {
+    "zip": "2121",
+    "gov": "Gafsa",
+    "deleg": "El Ksar"
+  },
+  {
+    "zip": "2122",
+    "gov": "Gafsa",
+    "deleg": "Redeyef"
+  },
+  {
+    "zip": "2123",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Sud"
+  },
+  {
+    "zip": "2124",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Sud"
+  },
+  {
+    "zip": "2125",
+    "gov": "Gafsa",
+    "deleg": "El Guettar"
+  },
+  {
+    "zip": "2130",
+    "gov": "Gafsa",
+    "deleg": "Metlaoui"
+  },
+  {
+    "zip": "2131",
+    "gov": "Gafsa",
+    "deleg": "Sidi Aich"
+  },
+  {
+    "zip": "2132",
+    "gov": "Gafsa",
+    "deleg": "Metlaoui"
+  },
+  {
+    "zip": "2133",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Sud"
+  },
+  {
+    "zip": "2134",
+    "gov": "Gafsa",
+    "deleg": "Metlaoui"
+  },
+  {
+    "zip": "2135",
+    "gov": "Gafsa",
+    "deleg": "Belkhir"
+  },
+  {
+    "zip": "2139",
+    "gov": "Gafsa",
+    "deleg": "Belkhir"
+  },
+  {
+    "zip": "2140",
+    "gov": "Gafsa",
+    "deleg": "Redeyef"
+  },
+  {
+    "zip": "2141",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Nord"
+  },
+  {
+    "zip": "2142",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Sud"
+  },
+  {
+    "zip": "2143",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Sud"
+  },
+  {
+    "zip": "2145",
+    "gov": "Gafsa",
+    "deleg": "El Guettar"
+  },
+  {
+    "zip": "2151",
+    "gov": "Gafsa",
+    "deleg": "El Ksar"
+  },
+  {
+    "zip": "2161",
+    "gov": "Gafsa",
+    "deleg": "Moulares"
+  },
+  {
+    "zip": "2169",
+    "gov": "Gafsa",
+    "deleg": "El Ksar"
+  },
+  {
+    "zip": "2170",
+    "gov": "Gafsa",
+    "deleg": "El Mdhilla"
+  },
+  {
+    "zip": "2173",
+    "gov": "Gafsa",
+    "deleg": "El Mdhilla"
+  },
+  {
+    "zip": "2180",
+    "gov": "Gafsa",
+    "deleg": "El Guettar"
+  },
+  {
+    "zip": "2181",
+    "gov": "Gafsa",
+    "deleg": "El Guettar"
+  },
+  {
+    "zip": "2183",
+    "gov": "Gafsa",
+    "deleg": "El Guettar"
+  },
+  {
+    "zip": "2190",
+    "gov": "Gafsa",
+    "deleg": "Sned"
+  },
+  {
+    "zip": "2192",
+    "gov": "Gafsa",
+    "deleg": "Sned"
+  },
+  {
+    "zip": "2193",
+    "gov": "Gafsa",
+    "deleg": "Sned"
+  },
+  {
+    "zip": "2195",
+    "gov": "Gafsa",
+    "deleg": "Sned"
+  },
+  {
+    "zip": "2196",
+    "gov": "Gafsa",
+    "deleg": "Gafsa Nord"
+  },
+  {
+    "zip": "2200",
+    "gov": "Tozeur",
+    "deleg": "Tozeur"
+  },
+  {
+    "zip": "2210",
+    "gov": "Tozeur",
+    "deleg": "Tozeur"
+  },
+  {
+    "zip": "2211",
+    "gov": "Tozeur",
+    "deleg": "Tameghza"
+  },
+  {
+    "zip": "2212",
+    "gov": "Tozeur",
+    "deleg": "Tameghza"
+  },
+  {
+    "zip": "2213",
+    "gov": "Tozeur",
+    "deleg": "Tozeur"
+  },
+  {
+    "zip": "2214",
+    "gov": "Tozeur",
+    "deleg": "Degueche"
+  },
+  {
+    "zip": "2223",
+    "gov": "Tozeur",
+    "deleg": "Hezoua"
+  },
+  {
+    "zip": "2224",
+    "gov": "Tozeur",
+    "deleg": "Degueche"
+  },
+  {
+    "zip": "2233",
+    "gov": "Tozeur",
+    "deleg": "Tozeur"
+  },
+  {
+    "zip": "2239",
+    "gov": "Tozeur",
+    "deleg": "Tozeur"
+  },
+  {
+    "zip": "2240",
+    "gov": "Tozeur",
+    "deleg": "Nefta"
+  },
+  {
+    "zip": "2241",
+    "gov": "Tozeur",
+    "deleg": "Tozeur"
+  },
+  {
+    "zip": "2243",
+    "gov": "Tozeur",
+    "deleg": "Tozeur"
+  },
+  {
+    "zip": "2245",
+    "gov": "Tozeur",
+    "deleg": "Nefta"
+  },
+  {
+    "zip": "2253",
+    "gov": "Tozeur",
+    "deleg": "Tameghza"
+  },
+  {
+    "zip": "2260",
+    "gov": "Tozeur",
+    "deleg": "Degueche"
+  },
+  {
+    "zip": "2261",
+    "gov": "Tozeur",
+    "deleg": "Degueche"
+  },
+  {
+    "zip": "2262",
+    "gov": "Tozeur",
+    "deleg": "Degueche"
+  },
+  {
+    "zip": "2263",
+    "gov": "Tozeur",
+    "deleg": "Degueche"
+  },
+  {
+    "zip": "3000",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3010",
+    "gov": "Sfax",
+    "deleg": "El Hencha"
+  },
+  {
+    "zip": "3011",
+    "gov": "Sfax",
+    "deleg": "Sakiet Eddaier"
+  },
+  {
+    "zip": "3012",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3013",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3014",
+    "gov": "Sfax",
+    "deleg": "Menzel Chaker"
+  },
+  {
+    "zip": "3015",
+    "gov": "Sfax",
+    "deleg": "Kerkenah"
+  },
+  {
+    "zip": "3016",
+    "gov": "Sfax",
+    "deleg": "Jebeniana"
+  },
+  {
+    "zip": "3020",
+    "gov": "Sfax",
+    "deleg": "Menzel Chaker"
+  },
+  {
+    "zip": "3021",
+    "gov": "Sfax",
+    "deleg": "Sakiet Ezzit"
+  },
+  {
+    "zip": "3022",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3023",
+    "gov": "Sfax",
+    "deleg": "Sfax Est"
+  },
+  {
+    "zip": "3024",
+    "gov": "Sfax",
+    "deleg": "Ghraiba"
+  },
+  {
+    "zip": "3025",
+    "gov": "Sfax",
+    "deleg": "Kerkenah"
+  },
+  {
+    "zip": "3026",
+    "gov": "Sfax",
+    "deleg": "Jebeniana"
+  },
+  {
+    "zip": "3027",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3030",
+    "gov": "Sfax",
+    "deleg": "Agareb"
+  },
+  {
+    "zip": "3031",
+    "gov": "Sfax",
+    "deleg": "Sakiet Ezzit"
+  },
+  {
+    "zip": "3032",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3033",
+    "gov": "Sfax",
+    "deleg": "El Hencha"
+  },
+  {
+    "zip": "3034",
+    "gov": "Sfax",
+    "deleg": "Ghraiba"
+  },
+  {
+    "zip": "3035",
+    "gov": "Sfax",
+    "deleg": "Kerkenah"
+  },
+  {
+    "zip": "3036",
+    "gov": "Sfax",
+    "deleg": "El Amra"
+  },
+  {
+    "zip": "3037",
+    "gov": "Sfax",
+    "deleg": "Agareb"
+  },
+  {
+    "zip": "3039",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3040",
+    "gov": "Sfax",
+    "deleg": "Bir Ali Ben Khelifa"
+  },
+  {
+    "zip": "3041",
+    "gov": "Sfax",
+    "deleg": "Sakiet Ezzit"
+  },
+  {
+    "zip": "3042",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3043",
+    "gov": "Sfax",
+    "deleg": "El Hencha"
+  },
+  {
+    "zip": "3044",
+    "gov": "Sfax",
+    "deleg": "Mahras"
+  },
+  {
+    "zip": "3045",
+    "gov": "Sfax",
+    "deleg": "Kerkenah"
+  },
+  {
+    "zip": "3046",
+    "gov": "Sfax",
+    "deleg": "El Amra"
+  },
+  {
+    "zip": "3047",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3048",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3049",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3050",
+    "gov": "Sfax",
+    "deleg": "Esskhira"
+  },
+  {
+    "zip": "3051",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3052",
+    "gov": "Sfax",
+    "deleg": "Sfax Est"
+  },
+  {
+    "zip": "3053",
+    "gov": "Sfax",
+    "deleg": "El Hencha"
+  },
+  {
+    "zip": "3054",
+    "gov": "Sfax",
+    "deleg": "Sakiet Eddaier"
+  },
+  {
+    "zip": "3055",
+    "gov": "Sfax",
+    "deleg": "Kerkenah"
+  },
+  {
+    "zip": "3056",
+    "gov": "Sfax",
+    "deleg": "Jebeniana"
+  },
+  {
+    "zip": "3057",
+    "gov": "Sfax",
+    "deleg": "Agareb"
+  },
+  {
+    "zip": "3059",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3060",
+    "gov": "Sfax",
+    "deleg": "Mahras"
+  },
+  {
+    "zip": "3061",
+    "gov": "Sfax",
+    "deleg": "Sakiet Eddaier"
+  },
+  {
+    "zip": "3062",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3063",
+    "gov": "Sfax",
+    "deleg": "Sakiet Eddaier"
+  },
+  {
+    "zip": "3064",
+    "gov": "Sfax",
+    "deleg": "Sfax Est"
+  },
+  {
+    "zip": "3065",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3066",
+    "gov": "Sfax",
+    "deleg": "El Amra"
+  },
+  {
+    "zip": "3067",
+    "gov": "Sfax",
+    "deleg": "Sakiet Eddaier"
+  },
+  {
+    "zip": "3069",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3070",
+    "gov": "Sfax",
+    "deleg": "Kerkenah"
+  },
+  {
+    "zip": "3071",
+    "gov": "Sfax",
+    "deleg": "Sfax Est"
+  },
+  {
+    "zip": "3072",
+    "gov": "Sfax",
+    "deleg": "Sfax Est"
+  },
+  {
+    "zip": "3073",
+    "gov": "Sfax",
+    "deleg": "Esskhira"
+  },
+  {
+    "zip": "3074",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3075",
+    "gov": "Sfax",
+    "deleg": "Agareb"
+  },
+  {
+    "zip": "3076",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3077",
+    "gov": "Sfax",
+    "deleg": "Jebeniana"
+  },
+  {
+    "zip": "3078",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3079",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3080",
+    "gov": "Sfax",
+    "deleg": "Jebeniana"
+  },
+  {
+    "zip": "3081",
+    "gov": "Sfax",
+    "deleg": "Sakiet Eddaier"
+  },
+  {
+    "zip": "3082",
+    "gov": "Sfax",
+    "deleg": "Bir Ali Ben Khelifa"
+  },
+  {
+    "zip": "3083",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3084",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3085",
+    "gov": "Sfax",
+    "deleg": "Bir Ali Ben Khelifa"
+  },
+  {
+    "zip": "3086",
+    "gov": "Sfax",
+    "deleg": "Jebeniana"
+  },
+  {
+    "zip": "3087",
+    "gov": "Sfax",
+    "deleg": "El Amra"
+  },
+  {
+    "zip": "3089",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3091",
+    "gov": "Sfax",
+    "deleg": "Sakiet Ezzit"
+  },
+  {
+    "zip": "3092",
+    "gov": "Sfax",
+    "deleg": "Menzel Chaker"
+  },
+  {
+    "zip": "3093",
+    "gov": "Sfax",
+    "deleg": "Sfax Sud"
+  },
+  {
+    "zip": "3094",
+    "gov": "Sfax",
+    "deleg": "Sakiet Eddaier"
+  },
+  {
+    "zip": "3095",
+    "gov": "Sfax",
+    "deleg": "El Amra"
+  },
+  {
+    "zip": "3097",
+    "gov": "Sfax",
+    "deleg": "Bir Ali Ben Khelifa"
+  },
+  {
+    "zip": "3099",
+    "gov": "Sfax",
+    "deleg": "Sfax Ville"
+  },
+  {
+    "zip": "3100",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Sud"
+  },
+  {
+    "zip": "3110",
+    "gov": "Kairouan",
+    "deleg": "Sbikha"
+  },
+  {
+    "zip": "3111",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Nord"
+  },
+  {
+    "zip": "3112",
+    "gov": "Kairouan",
+    "deleg": "Chebika"
+  },
+  {
+    "zip": "3113",
+    "gov": "Kairouan",
+    "deleg": "Oueslatia"
+  },
+  {
+    "zip": "3114",
+    "gov": "Kairouan",
+    "deleg": "Nasrallah"
+  },
+  {
+    "zip": "3115",
+    "gov": "Kairouan",
+    "deleg": "Nasrallah"
+  },
+  {
+    "zip": "3116",
+    "gov": "Kairouan",
+    "deleg": "Cherarda"
+  },
+  {
+    "zip": "3120",
+    "gov": "Kairouan",
+    "deleg": "Oueslatia"
+  },
+  {
+    "zip": "3121",
+    "gov": "Kairouan",
+    "deleg": "Chebika"
+  },
+  {
+    "zip": "3124",
+    "gov": "Kairouan",
+    "deleg": "Oueslatia"
+  },
+  {
+    "zip": "3125",
+    "gov": "Kairouan",
+    "deleg": "Sbikha"
+  },
+  {
+    "zip": "3126",
+    "gov": "Kairouan",
+    "deleg": "Bou Hajla"
+  },
+  {
+    "zip": "3129",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Nord"
+  },
+  {
+    "zip": "3130",
+    "gov": "Kairouan",
+    "deleg": "Haffouz"
+  },
+  {
+    "zip": "3131",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Sud"
+  },
+  {
+    "zip": "3132",
+    "gov": "Kairouan",
+    "deleg": "Sbikha"
+  },
+  {
+    "zip": "3133",
+    "gov": "Kairouan",
+    "deleg": "Chebika"
+  },
+  {
+    "zip": "3134",
+    "gov": "Kairouan",
+    "deleg": "Haffouz"
+  },
+  {
+    "zip": "3135",
+    "gov": "Kairouan",
+    "deleg": "Sbikha"
+  },
+  {
+    "zip": "3140",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Nord"
+  },
+  {
+    "zip": "3142",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Nord"
+  },
+  {
+    "zip": "3143",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Sud"
+  },
+  {
+    "zip": "3145",
+    "gov": "Kairouan",
+    "deleg": "Cherarda"
+  },
+  {
+    "zip": "3150",
+    "gov": "Kairouan",
+    "deleg": "El Ala"
+  },
+  {
+    "zip": "3151",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Sud"
+  },
+  {
+    "zip": "3152",
+    "gov": "Kairouan",
+    "deleg": "Bou Hajla"
+  },
+  {
+    "zip": "3153",
+    "gov": "Kairouan",
+    "deleg": "El Ala"
+  },
+  {
+    "zip": "3154",
+    "gov": "Kairouan",
+    "deleg": "El Ala"
+  },
+  {
+    "zip": "3160",
+    "gov": "Kairouan",
+    "deleg": "Hajeb El Ayoun"
+  },
+  {
+    "zip": "3161",
+    "gov": "Kairouan",
+    "deleg": "Chebika"
+  },
+  {
+    "zip": "3170",
+    "gov": "Kairouan",
+    "deleg": "Nasrallah"
+  },
+  {
+    "zip": "3171",
+    "gov": "Kairouan",
+    "deleg": "Nasrallah"
+  },
+  {
+    "zip": "3173",
+    "gov": "Kairouan",
+    "deleg": "Nasrallah"
+  },
+  {
+    "zip": "3180",
+    "gov": "Kairouan",
+    "deleg": "Bou Hajla"
+  },
+  {
+    "zip": "3181",
+    "gov": "Kairouan",
+    "deleg": "Bou Hajla"
+  },
+  {
+    "zip": "3182",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Nord"
+  },
+  {
+    "zip": "3183",
+    "gov": "Kairouan",
+    "deleg": "Chebika"
+  },
+  {
+    "zip": "3191",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Sud"
+  },
+  {
+    "zip": "3192",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Sud"
+  },
+  {
+    "zip": "3193",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Nord"
+  },
+  {
+    "zip": "3194",
+    "gov": "Kairouan",
+    "deleg": "Sbikha"
+  },
+  {
+    "zip": "3195",
+    "gov": "Kairouan",
+    "deleg": "Sbikha"
+  },
+  {
+    "zip": "3196",
+    "gov": "Kairouan",
+    "deleg": "Sbikha"
+  },
+  {
+    "zip": "3198",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Sud"
+  },
+  {
+    "zip": "3199",
+    "gov": "Kairouan",
+    "deleg": "Kairouan Sud"
+  },
+  {
+    "zip": "3200",
+    "gov": "Tataouine",
+    "deleg": "Smar"
+  },
+  {
+    "zip": "3211",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3212",
+    "gov": "Tataouine",
+    "deleg": "Bir Lahmar"
+  },
+  {
+    "zip": "3213",
+    "gov": "Tataouine",
+    "deleg": "Smar"
+  },
+  {
+    "zip": "3214",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Nord"
+  },
+  {
+    "zip": "3215",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3217",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Nord"
+  },
+  {
+    "zip": "3220",
+    "gov": "Tataouine",
+    "deleg": "Ghomrassen"
+  },
+  {
+    "zip": "3221",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3222",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3223",
+    "gov": "Tataouine",
+    "deleg": "Smar"
+  },
+  {
+    "zip": "3224",
+    "gov": "Tataouine",
+    "deleg": "Ghomrassen"
+  },
+  {
+    "zip": "3225",
+    "gov": "Tataouine",
+    "deleg": "Smar"
+  },
+  {
+    "zip": "3232",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3233",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Nord"
+  },
+  {
+    "zip": "3235",
+    "gov": "Tataouine",
+    "deleg": "Ghomrassen"
+  },
+  {
+    "zip": "3240",
+    "gov": "Tataouine",
+    "deleg": "Remada"
+  },
+  {
+    "zip": "3241",
+    "gov": "Tataouine",
+    "deleg": "Ghomrassen"
+  },
+  {
+    "zip": "3242",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3243",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Nord"
+  },
+  {
+    "zip": "3244",
+    "gov": "Tataouine",
+    "deleg": "Remada"
+  },
+  {
+    "zip": "3245",
+    "gov": "Tataouine",
+    "deleg": "Remada"
+  },
+  {
+    "zip": "3251",
+    "gov": "Tataouine",
+    "deleg": "Ghomrassen"
+  },
+  {
+    "zip": "3252",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3253",
+    "gov": "Tataouine",
+    "deleg": "Dhehiba"
+  },
+  {
+    "zip": "3261",
+    "gov": "Tataouine",
+    "deleg": "Ghomrassen"
+  },
+  {
+    "zip": "3262",
+    "gov": "Tataouine",
+    "deleg": "Smar"
+  },
+  {
+    "zip": "3263",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Nord"
+  },
+  {
+    "zip": "3264",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3271",
+    "gov": "Tataouine",
+    "deleg": "Ghomrassen"
+  },
+  {
+    "zip": "3272",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Nord"
+  },
+  {
+    "zip": "3274",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3282",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Nord"
+  },
+  {
+    "zip": "3284",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "3286",
+    "gov": "Tataouine",
+    "deleg": "Remada"
+  },
+  {
+    "zip": "3293",
+    "gov": "Tataouine",
+    "deleg": "Tataouine Sud"
+  },
+  {
+    "zip": "4000",
+    "gov": "Sousse",
+    "deleg": "Sousse Ville"
+  },
+  {
+    "zip": "4010",
+    "gov": "Sousse",
+    "deleg": "Bou Ficha"
+  },
+  {
+    "zip": "4011",
+    "gov": "Sousse",
+    "deleg": "Hammam Sousse"
+  },
+  {
+    "zip": "4012",
+    "gov": "Sousse",
+    "deleg": "Hergla"
+  },
+  {
+    "zip": "4013",
+    "gov": "Sousse",
+    "deleg": "Msaken"
+  },
+  {
+    "zip": "4014",
+    "gov": "Sousse",
+    "deleg": "Msaken"
+  },
+  {
+    "zip": "4015",
+    "gov": "Sousse",
+    "deleg": "Msaken"
+  },
+  {
+    "zip": "4016",
+    "gov": "Sousse",
+    "deleg": "Msaken"
+  },
+  {
+    "zip": "4017",
+    "gov": "Sousse",
+    "deleg": "Hammam Sousse"
+  },
+  {
+    "zip": "4020",
+    "gov": "Sousse",
+    "deleg": "Kondar"
+  },
+  {
+    "zip": "4021",
+    "gov": "Sousse",
+    "deleg": "Kalaa Essghira"
+  },
+  {
+    "zip": "4022",
+    "gov": "Sousse",
+    "deleg": "Akouda"
+  },
+  {
+    "zip": "4023",
+    "gov": "Sousse",
+    "deleg": "Sousse Riadh"
+  },
+  {
+    "zip": "4024",
+    "gov": "Sousse",
+    "deleg": "Msaken"
+  },
+  {
+    "zip": "4025",
+    "gov": "Sousse",
+    "deleg": "Sidi El Heni"
+  },
+  {
+    "zip": "4026",
+    "gov": "Sousse",
+    "deleg": "Sidi El Heni"
+  },
+  {
+    "zip": "4030",
+    "gov": "Sousse",
+    "deleg": "Enfidha"
+  },
+  {
+    "zip": "4031",
+    "gov": "Sousse",
+    "deleg": "Sousse Riadh"
+  },
+  {
+    "zip": "4032",
+    "gov": "Sousse",
+    "deleg": "Enfidha"
+  },
+  {
+    "zip": "4033",
+    "gov": "Sousse",
+    "deleg": "Msaken"
+  },
+  {
+    "zip": "4034",
+    "gov": "Sousse",
+    "deleg": "Enfidha"
+  },
+  {
+    "zip": "4035",
+    "gov": "Sousse",
+    "deleg": "Enfidha"
+  },
+  {
+    "zip": "4040",
+    "gov": "Sousse",
+    "deleg": "Sidi Bou Ali"
+  },
+  {
+    "zip": "4041",
+    "gov": "Sousse",
+    "deleg": "Sousse Riadh"
+  },
+  {
+    "zip": "4042",
+    "gov": "Sousse",
+    "deleg": "Akouda"
+  },
+  {
+    "zip": "4043",
+    "gov": "Sousse",
+    "deleg": "Sidi Bou Ali"
+  },
+  {
+    "zip": "4045",
+    "gov": "Sousse",
+    "deleg": "Sidi Bou Ali"
+  },
+  {
+    "zip": "4051",
+    "gov": "Sousse",
+    "deleg": "Sousse Jaouhara"
+  },
+  {
+    "zip": "4054",
+    "gov": "Sousse",
+    "deleg": "Sousse Jaouhara"
+  },
+  {
+    "zip": "4059",
+    "gov": "Sousse",
+    "deleg": "Sousse Ville"
+  },
+  {
+    "zip": "4060",
+    "gov": "Sousse",
+    "deleg": "Kalaa El Kebira"
+  },
+  {
+    "zip": "4061",
+    "gov": "Sousse",
+    "deleg": "Sousse Jaouhara"
+  },
+  {
+    "zip": "4062",
+    "gov": "Sousse",
+    "deleg": "Kalaa El Kebira"
+  },
+  {
+    "zip": "4063",
+    "gov": "Sousse",
+    "deleg": "Kalaa El Kebira"
+  },
+  {
+    "zip": "4070",
+    "gov": "Sousse",
+    "deleg": "Msaken"
+  },
+  {
+    "zip": "4071",
+    "gov": "Sousse",
+    "deleg": "Sousse Jaouhara"
+  },
+  {
+    "zip": "4081",
+    "gov": "Sousse",
+    "deleg": "Sousse Riadh"
+  },
+  {
+    "zip": "4082",
+    "gov": "Sousse",
+    "deleg": "Bou Ficha"
+  },
+  {
+    "zip": "4089",
+    "gov": "Sousse",
+    "deleg": "Hammam Sousse"
+  },
+  {
+    "zip": "4092",
+    "gov": "Sousse",
+    "deleg": "Bou Ficha"
+  },
+  {
+    "zip": "4095",
+    "gov": "Sousse",
+    "deleg": "Enfidha"
+  },
+  {
+    "zip": "4099",
+    "gov": "Sousse",
+    "deleg": "Msaken"
+  },
+  {
+    "zip": "4100",
+    "gov": "Medenine",
+    "deleg": "Medenine Sud"
+  },
+  {
+    "zip": "4110",
+    "gov": "Medenine",
+    "deleg": "Beni Khedache"
+  },
+  {
+    "zip": "4111",
+    "gov": "Medenine",
+    "deleg": "Medenine Nord"
+  },
+  {
+    "zip": "4112",
+    "gov": "Medenine",
+    "deleg": "Beni Khedache"
+  },
+  {
+    "zip": "4113",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4114",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4115",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4116",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4117",
+    "gov": "Medenine",
+    "deleg": "Sidi Makhlouf"
+  },
+  {
+    "zip": "4120",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4121",
+    "gov": "Medenine",
+    "deleg": "Medenine Nord"
+  },
+  {
+    "zip": "4122",
+    "gov": "Medenine",
+    "deleg": "Beni Khedache"
+  },
+  {
+    "zip": "4123",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4124",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4125",
+    "gov": "Medenine",
+    "deleg": "Ajim"
+  },
+  {
+    "zip": "4126",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4127",
+    "gov": "Medenine",
+    "deleg": "Medenine Sud"
+  },
+  {
+    "zip": "4130",
+    "gov": "Medenine",
+    "deleg": "Medenine Nord"
+  },
+  {
+    "zip": "4131",
+    "gov": "Medenine",
+    "deleg": "Medenine Sud"
+  },
+  {
+    "zip": "4132",
+    "gov": "Medenine",
+    "deleg": "Beni Khedache"
+  },
+  {
+    "zip": "4133",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4134",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4135",
+    "gov": "Medenine",
+    "deleg": "Ajim"
+  },
+  {
+    "zip": "4136",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4137",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4141",
+    "gov": "Medenine",
+    "deleg": "Medenine Sud"
+  },
+  {
+    "zip": "4142",
+    "gov": "Medenine",
+    "deleg": "Medenine Nord"
+  },
+  {
+    "zip": "4143",
+    "gov": "Medenine",
+    "deleg": "Medenine Sud"
+  },
+  {
+    "zip": "4144",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4145",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4146",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4150",
+    "gov": "Medenine",
+    "deleg": "Ajim"
+  },
+  {
+    "zip": "4151",
+    "gov": "Medenine",
+    "deleg": "Beni Khedache"
+  },
+  {
+    "zip": "4153",
+    "gov": "Medenine",
+    "deleg": "Ben Guerdane"
+  },
+  {
+    "zip": "4154",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4155",
+    "gov": "Medenine",
+    "deleg": "Ajim"
+  },
+  {
+    "zip": "4156",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4159",
+    "gov": "Medenine",
+    "deleg": "Beni Khedache"
+  },
+  {
+    "zip": "4160",
+    "gov": "Medenine",
+    "deleg": "Ben Guerdane"
+  },
+  {
+    "zip": "4163",
+    "gov": "Medenine",
+    "deleg": "Ben Guerdane"
+  },
+  {
+    "zip": "4164",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4165",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4166",
+    "gov": "Medenine",
+    "deleg": "Ajim"
+  },
+  {
+    "zip": "4170",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4172",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4173",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4174",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4175",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4176",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4179",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4180",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4181",
+    "gov": "Medenine",
+    "deleg": "Sidi Makhlouf"
+  },
+  {
+    "zip": "4182",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4183",
+    "gov": "Medenine",
+    "deleg": "Ben Guerdane"
+  },
+  {
+    "zip": "4185",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4186",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4190",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4191",
+    "gov": "Medenine",
+    "deleg": "Sidi Makhlouf"
+  },
+  {
+    "zip": "4192",
+    "gov": "Medenine",
+    "deleg": "Ben Guerdane"
+  },
+  {
+    "zip": "4193",
+    "gov": "Medenine",
+    "deleg": "Ben Guerdane"
+  },
+  {
+    "zip": "4194",
+    "gov": "Medenine",
+    "deleg": "Zarzis"
+  },
+  {
+    "zip": "4195",
+    "gov": "Medenine",
+    "deleg": "Houmet Essouk"
+  },
+  {
+    "zip": "4199",
+    "gov": "Medenine",
+    "deleg": "Midoun"
+  },
+  {
+    "zip": "4200",
+    "gov": "Kebili",
+    "deleg": "Kebili Sud"
+  },
+  {
+    "zip": "4210",
+    "gov": "Kebili",
+    "deleg": "El Faouar"
+  },
+  {
+    "zip": "4211",
+    "gov": "Kebili",
+    "deleg": "Kebili Sud"
+  },
+  {
+    "zip": "4212",
+    "gov": "Kebili",
+    "deleg": "Souk El Ahad"
+  },
+  {
+    "zip": "4213",
+    "gov": "Kebili",
+    "deleg": "Souk El Ahad"
+  },
+  {
+    "zip": "4214",
+    "gov": "Kebili",
+    "deleg": "Kebili Sud"
+  },
+  {
+    "zip": "4215",
+    "gov": "Kebili",
+    "deleg": "Douz"
+  },
+  {
+    "zip": "4216",
+    "gov": "Kebili",
+    "deleg": "Douz"
+  },
+  {
+    "zip": "4222",
+    "gov": "Kebili",
+    "deleg": "Douz"
+  },
+  {
+    "zip": "4223",
+    "gov": "Kebili",
+    "deleg": "Souk El Ahad"
+  },
+  {
+    "zip": "4224",
+    "gov": "Kebili",
+    "deleg": "Kebili Sud"
+  },
+  {
+    "zip": "4230",
+    "gov": "Kebili",
+    "deleg": "Souk El Ahad"
+  },
+  {
+    "zip": "4231",
+    "gov": "Kebili",
+    "deleg": "Souk El Ahad"
+  },
+  {
+    "zip": "4232",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "4233",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "4234",
+    "gov": "Kebili",
+    "deleg": "Douz"
+  },
+  {
+    "zip": "4235",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "4236",
+    "gov": "Kebili",
+    "deleg": "Souk El Ahad"
+  },
+  {
+    "zip": "4237",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "4242",
+    "gov": "Kebili",
+    "deleg": "Kebili Sud"
+  },
+  {
+    "zip": "4243",
+    "gov": "Kebili",
+    "deleg": "Kebili Sud"
+  },
+  {
+    "zip": "4253",
+    "gov": "Kebili",
+    "deleg": "Kebili Sud"
+  },
+  {
+    "zip": "4260",
+    "gov": "Kebili",
+    "deleg": "Douz"
+  },
+  {
+    "zip": "4261",
+    "gov": "Kebili",
+    "deleg": "Douz"
+  },
+  {
+    "zip": "4263",
+    "gov": "Kebili",
+    "deleg": "Kebili Sud"
+  },
+  {
+    "zip": "4264",
+    "gov": "Kebili",
+    "deleg": "El Faouar"
+  },
+  {
+    "zip": "4273",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "4274",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "4280",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "4283",
+    "gov": "Kebili",
+    "deleg": "Souk El Ahad"
+  },
+  {
+    "zip": "4293",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "4294",
+    "gov": "Kebili",
+    "deleg": "Kebili Nord"
+  },
+  {
+    "zip": "5000",
+    "gov": "Monastir",
+    "deleg": "Monastir"
+  },
+  {
+    "zip": "5010",
+    "gov": "Monastir",
+    "deleg": "Ouerdanine"
+  },
+  {
+    "zip": "5011",
+    "gov": "Monastir",
+    "deleg": "Monastir"
+  },
+  {
+    "zip": "5012",
+    "gov": "Monastir",
+    "deleg": "Sahline"
+  },
+  {
+    "zip": "5013",
+    "gov": "Monastir",
+    "deleg": "Jemmal"
+  },
+  {
+    "zip": "5014",
+    "gov": "Monastir",
+    "deleg": "Beni Hassen"
+  },
+  {
+    "zip": "5015",
+    "gov": "Monastir",
+    "deleg": "Sayada Lamta Bou Hajar"
+  },
+  {
+    "zip": "5016",
+    "gov": "Monastir",
+    "deleg": "Ksar Helal"
+  },
+  {
+    "zip": "5017",
+    "gov": "Monastir",
+    "deleg": "Jemmal"
+  },
+  {
+    "zip": "5020",
+    "gov": "Monastir",
+    "deleg": "Jemmal"
+  },
+  {
+    "zip": "5021",
+    "gov": "Monastir",
+    "deleg": "Bembla"
+  },
+  {
+    "zip": "5022",
+    "gov": "Monastir",
+    "deleg": "Bembla"
+  },
+  {
+    "zip": "5023",
+    "gov": "Monastir",
+    "deleg": "Ksibet El Mediouni"
+  },
+  {
+    "zip": "5024",
+    "gov": "Monastir",
+    "deleg": "Moknine"
+  },
+  {
+    "zip": "5025",
+    "gov": "Monastir",
+    "deleg": "Ksibet El Mediouni"
+  },
+  {
+    "zip": "5026",
+    "gov": "Monastir",
+    "deleg": "Beni Hassen"
+  },
+  {
+    "zip": "5027",
+    "gov": "Monastir",
+    "deleg": "Jemmal"
+  },
+  {
+    "zip": "5028",
+    "gov": "Monastir",
+    "deleg": "Jemmal"
+  },
+  {
+    "zip": "5030",
+    "gov": "Monastir",
+    "deleg": "Jemmal"
+  },
+  {
+    "zip": "5031",
+    "gov": "Monastir",
+    "deleg": "Ksibet El Mediouni"
+  },
+  {
+    "zip": "5032",
+    "gov": "Monastir",
+    "deleg": "Bembla"
+  },
+  {
+    "zip": "5033",
+    "gov": "Monastir",
+    "deleg": "Zeramdine"
+  },
+  {
+    "zip": "5034",
+    "gov": "Monastir",
+    "deleg": "Moknine"
+  },
+  {
+    "zip": "5035",
+    "gov": "Monastir",
+    "deleg": "Sayada Lamta Bou Hajar"
+  },
+  {
+    "zip": "5036",
+    "gov": "Monastir",
+    "deleg": "Bembla"
+  },
+  {
+    "zip": "5040",
+    "gov": "Monastir",
+    "deleg": "Zeramdine"
+  },
+  {
+    "zip": "5041",
+    "gov": "Monastir",
+    "deleg": "Ouerdanine"
+  },
+  {
+    "zip": "5042",
+    "gov": "Monastir",
+    "deleg": "Sahline"
+  },
+  {
+    "zip": "5043",
+    "gov": "Monastir",
+    "deleg": "Jemmal"
+  },
+  {
+    "zip": "5044",
+    "gov": "Monastir",
+    "deleg": "Moknine"
+  },
+  {
+    "zip": "5045",
+    "gov": "Monastir",
+    "deleg": "Zeramdine"
+  },
+  {
+    "zip": "5046",
+    "gov": "Monastir",
+    "deleg": "Zeramdine"
+  },
+  {
+    "zip": "5050",
+    "gov": "Monastir",
+    "deleg": "Moknine"
+  },
+  {
+    "zip": "5051",
+    "gov": "Monastir",
+    "deleg": "Moknine"
+  },
+  {
+    "zip": "5052",
+    "gov": "Monastir",
+    "deleg": "Ouerdanine"
+  },
+  {
+    "zip": "5053",
+    "gov": "Monastir",
+    "deleg": "Moknine"
+  },
+  {
+    "zip": "5054",
+    "gov": "Monastir",
+    "deleg": "Moknine"
+  },
+  {
+    "zip": "5060",
+    "gov": "Monastir",
+    "deleg": "Monastir"
+  },
+  {
+    "zip": "5061",
+    "gov": "Monastir",
+    "deleg": "Sahline"
+  },
+  {
+    "zip": "5062",
+    "gov": "Monastir",
+    "deleg": "Beni Hassen"
+  },
+  {
+    "zip": "5063",
+    "gov": "Monastir",
+    "deleg": "Ksibet El Mediouni"
+  },
+  {
+    "zip": "5065",
+    "gov": "Monastir",
+    "deleg": "Monastir"
+  },
+  {
+    "zip": "5066",
+    "gov": "Monastir",
+    "deleg": "Teboulba"
+  },
+  {
+    "zip": "5070",
+    "gov": "Monastir",
+    "deleg": "Ksar Helal"
+  },
+  {
+    "zip": "5071",
+    "gov": "Monastir",
+    "deleg": "Moknine"
+  },
+  {
+    "zip": "5076",
+    "gov": "Monastir",
+    "deleg": "Bembla"
+  },
+  {
+    "zip": "5079",
+    "gov": "Monastir",
+    "deleg": "Monastir"
+  },
+  {
+    "zip": "5080",
+    "gov": "Monastir",
+    "deleg": "Teboulba"
+  },
+  {
+    "zip": "5089",
+    "gov": "Monastir",
+    "deleg": "Monastir"
+  },
+  {
+    "zip": "5090",
+    "gov": "Monastir",
+    "deleg": "Bekalta"
+  },
+  {
+    "zip": "5091",
+    "gov": "Monastir",
+    "deleg": "Bekalta"
+  },
+  {
+    "zip": "5092",
+    "gov": "Monastir",
+    "deleg": "Bekalta"
+  },
+  {
+    "zip": "5099",
+    "gov": "Monastir",
+    "deleg": "Sayada Lamta Bou Hajar"
+  },
+  {
+    "zip": "5100",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "5110",
+    "gov": "Mahdia",
+    "deleg": "Bou Merdes"
+  },
+  {
+    "zip": "5111",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "5112",
+    "gov": "Mahdia",
+    "deleg": "Bou Merdes"
+  },
+  {
+    "zip": "5113",
+    "gov": "Mahdia",
+    "deleg": "Hbira"
+  },
+  {
+    "zip": "5114",
+    "gov": "Mahdia",
+    "deleg": "Melloulech"
+  },
+  {
+    "zip": "5115",
+    "gov": "Mahdia",
+    "deleg": "Ksour Essaf"
+  },
+  {
+    "zip": "5116",
+    "gov": "Mahdia",
+    "deleg": "Ksour Essaf"
+  },
+  {
+    "zip": "5117",
+    "gov": "Mahdia",
+    "deleg": "Melloulech"
+  },
+  {
+    "zip": "5120",
+    "gov": "Mahdia",
+    "deleg": "Ouled Chamakh"
+  },
+  {
+    "zip": "5121",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "5122",
+    "gov": "Mahdia",
+    "deleg": "Hbira"
+  },
+  {
+    "zip": "5123",
+    "gov": "Mahdia",
+    "deleg": "Ouled Chamakh"
+  },
+  {
+    "zip": "5124",
+    "gov": "Mahdia",
+    "deleg": "El Jem"
+  },
+  {
+    "zip": "5125",
+    "gov": "Mahdia",
+    "deleg": "Bou Merdes"
+  },
+  {
+    "zip": "5126",
+    "gov": "Mahdia",
+    "deleg": "Ksour Essaf"
+  },
+  {
+    "zip": "5127",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "5129",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "5130",
+    "gov": "Mahdia",
+    "deleg": "Chorbane"
+  },
+  {
+    "zip": "5131",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "5132",
+    "gov": "Mahdia",
+    "deleg": "Sidi Alouene"
+  },
+  {
+    "zip": "5133",
+    "gov": "Mahdia",
+    "deleg": "Chorbane"
+  },
+  {
+    "zip": "5134",
+    "gov": "Mahdia",
+    "deleg": "Souassi"
+  },
+  {
+    "zip": "5135",
+    "gov": "Mahdia",
+    "deleg": "Chorbane"
+  },
+  {
+    "zip": "5136",
+    "gov": "Mahdia",
+    "deleg": "Ksour Essaf"
+  },
+  {
+    "zip": "5140",
+    "gov": "Mahdia",
+    "deleg": "Souassi"
+  },
+  {
+    "zip": "5141",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "5144",
+    "gov": "Mahdia",
+    "deleg": "Souassi"
+  },
+  {
+    "zip": "5145",
+    "gov": "Mahdia",
+    "deleg": "Souassi"
+  },
+  {
+    "zip": "5146",
+    "gov": "Mahdia",
+    "deleg": "Ksour Essaf"
+  },
+  {
+    "zip": "5150",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "5151",
+    "gov": "Mahdia",
+    "deleg": "Sidi Alouene"
+  },
+  {
+    "zip": "5153",
+    "gov": "Mahdia",
+    "deleg": "El Jem"
+  },
+  {
+    "zip": "5154",
+    "gov": "Mahdia",
+    "deleg": "Hbira"
+  },
+  {
+    "zip": "5155",
+    "gov": "Mahdia",
+    "deleg": "Souassi"
+  },
+  {
+    "zip": "5160",
+    "gov": "Mahdia",
+    "deleg": "El Jem"
+  },
+  {
+    "zip": "5170",
+    "gov": "Mahdia",
+    "deleg": "La Chebba"
+  },
+  {
+    "zip": "5180",
+    "gov": "Mahdia",
+    "deleg": "Ksour Essaf"
+  },
+  {
+    "zip": "5189",
+    "gov": "Mahdia",
+    "deleg": "Ksour Essaf"
+  },
+  {
+    "zip": "5190",
+    "gov": "Mahdia",
+    "deleg": "Sidi Alouene"
+  },
+  {
+    "zip": "5192",
+    "gov": "Mahdia",
+    "deleg": "Sidi Alouene"
+  },
+  {
+    "zip": "5193",
+    "gov": "Mahdia",
+    "deleg": "Sidi Alouene"
+  },
+  {
+    "zip": "5199",
+    "gov": "Mahdia",
+    "deleg": "Mahdia"
+  },
+  {
+    "zip": "6000",
+    "gov": "Gabes",
+    "deleg": "Gabes Medina"
+  },
+  {
+    "zip": "6001",
+    "gov": "Gabes",
+    "deleg": "Gabes Medina"
+  },
+  {
+    "zip": "6010",
+    "gov": "Gabes",
+    "deleg": "El Metouia"
+  },
+  {
+    "zip": "6011",
+    "gov": "Gabes",
+    "deleg": "Gabes Sud"
+  },
+  {
+    "zip": "6012",
+    "gov": "Gabes",
+    "deleg": "Gabes Sud"
+  },
+  {
+    "zip": "6013",
+    "gov": "Gabes",
+    "deleg": "El Hamma"
+  },
+  {
+    "zip": "6014",
+    "gov": "Gabes",
+    "deleg": "Gabes Sud"
+  },
+  {
+    "zip": "6015",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6016",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6020",
+    "gov": "Gabes",
+    "deleg": "El Hamma"
+  },
+  {
+    "zip": "6021",
+    "gov": "Gabes",
+    "deleg": "Ghannouche"
+  },
+  {
+    "zip": "6022",
+    "gov": "Gabes",
+    "deleg": "Gabes Sud"
+  },
+  {
+    "zip": "6023",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6024",
+    "gov": "Gabes",
+    "deleg": "Nouvelle Matmata"
+  },
+  {
+    "zip": "6025",
+    "gov": "Gabes",
+    "deleg": "Nouvelle Matmata"
+  },
+  {
+    "zip": "6026",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6027",
+    "gov": "Gabes",
+    "deleg": "El Hamma"
+  },
+  {
+    "zip": "6030",
+    "gov": "Gabes",
+    "deleg": "Menzel Habib"
+  },
+  {
+    "zip": "6031",
+    "gov": "Gabes",
+    "deleg": "Gabes Ouest"
+  },
+  {
+    "zip": "6032",
+    "gov": "Gabes",
+    "deleg": "Gabes Sud"
+  },
+  {
+    "zip": "6033",
+    "gov": "Gabes",
+    "deleg": "Gabes Sud"
+  },
+  {
+    "zip": "6034",
+    "gov": "Gabes",
+    "deleg": "Matmata"
+  },
+  {
+    "zip": "6035",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6036",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6040",
+    "gov": "Gabes",
+    "deleg": "Gabes Medina"
+  },
+  {
+    "zip": "6041",
+    "gov": "Gabes",
+    "deleg": "Gabes Ouest"
+  },
+  {
+    "zip": "6042",
+    "gov": "Gabes",
+    "deleg": "El Metouia"
+  },
+  {
+    "zip": "6043",
+    "gov": "Gabes",
+    "deleg": "Nouvelle Matmata"
+  },
+  {
+    "zip": "6044",
+    "gov": "Gabes",
+    "deleg": "Nouvelle Matmata"
+  },
+  {
+    "zip": "6045",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6046",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6051",
+    "gov": "Gabes",
+    "deleg": "Gabes Ouest"
+  },
+  {
+    "zip": "6052",
+    "gov": "Gabes",
+    "deleg": "El Metouia"
+  },
+  {
+    "zip": "6054",
+    "gov": "Gabes",
+    "deleg": "Matmata"
+  },
+  {
+    "zip": "6055",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6056",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6060",
+    "gov": "Gabes",
+    "deleg": "El Hamma"
+  },
+  {
+    "zip": "6061",
+    "gov": "Gabes",
+    "deleg": "Gabes Medina"
+  },
+  {
+    "zip": "6062",
+    "gov": "Gabes",
+    "deleg": "El Hamma"
+  },
+  {
+    "zip": "6070",
+    "gov": "Gabes",
+    "deleg": "Matmata"
+  },
+  {
+    "zip": "6071",
+    "gov": "Gabes",
+    "deleg": "Gabes Medina"
+  },
+  {
+    "zip": "6072",
+    "gov": "Gabes",
+    "deleg": "Gabes Sud"
+  },
+  {
+    "zip": "6080",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6081",
+    "gov": "Gabes",
+    "deleg": "Mareth"
+  },
+  {
+    "zip": "6089",
+    "gov": "Gabes",
+    "deleg": "El Metouia"
+  },
+  {
+    "zip": "6092",
+    "gov": "Gabes",
+    "deleg": "El Hamma"
+  },
+  {
+    "zip": "6095",
+    "gov": "Gabes",
+    "deleg": "El Hamma"
+  },
+  {
+    "zip": "6099",
+    "gov": "Gabes",
+    "deleg": "Gabes Medina"
+  },
+  {
+    "zip": "6100",
+    "gov": "Siliana",
+    "deleg": "Siliana Sud"
+  },
+  {
+    "zip": "6110",
+    "gov": "Siliana",
+    "deleg": "Gaafour"
+  },
+  {
+    "zip": "6111",
+    "gov": "Siliana",
+    "deleg": "Gaafour"
+  },
+  {
+    "zip": "6112",
+    "gov": "Siliana",
+    "deleg": "Sidi Bou Rouis"
+  },
+  {
+    "zip": "6113",
+    "gov": "Siliana",
+    "deleg": "Sidi Bou Rouis"
+  },
+  {
+    "zip": "6114",
+    "gov": "Siliana",
+    "deleg": "Kesra"
+  },
+  {
+    "zip": "6115",
+    "gov": "Siliana",
+    "deleg": "Bargou"
+  },
+  {
+    "zip": "6116",
+    "gov": "Siliana",
+    "deleg": "El Aroussa"
+  },
+  {
+    "zip": "6120",
+    "gov": "Siliana",
+    "deleg": "Le Krib"
+  },
+  {
+    "zip": "6121",
+    "gov": "Siliana",
+    "deleg": "Gaafour"
+  },
+  {
+    "zip": "6122",
+    "gov": "Siliana",
+    "deleg": "Le Krib"
+  },
+  {
+    "zip": "6123",
+    "gov": "Siliana",
+    "deleg": "Siliana Sud"
+  },
+  {
+    "zip": "6124",
+    "gov": "Siliana",
+    "deleg": "Siliana Sud"
+  },
+  {
+    "zip": "6125",
+    "gov": "Siliana",
+    "deleg": "Le Krib"
+  },
+  {
+    "zip": "6126",
+    "gov": "Siliana",
+    "deleg": "Gaafour"
+  },
+  {
+    "zip": "6130",
+    "gov": "Siliana",
+    "deleg": "Siliana Nord"
+  },
+  {
+    "zip": "6131",
+    "gov": "Siliana",
+    "deleg": "Kesra"
+  },
+  {
+    "zip": "6132",
+    "gov": "Siliana",
+    "deleg": "Le Krib"
+  },
+  {
+    "zip": "6133",
+    "gov": "Siliana",
+    "deleg": "Kesra"
+  },
+  {
+    "zip": "6134",
+    "gov": "Siliana",
+    "deleg": "Sidi Bou Rouis"
+  },
+  {
+    "zip": "6135",
+    "gov": "Siliana",
+    "deleg": "El Aroussa"
+  },
+  {
+    "zip": "6140",
+    "gov": "Siliana",
+    "deleg": "Makthar"
+  },
+  {
+    "zip": "6141",
+    "gov": "Siliana",
+    "deleg": "Kesra"
+  },
+  {
+    "zip": "6142",
+    "gov": "Siliana",
+    "deleg": "Makthar"
+  },
+  {
+    "zip": "6143",
+    "gov": "Siliana",
+    "deleg": "Siliana Sud"
+  },
+  {
+    "zip": "6150",
+    "gov": "Siliana",
+    "deleg": "Rohia"
+  },
+  {
+    "zip": "6151",
+    "gov": "Siliana",
+    "deleg": "Makthar"
+  },
+  {
+    "zip": "6152",
+    "gov": "Siliana",
+    "deleg": "Rohia"
+  },
+  {
+    "zip": "6170",
+    "gov": "Siliana",
+    "deleg": "Bargou"
+  },
+  {
+    "zip": "6172",
+    "gov": "Siliana",
+    "deleg": "Gaafour"
+  },
+  {
+    "zip": "6173",
+    "gov": "Siliana",
+    "deleg": "Bargou"
+  },
+  {
+    "zip": "6180",
+    "gov": "Siliana",
+    "deleg": "Bou Arada"
+  },
+  {
+    "zip": "6196",
+    "gov": "Siliana",
+    "deleg": "Siliana Sud"
+  },
+  {
+    "zip": "7000",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Nord"
+  },
+  {
+    "zip": "7001",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Nord"
+  },
+  {
+    "zip": "7002",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Nord"
+  },
+  {
+    "zip": "7003",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Nord"
+  },
+  {
+    "zip": "7010",
+    "gov": "Bizerte",
+    "deleg": "Sejnane"
+  },
+  {
+    "zip": "7011",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Sud"
+  },
+  {
+    "zip": "7012",
+    "gov": "Bizerte",
+    "deleg": "Joumine"
+  },
+  {
+    "zip": "7013",
+    "gov": "Bizerte",
+    "deleg": "Utique"
+  },
+  {
+    "zip": "7014",
+    "gov": "Bizerte",
+    "deleg": "Ghar El Melh"
+  },
+  {
+    "zip": "7015",
+    "gov": "Bizerte",
+    "deleg": "Ras Jebel"
+  },
+  {
+    "zip": "7016",
+    "gov": "Bizerte",
+    "deleg": "El Alia"
+  },
+  {
+    "zip": "7020",
+    "gov": "Bizerte",
+    "deleg": "Joumine"
+  },
+  {
+    "zip": "7021",
+    "gov": "Bizerte",
+    "deleg": "Jarzouna"
+  },
+  {
+    "zip": "7022",
+    "gov": "Bizerte",
+    "deleg": "Mateur"
+  },
+  {
+    "zip": "7023",
+    "gov": "Bizerte",
+    "deleg": "Utique"
+  },
+  {
+    "zip": "7024",
+    "gov": "Bizerte",
+    "deleg": "Ghar El Melh"
+  },
+  {
+    "zip": "7025",
+    "gov": "Bizerte",
+    "deleg": "Ras Jebel"
+  },
+  {
+    "zip": "7026",
+    "gov": "Bizerte",
+    "deleg": "Menzel Jemil"
+  },
+  {
+    "zip": "7027",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Sud"
+  },
+  {
+    "zip": "7029",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Nord"
+  },
+  {
+    "zip": "7030",
+    "gov": "Bizerte",
+    "deleg": "Mateur"
+  },
+  {
+    "zip": "7031",
+    "gov": "Bizerte",
+    "deleg": "Sejnane"
+  },
+  {
+    "zip": "7032",
+    "gov": "Bizerte",
+    "deleg": "Tinja"
+  },
+  {
+    "zip": "7033",
+    "gov": "Bizerte",
+    "deleg": "Ghar El Melh"
+  },
+  {
+    "zip": "7034",
+    "gov": "Bizerte",
+    "deleg": "Ras Jebel"
+  },
+  {
+    "zip": "7035",
+    "gov": "Bizerte",
+    "deleg": "Menzel Jemil"
+  },
+  {
+    "zip": "7036",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Sud"
+  },
+  {
+    "zip": "7040",
+    "gov": "Bizerte",
+    "deleg": "Ghezala"
+  },
+  {
+    "zip": "7041",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Sud"
+  },
+  {
+    "zip": "7042",
+    "gov": "Bizerte",
+    "deleg": "Menzel Bourguiba"
+  },
+  {
+    "zip": "7043",
+    "gov": "Bizerte",
+    "deleg": "Utique"
+  },
+  {
+    "zip": "7045",
+    "gov": "Bizerte",
+    "deleg": "Ras Jebel"
+  },
+  {
+    "zip": "7050",
+    "gov": "Bizerte",
+    "deleg": "Mateur"
+  },
+  {
+    "zip": "7053",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Nord"
+  },
+  {
+    "zip": "7060",
+    "gov": "Bizerte",
+    "deleg": "Utique"
+  },
+  {
+    "zip": "7061",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Nord"
+  },
+  {
+    "zip": "7063",
+    "gov": "Bizerte",
+    "deleg": "Utique"
+  },
+  {
+    "zip": "7064",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Sud"
+  },
+  {
+    "zip": "7070",
+    "gov": "Bizerte",
+    "deleg": "Ras Jebel"
+  },
+  {
+    "zip": "7071",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Sud"
+  },
+  {
+    "zip": "7072",
+    "gov": "Bizerte",
+    "deleg": "Menzel Bourguiba"
+  },
+  {
+    "zip": "7075",
+    "gov": "Bizerte",
+    "deleg": "Ras Jebel"
+  },
+  {
+    "zip": "7080",
+    "gov": "Bizerte",
+    "deleg": "Menzel Jemil"
+  },
+  {
+    "zip": "7081",
+    "gov": "Bizerte",
+    "deleg": "El Alia"
+  },
+  {
+    "zip": "7093",
+    "gov": "Bizerte",
+    "deleg": "El Alia"
+  },
+  {
+    "zip": "7094",
+    "gov": "Bizerte",
+    "deleg": "Bizerte Sud"
+  },
+  {
+    "zip": "7097",
+    "gov": "Bizerte",
+    "deleg": "Sejnane"
+  },
+  {
+    "zip": "7098",
+    "gov": "Bizerte",
+    "deleg": "Ras Jebel"
+  },
+  {
+    "zip": "7100",
+    "gov": "Kef",
+    "deleg": "Le Kef Est"
+  },
+  {
+    "zip": "7110",
+    "gov": "Kef",
+    "deleg": "Nebeur"
+  },
+  {
+    "zip": "7111",
+    "gov": "Kef",
+    "deleg": "Nebeur"
+  },
+  {
+    "zip": "7112",
+    "gov": "Kef",
+    "deleg": "Touiref"
+  },
+  {
+    "zip": "7113",
+    "gov": "Kef",
+    "deleg": "Kalaa El Khasba"
+  },
+  {
+    "zip": "7114",
+    "gov": "Kef",
+    "deleg": "Jerissa"
+  },
+  {
+    "zip": "7115",
+    "gov": "Kef",
+    "deleg": "El Ksour"
+  },
+  {
+    "zip": "7116",
+    "gov": "Kef",
+    "deleg": "Le Kef Est"
+  },
+  {
+    "zip": "7117",
+    "gov": "Kef",
+    "deleg": "Le Kef Ouest"
+  },
+  {
+    "zip": "7120",
+    "gov": "Kef",
+    "deleg": "Sakiet Sidi Youssef"
+  },
+  {
+    "zip": "7122",
+    "gov": "Kef",
+    "deleg": "Le Kef Est"
+  },
+  {
+    "zip": "7123",
+    "gov": "Kef",
+    "deleg": "Kalaa El Khasba"
+  },
+  {
+    "zip": "7125",
+    "gov": "Kef",
+    "deleg": "Sakiet Sidi Youssef"
+  },
+  {
+    "zip": "7130",
+    "gov": "Kef",
+    "deleg": "Kalaat Sinane"
+  },
+  {
+    "zip": "7131",
+    "gov": "Kef",
+    "deleg": "Nebeur"
+  },
+  {
+    "zip": "7132",
+    "gov": "Kef",
+    "deleg": "Tajerouine"
+  },
+  {
+    "zip": "7133",
+    "gov": "Kef",
+    "deleg": "Tajerouine"
+  },
+  {
+    "zip": "7134",
+    "gov": "Kef",
+    "deleg": "Le Kef Est"
+  },
+  {
+    "zip": "7135",
+    "gov": "Kef",
+    "deleg": "Kalaat Sinane"
+  },
+  {
+    "zip": "7136",
+    "gov": "Kef",
+    "deleg": "Kalaat Sinane"
+  },
+  {
+    "zip": "7141",
+    "gov": "Kef",
+    "deleg": "Nebeur"
+  },
+  {
+    "zip": "7150",
+    "gov": "Kef",
+    "deleg": "Tajerouine"
+  },
+  {
+    "zip": "7151",
+    "gov": "Kef",
+    "deleg": "Tajerouine"
+  },
+  {
+    "zip": "7153",
+    "gov": "Kef",
+    "deleg": "Tajerouine"
+  },
+  {
+    "zip": "7160",
+    "gov": "Kef",
+    "deleg": "El Ksour"
+  },
+  {
+    "zip": "7170",
+    "gov": "Kef",
+    "deleg": "Dahmani"
+  },
+  {
+    "zip": "7180",
+    "gov": "Kef",
+    "deleg": "Le Sers"
+  },
+  {
+    "zip": "7194",
+    "gov": "Kef",
+    "deleg": "Le Kef Est"
+  },
+  {
+    "zip": "8000",
+    "gov": "Nabeul",
+    "deleg": "Nabeul"
+  },
+  {
+    "zip": "8010",
+    "gov": "Nabeul",
+    "deleg": "Menzel Bouzelfa"
+  },
+  {
+    "zip": "8011",
+    "gov": "Nabeul",
+    "deleg": "Dar Chaabane Elfehri"
+  },
+  {
+    "zip": "8012",
+    "gov": "Nabeul",
+    "deleg": "Grombalia"
+  },
+  {
+    "zip": "8013",
+    "gov": "Nabeul",
+    "deleg": "Beni Khiar"
+  },
+  {
+    "zip": "8014",
+    "gov": "Nabeul",
+    "deleg": "Beni Khalled"
+  },
+  {
+    "zip": "8015",
+    "gov": "Nabeul",
+    "deleg": "Menzel Temime"
+  },
+  {
+    "zip": "8016",
+    "gov": "Nabeul",
+    "deleg": "El Haouaria"
+  },
+  {
+    "zip": "8020",
+    "gov": "Nabeul",
+    "deleg": "Soliman"
+  },
+  {
+    "zip": "8021",
+    "gov": "Nabeul",
+    "deleg": "Beni Khalled"
+  },
+  {
+    "zip": "8022",
+    "gov": "Nabeul",
+    "deleg": "Bou Argoub"
+  },
+  {
+    "zip": "8023",
+    "gov": "Nabeul",
+    "deleg": "Beni Khiar"
+  },
+  {
+    "zip": "8024",
+    "gov": "Nabeul",
+    "deleg": "Korba"
+  },
+  {
+    "zip": "8025",
+    "gov": "Nabeul",
+    "deleg": "Hammam El Ghezaz"
+  },
+  {
+    "zip": "8026",
+    "gov": "Nabeul",
+    "deleg": "El Haouaria"
+  },
+  {
+    "zip": "8030",
+    "gov": "Nabeul",
+    "deleg": "Grombalia"
+  },
+  {
+    "zip": "8031",
+    "gov": "Nabeul",
+    "deleg": "Takelsa"
+  },
+  {
+    "zip": "8032",
+    "gov": "Nabeul",
+    "deleg": "Hammamet"
+  },
+  {
+    "zip": "8033",
+    "gov": "Nabeul",
+    "deleg": "Korba"
+  },
+  {
+    "zip": "8034",
+    "gov": "Nabeul",
+    "deleg": "Menzel Temime"
+  },
+  {
+    "zip": "8035",
+    "gov": "Nabeul",
+    "deleg": "Kelibia"
+  },
+  {
+    "zip": "8036",
+    "gov": "Nabeul",
+    "deleg": "El Haouaria"
+  },
+  {
+    "zip": "8040",
+    "gov": "Nabeul",
+    "deleg": "Bou Argoub"
+  },
+  {
+    "zip": "8041",
+    "gov": "Nabeul",
+    "deleg": "Soliman"
+  },
+  {
+    "zip": "8042",
+    "gov": "Nabeul",
+    "deleg": "Hammamet"
+  },
+  {
+    "zip": "8043",
+    "gov": "Nabeul",
+    "deleg": "Korba"
+  },
+  {
+    "zip": "8044",
+    "gov": "Nabeul",
+    "deleg": "El Mida"
+  },
+  {
+    "zip": "8045",
+    "gov": "Nabeul",
+    "deleg": "El Haouaria"
+  },
+  {
+    "zip": "8046",
+    "gov": "Nabeul",
+    "deleg": "El Haouaria"
+  },
+  {
+    "zip": "8050",
+    "gov": "Nabeul",
+    "deleg": "Hammamet"
+  },
+  {
+    "zip": "8051",
+    "gov": "Nabeul",
+    "deleg": "Soliman"
+  },
+  {
+    "zip": "8052",
+    "gov": "Nabeul",
+    "deleg": "Grombalia"
+  },
+  {
+    "zip": "8053",
+    "gov": "Nabeul",
+    "deleg": "Korba"
+  },
+  {
+    "zip": "8054",
+    "gov": "Nabeul",
+    "deleg": "Menzel Temime"
+  },
+  {
+    "zip": "8055",
+    "gov": "Nabeul",
+    "deleg": "Kelibia"
+  },
+  {
+    "zip": "8056",
+    "gov": "Nabeul",
+    "deleg": "Hammamet"
+  },
+  {
+    "zip": "8060",
+    "gov": "Nabeul",
+    "deleg": "Beni Khiar"
+  },
+  {
+    "zip": "8061",
+    "gov": "Nabeul",
+    "deleg": "Bou Argoub"
+  },
+  {
+    "zip": "8062",
+    "gov": "Nabeul",
+    "deleg": "Nabeul"
+  },
+  {
+    "zip": "8063",
+    "gov": "Nabeul",
+    "deleg": "Soliman"
+  },
+  {
+    "zip": "8064",
+    "gov": "Nabeul",
+    "deleg": "Menzel Temime"
+  },
+  {
+    "zip": "8065",
+    "gov": "Nabeul",
+    "deleg": "Kelibia"
+  },
+  {
+    "zip": "8066",
+    "gov": "Nabeul",
+    "deleg": "Beni Khiar"
+  },
+  {
+    "zip": "8069",
+    "gov": "Nabeul",
+    "deleg": "Kelibia"
+  },
+  {
+    "zip": "8070",
+    "gov": "Nabeul",
+    "deleg": "Korba"
+  },
+  {
+    "zip": "8071",
+    "gov": "Nabeul",
+    "deleg": "El Mida"
+  },
+  {
+    "zip": "8073",
+    "gov": "Nabeul",
+    "deleg": "Soliman"
+  },
+  {
+    "zip": "8074",
+    "gov": "Nabeul",
+    "deleg": "El Haouaria"
+  },
+  {
+    "zip": "8075",
+    "gov": "Nabeul",
+    "deleg": "Dar Chaabane Elfehri"
+  },
+  {
+    "zip": "8076",
+    "gov": "Nabeul",
+    "deleg": "Korba"
+  },
+  {
+    "zip": "8080",
+    "gov": "Nabeul",
+    "deleg": "Menzel Temime"
+  },
+  {
+    "zip": "8082",
+    "gov": "Nabeul",
+    "deleg": "Grombalia"
+  },
+  {
+    "zip": "8083",
+    "gov": "Nabeul",
+    "deleg": "Menzel Temime"
+  },
+  {
+    "zip": "8084",
+    "gov": "Nabeul",
+    "deleg": "Grombalia"
+  },
+  {
+    "zip": "8089",
+    "gov": "Nabeul",
+    "deleg": "El Mida"
+  },
+  {
+    "zip": "8090",
+    "gov": "Nabeul",
+    "deleg": "Kelibia"
+  },
+  {
+    "zip": "8091",
+    "gov": "Nabeul",
+    "deleg": "Menzel Bouzelfa"
+  },
+  {
+    "zip": "8092",
+    "gov": "Nabeul",
+    "deleg": "Grombalia"
+  },
+  {
+    "zip": "8093",
+    "gov": "Nabeul",
+    "deleg": "Grombalia"
+  },
+  {
+    "zip": "8094",
+    "gov": "Nabeul",
+    "deleg": "Kelibia"
+  },
+  {
+    "zip": "8096",
+    "gov": "Nabeul",
+    "deleg": "Hammam El Ghezaz"
+  },
+  {
+    "zip": "8099",
+    "gov": "Nabeul",
+    "deleg": "Beni Khalled"
+  },
+  {
+    "zip": "8100",
+    "gov": "Jendouba",
+    "deleg": "Jendouba"
+  },
+  {
+    "zip": "8110",
+    "gov": "Jendouba",
+    "deleg": "Tabarka"
+  },
+  {
+    "zip": "8111",
+    "gov": "Jendouba",
+    "deleg": "Jendouba"
+  },
+  {
+    "zip": "8112",
+    "gov": "Jendouba",
+    "deleg": "Tabarka"
+  },
+  {
+    "zip": "8114",
+    "gov": "Jendouba",
+    "deleg": "Fernana"
+  },
+  {
+    "zip": "8115",
+    "gov": "Jendouba",
+    "deleg": "Oued Mliz"
+  },
+  {
+    "zip": "8116",
+    "gov": "Jendouba",
+    "deleg": "Balta Bou Aouene"
+  },
+  {
+    "zip": "8117",
+    "gov": "Jendouba",
+    "deleg": "Jendouba Nord"
+  },
+  {
+    "zip": "8121",
+    "gov": "Jendouba",
+    "deleg": "Ain Draham"
+  },
+  {
+    "zip": "8122",
+    "gov": "Jendouba",
+    "deleg": "Jendouba"
+  },
+  {
+    "zip": "8124",
+    "gov": "Jendouba",
+    "deleg": "Bou Salem"
+  },
+  {
+    "zip": "8126",
+    "gov": "Jendouba",
+    "deleg": "Balta Bou Aouene"
+  },
+  {
+    "zip": "8127",
+    "gov": "Jendouba",
+    "deleg": "Tabarka"
+  },
+  {
+    "zip": "8128",
+    "gov": "Jendouba",
+    "deleg": "Tabarka"
+  },
+  {
+    "zip": "8130",
+    "gov": "Jendouba",
+    "deleg": "Ain Draham"
+  },
+  {
+    "zip": "8131",
+    "gov": "Jendouba",
+    "deleg": "Jendouba"
+  },
+  {
+    "zip": "8132",
+    "gov": "Jendouba",
+    "deleg": "Jendouba Nord"
+  },
+  {
+    "zip": "8134",
+    "gov": "Jendouba",
+    "deleg": "Ain Draham"
+  },
+  {
+    "zip": "8135",
+    "gov": "Jendouba",
+    "deleg": "Ain Draham"
+  },
+  {
+    "zip": "8136",
+    "gov": "Jendouba",
+    "deleg": "Ain Draham"
+  },
+  {
+    "zip": "8140",
+    "gov": "Jendouba",
+    "deleg": "Fernana"
+  },
+  {
+    "zip": "8141",
+    "gov": "Jendouba",
+    "deleg": "Fernana"
+  },
+  {
+    "zip": "8142",
+    "gov": "Jendouba",
+    "deleg": "Fernana"
+  },
+  {
+    "zip": "8143",
+    "gov": "Jendouba",
+    "deleg": "Bou Salem"
+  },
+  {
+    "zip": "8145",
+    "gov": "Jendouba",
+    "deleg": "Fernana"
+  },
+  {
+    "zip": "8153",
+    "gov": "Jendouba",
+    "deleg": "Jendouba"
+  },
+  {
+    "zip": "8160",
+    "gov": "Jendouba",
+    "deleg": "Ghardimaou"
+  },
+  {
+    "zip": "8161",
+    "gov": "Jendouba",
+    "deleg": "Ghardimaou"
+  },
+  {
+    "zip": "8162",
+    "gov": "Jendouba",
+    "deleg": "Ghardimaou"
+  },
+  {
+    "zip": "8170",
+    "gov": "Jendouba",
+    "deleg": "Bou Salem"
+  },
+  {
+    "zip": "8173",
+    "gov": "Jendouba",
+    "deleg": "Bou Salem"
+  },
+  {
+    "zip": "8181",
+    "gov": "Jendouba",
+    "deleg": "Tabarka"
+  },
+  {
+    "zip": "8185",
+    "gov": "Jendouba",
+    "deleg": "Oued Mliz"
+  },
+  {
+    "zip": "8189",
+    "gov": "Jendouba",
+    "deleg": "Jendouba Nord"
+  },
+  {
+    "zip": "8192",
+    "gov": "Jendouba",
+    "deleg": "Tabarka"
+  },
+  {
+    "zip": "8193",
+    "gov": "Jendouba",
+    "deleg": "Oued Mliz"
+  },
+  {
+    "zip": "8194",
+    "gov": "Jendouba",
+    "deleg": "Oued Mliz"
+  },
+  {
+    "zip": "8195",
+    "gov": "Jendouba",
+    "deleg": "Jendouba"
+  },
+  {
+    "zip": "8196",
+    "gov": "Jendouba",
+    "deleg": "Jendouba"
+  },
+  {
+    "zip": "9000",
+    "gov": "Beja",
+    "deleg": "Beja Nord"
+  },
+  {
+    "zip": "9010",
+    "gov": "Beja",
+    "deleg": "Nefza"
+  },
+  {
+    "zip": "9011",
+    "gov": "Beja",
+    "deleg": "Nefza"
+  },
+  {
+    "zip": "9012",
+    "gov": "Beja",
+    "deleg": "Nefza"
+  },
+  {
+    "zip": "9013",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9014",
+    "gov": "Beja",
+    "deleg": "Testour"
+  },
+  {
+    "zip": "9015",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9021",
+    "gov": "Beja",
+    "deleg": "Beja Sud"
+  },
+  {
+    "zip": "9022",
+    "gov": "Beja",
+    "deleg": "Thibar"
+  },
+  {
+    "zip": "9023",
+    "gov": "Beja",
+    "deleg": "Beja Sud"
+  },
+  {
+    "zip": "9024",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9029",
+    "gov": "Beja",
+    "deleg": "Beja Sud"
+  },
+  {
+    "zip": "9030",
+    "gov": "Beja",
+    "deleg": "Amdoun"
+  },
+  {
+    "zip": "9031",
+    "gov": "Beja",
+    "deleg": "Beja Nord"
+  },
+  {
+    "zip": "9032",
+    "gov": "Beja",
+    "deleg": "Teboursouk"
+  },
+  {
+    "zip": "9034",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9040",
+    "gov": "Beja",
+    "deleg": "Teboursouk"
+  },
+  {
+    "zip": "9042",
+    "gov": "Beja",
+    "deleg": "Thibar"
+  },
+  {
+    "zip": "9044",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9046",
+    "gov": "Beja",
+    "deleg": "Teboursouk"
+  },
+  {
+    "zip": "9052",
+    "gov": "Beja",
+    "deleg": "Beja Sud"
+  },
+  {
+    "zip": "9060",
+    "gov": "Beja",
+    "deleg": "Testour"
+  },
+  {
+    "zip": "9061",
+    "gov": "Beja",
+    "deleg": "Testour"
+  },
+  {
+    "zip": "9062",
+    "gov": "Beja",
+    "deleg": "Testour"
+  },
+  {
+    "zip": "9070",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9071",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9072",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9075",
+    "gov": "Beja",
+    "deleg": "Mejez El Bab"
+  },
+  {
+    "zip": "9080",
+    "gov": "Beja",
+    "deleg": "Goubellat"
+  },
+  {
+    "zip": "9083",
+    "gov": "Beja",
+    "deleg": "Goubellat"
+  },
+  {
+    "zip": "9084",
+    "gov": "Beja",
+    "deleg": "Amdoun"
+  },
+  {
+    "zip": "9100",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Est"
+  },
+  {
+    "zip": "9110",
+    "gov": "Sidi Bouzid",
+    "deleg": "Jilma"
+  },
+  {
+    "zip": "9111",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Ouest"
+  },
+  {
+    "zip": "9112",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Est"
+  },
+  {
+    "zip": "9113",
+    "gov": "Sidi Bouzid",
+    "deleg": "Bir El Haffey"
+  },
+  {
+    "zip": "9114",
+    "gov": "Sidi Bouzid",
+    "deleg": "Menzel Bouzaiene"
+  },
+  {
+    "zip": "9115",
+    "gov": "Sidi Bouzid",
+    "deleg": "Regueb"
+  },
+  {
+    "zip": "9116",
+    "gov": "Sidi Bouzid",
+    "deleg": "Ouled Haffouz"
+  },
+  {
+    "zip": "9120",
+    "gov": "Sidi Bouzid",
+    "deleg": "Ben Oun"
+  },
+  {
+    "zip": "9121",
+    "gov": "Sidi Bouzid",
+    "deleg": "Souk Jedid"
+  },
+  {
+    "zip": "9122",
+    "gov": "Sidi Bouzid",
+    "deleg": "Cebbala"
+  },
+  {
+    "zip": "9123",
+    "gov": "Sidi Bouzid",
+    "deleg": "Bir El Haffey"
+  },
+  {
+    "zip": "9124",
+    "gov": "Sidi Bouzid",
+    "deleg": "Menzel Bouzaiene"
+  },
+  {
+    "zip": "9125",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Ouest"
+  },
+  {
+    "zip": "9126",
+    "gov": "Sidi Bouzid",
+    "deleg": "Bir El Haffey"
+  },
+  {
+    "zip": "9127",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Ouest"
+  },
+  {
+    "zip": "9131",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Ouest"
+  },
+  {
+    "zip": "9132",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Ouest"
+  },
+  {
+    "zip": "9133",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Est"
+  },
+  {
+    "zip": "9139",
+    "gov": "Sidi Bouzid",
+    "deleg": "Menzel Bouzaiene"
+  },
+  {
+    "zip": "9140",
+    "gov": "Sidi Bouzid",
+    "deleg": "Maknassy"
+  },
+  {
+    "zip": "9141",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Est"
+  },
+  {
+    "zip": "9142",
+    "gov": "Sidi Bouzid",
+    "deleg": "Souk Jedid"
+  },
+  {
+    "zip": "9143",
+    "gov": "Sidi Bouzid",
+    "deleg": "Maknassy"
+  },
+  {
+    "zip": "9144",
+    "gov": "Sidi Bouzid",
+    "deleg": "Maknassy"
+  },
+  {
+    "zip": "9149",
+    "gov": "Sidi Bouzid",
+    "deleg": "Maknassy"
+  },
+  {
+    "zip": "9150",
+    "gov": "Sidi Bouzid",
+    "deleg": "Mezzouna"
+  },
+  {
+    "zip": "9151",
+    "gov": "Sidi Bouzid",
+    "deleg": "Mezzouna"
+  },
+  {
+    "zip": "9154",
+    "gov": "Sidi Bouzid",
+    "deleg": "Mezzouna"
+  },
+  {
+    "zip": "9158",
+    "gov": "Sidi Bouzid",
+    "deleg": "Maknassy"
+  },
+  {
+    "zip": "9159",
+    "gov": "Sidi Bouzid",
+    "deleg": "Bir El Haffey"
+  },
+  {
+    "zip": "9169",
+    "gov": "Sidi Bouzid",
+    "deleg": "Ben Oun"
+  },
+  {
+    "zip": "9170",
+    "gov": "Sidi Bouzid",
+    "deleg": "Regueb"
+  },
+  {
+    "zip": "9171",
+    "gov": "Sidi Bouzid",
+    "deleg": "Sidi Bouzid Est"
+  },
+  {
+    "zip": "9172",
+    "gov": "Sidi Bouzid",
+    "deleg": "Regueb"
+  },
+  {
+    "zip": "9173",
+    "gov": "Sidi Bouzid",
+    "deleg": "Regueb"
+  },
+  {
+    "zip": "9174",
+    "gov": "Sidi Bouzid",
+    "deleg": "Regueb"
+  },
+  {
+    "zip": "9180",
+    "gov": "Sidi Bouzid",
+    "deleg": "Ouled Haffouz"
+  },
+  {
+    "zip": "9183",
+    "gov": "Sidi Bouzid",
+    "deleg": "Ouled Haffouz"
+  }
+]

@@ -79,6 +79,61 @@ services:
       mc anonymous set none local/fraud-datalake || true
       "
 
+  # ML Pipeline Service for ONNX testing
+  ml-pipeline:
+    build:
+      context: ../ml-pipeline  # Build context is the ml-pipeline folder
+      dockerfile: Dockerfile.ml  # Dockerfile is now inside ml-pipeline
+    container_name: fraud-ml-pipeline
+    ports:
+      - "8888:8888"
+    volumes:
+      # Mount the ml-pipeline code for live development
+      - ../ml-pipeline:/app
+      # Persist models and ONNX exports in docker folder (accessible from host)
+      - ./exported_models:/app/exported_models
+      - ./exported_onnx:/app/exported_onnx
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./test_models:/app/test_models
+      - ./test_onnx:/app/test_onnx
+      - ./exported_parquet:/app/exported_parquet
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - POSTGRES_HOST=postgres-app
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=fraud_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=admin
+    depends_on:
+      postgres-app:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: >
+      sh -c "
+      echo '🚀 ML Pipeline Container Started' &&
+      echo '📊 Testing imports...' &&
+      python quick_test.py &&
+      echo '✅ Imports OK' &&
+      echo '' &&
+      echo 'Available commands:' &&
+      echo '  docker exec -it fraud-ml-pipeline python data/generate_sample_data.py' &&
+      echo '  docker exec -it fraud-ml-pipeline python test_onnx_export.py' &&
+      echo '  docker exec -it fraud-ml-pipeline python training/train_models.py --export-onnx' &&
+      echo '' &&
+      tail -f /dev/null
+      "
+    healthcheck:
+      test: ["CMD", "python", "-c", "import lightgbm, onnxruntime; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres_app_data:
   postgres_keycloak_data:
