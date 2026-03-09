@@ -1,34 +1,34 @@
-# ml-pipeline/Dockerfile.ml
 FROM python:3.9-slim
 
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     make \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements-ml.txt .
+# Create a non‑root user
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
+# Copy requirements first (better caching)
+COPY --chown=appuser:appuser requirements-ml.txt .
 RUN pip install --no-cache-dir -r requirements-ml.txt
 
-# Copy the entire project
-COPY . .
+# Copy source code and scripts
+COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser scripts/ ./scripts/
+COPY --chown=appuser:appuser pyproject.toml .
 
-# Create necessary directories
+# Create necessary directories (will be mounted as volumes)
 RUN mkdir -p exported_models exported_onnx logs data test_models test_onnx exported_parquet
 
-# Make scripts executable - only if they exist
-RUN if [ -d "training" ]; then chmod +x training/*.py 2>/dev/null || true; fi
-RUN if [ -f "quick_test.py" ]; then chmod +x quick_test.py; fi
-RUN if [ -f "test_onnx_export.py" ]; then chmod +x test_onnx_export.py; fi
-RUN if [ -f "data/generate_sample_data.py" ]; then chmod +x data/generate_sample_data.py; fi
-
 # Set Python path
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 
-# Default command
-CMD ["python", "quick_test.py"]
+# Default command: run quick_test and keep container alive
+CMD ["sh", "-c", "python scripts/quick_test.py && tail -f /dev/null"]

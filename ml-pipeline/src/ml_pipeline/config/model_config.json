@@ -1,0 +1,100 @@
+{
+  "_comment": "Central model configuration. Editable from Spring Boot UI. Python reads this at training time.",
+  "_version": "1.0.0",
+
+  "global": {
+    "random_seed": 42,
+    "threshold_metric": "fbeta",
+    "threshold_beta": 2.0,
+    "threshold_n_steps": 300,
+    "n_jobs": -1
+  },
+
+  "lightgbm": {
+    "enabled": true,
+    "n_estimators": 1000,
+    "learning_rate": 0.02,
+    "max_depth": 8,
+    "num_leaves": 50,
+    "min_child_samples": 80,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_alpha": 0.1,
+    "reg_lambda": 0.1,
+    "early_stopping_rounds": 30,
+    "calibrate": true
+  },
+
+  "xgboost": {
+    "enabled": true,
+    "n_estimators": 500,
+    "max_depth": 8,
+    "learning_rate": 0.02,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "early_stopping_rounds": 30,
+    "calibrate": true
+  },
+
+  "random_forest": {
+    "enabled": true,
+    "n_estimators": 200,
+    "max_depth": 15,
+    "min_samples_leaf": 10
+  },
+
+  "catboost": {
+    "enabled": true,
+    "iterations": 500,
+    "depth": 6,
+    "learning_rate": 0.05,
+    "l2_leaf_reg": 3.0,
+    "early_stopping_rounds": 30
+  },
+
+  "autoencoder": {
+    "enabled": true,
+    "encoding_dim": 32,
+    "epochs": 20,
+    "batch_size": 1024
+  },
+
+  "ecod": {
+    "enabled": true,
+    "contamination": 0.05
+  },
+
+  "copod": {
+    "enabled": true,
+    "contamination": 0.05
+  },
+
+  "ensemble": {
+    "strategy": "weighted",
+    "models": ["lightgbm", "xgboost", "ecod"],
+    "n_weight_restarts": 10,
+    "beta": 2.0,
+    "and_high_conf_threshold": 0.85
+  },
+
+  "features": {
+    "TX_Amount": { "enabled": true, "ui_label": "Montant transaction" },
+    "client_avg_tx_per_day": { "enabled": true, "ui_label": "Fréquence transactions" },
+    "client_usual_region": { "enabled": true, "ui_label": "Localisation géographique" },
+    "category": { "enabled": true, "ui_label": "Type de transaction" },
+    "hour_sin": { "enabled": true, "ui_label": "Heure de transaction" },
+    "client_risk_score": { "enabled": true, "ui_label": "Historique client" },
+    "device_type": { "enabled": false, "ui_label": "Appareil utilisé" },
+    "client_hours_since_last_tx": { "enabled": true, "ui_label": "Délai depuis dernière transaction" },
+    "client_avg_tx_amount": { "enabled": true, "ui_label": "Montant moyen client" }
+  },
+
+  "_comment": "Add ONNX export configuration",
+  "onnx_export": {
+    "enabled": true,
+    "opset_version": 14,
+    "verify_equivalence": true,
+    "target_platforms": ["cpu"],
+    "quantize": false
+  }
+}
