@@ -1,14 +1,3 @@
-"""
-validate_pipeline.py
-====================
-Leakage and signal sanity checks.
-
-Run after fitting the pipeline to verify:
-  1. No data leakage (AUC_test should NOT exceed AUC_train by >0.05)
-  2. Meaningful signal (AUC on key features > 0.55)
-  3. AS-OF correctness (first transaction of every client has history = 0)
-"""
-
 from __future__ import annotations
 
 import numpy as np
@@ -24,8 +13,8 @@ def check_auc_leakage(
     features: list[str] | None = None,
 ):
     """
-    Print AUC for each feature across splits.
-    Flags potential leakage when AUC_test > AUC_train + 0.05.
+    Affiche l'AUC pour les caractéristiques sélectionnées à travers les différents jeux de données (splits).
+    Signale les fuites de données potentielles lorsque l'AUC de test est beaucoup plus élevée que celle d'entraînement.
     """
     if features is None:
         features = [
@@ -40,14 +29,14 @@ def check_auc_leakage(
             "client_is_new_max",
         ]
 
-    print(f"\n{'─'*100}")
+    print(f"\n{'─' * 100}")
     print(f"  {'Feature':<35} {'TRAIN':>10} {'VAL':>10} {'TEST':>10}  STATUS")
-    print(f"{'─'*100}")
+    print(f"{'─' * 100}")
 
     for feat in features:
         aucs = {}
         for name, df in [("TRAIN", df_train), ("VAL", df_val), ("TEST", df_test)]:
-            if feat in df.columns and df[target_col].nunique() == 2:
+            if feat in df.columns and target_col in df.columns and df[target_col].nunique() == 2:
                 try:
                     aucs[name] = roc_auc_score(df[target_col], df[feat])
                 except Exception:
@@ -72,7 +61,7 @@ def check_auc_leakage(
             f"  {feat:<35} {train_auc:>10.4f} {val_auc:>10.4f} {test_auc:>10.4f}  {status}"
         )
 
-    print(f"{'─'*100}")
+    print(f"{'─' * 100}")
 
 
 def check_as_of_correctness(
@@ -83,23 +72,20 @@ def check_as_of_correctness(
     count_col: str = "client_total_transactions",
 ):
     """
-    Verify that the very first transaction of each client has history = 0.
+    Vérifie que la première transaction de chaque client a un historique nul.
     """
-    if id_col not in df_behavior.columns:
-        print(f"  WARNING: {split_name}: '{id_col}' not found — skipping AS-OF check")
-        return
+    for col in [id_col, time_col, count_col]:
+        if col not in df_behavior.columns:
+            print(f"  ⚠️  {split_name}: '{col}' not found — skipping AS-OF check")
+            return
 
     df_sorted = df_behavior.sort_values([id_col, time_col])
     first_txs = df_sorted.groupby(id_col).first().reset_index()
     zeros_pct = (first_txs[count_col] == 0).mean() * 100
 
-    if zeros_pct >= 99:
-        status = "OK"
-    else:
-        status = "FAIL"
-
+    icon = "✅" if zeros_pct >= 99 else "❌"
     print(
-        f"  {status}: {split_name}: {zeros_pct:.1f}% of first transactions "
+        f"  {icon}  {split_name}: {zeros_pct:.1f}% of first transactions "
         f"have {count_col} = 0  (expect ≥99%)"
     )
 
@@ -119,12 +105,18 @@ def quick_signal_test(
     max_depth: int = 5,
 ):
     """
-    Fit a shallow RandomForest to measure feature-set quality.
-    Returns (auc_train, auc_test).
+    Ajuste une forêt aléatoire (Random Forest) superficielle pour évaluer rapidement si le jeu de caractéristiques contient un signal.
+    Retourne (auc_train, auc_test).
     """
     from sklearn.ensemble import RandomForestClassifier
 
+    if not isinstance(X_train, pd.DataFrame) or not isinstance(X_test, pd.DataFrame):
+        raise TypeError("quick_signal_test expects pandas DataFrame inputs.")
+
     numeric_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
+    if not numeric_cols:
+        raise ValueError("No numeric columns found for quick_signal_test.")
+
     X_tr = X_train[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
     X_te = X_test[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
 
@@ -140,14 +132,9 @@ def quick_signal_test(
     auc_train = roc_auc_score(y_train, rf.predict_proba(X_tr)[:, 1])
     auc_test = roc_auc_score(y_test, rf.predict_proba(X_te)[:, 1])
 
-    if auc_test > 0.70:
-        signal_status = "GOOD"
-    elif auc_test > 0.65:
-        signal_status = "FAIR"
-    else:
-        signal_status = "POOR"
-
-    print(f"\n  {signal_status} Quick RF signal test")
+    icon = "✅" if auc_test > 0.70 else "⚠️" if auc_test > 0.65 else "❌"
+    print(f"\n  {icon}  Quick RF signal test")
     print(f"       AUC TRAIN : {auc_train:.4f}")
     print(f"       AUC TEST  : {auc_test:.4f}")
+
     return auc_train, auc_test

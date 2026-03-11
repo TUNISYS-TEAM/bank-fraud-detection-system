@@ -1,53 +1,82 @@
-"""
-Data contracts for inference input and output.
-These models are used for validation and documentation.
-"""
+from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Any
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class TransactionInput(BaseModel):
     """
-    Raw transaction as received from the payment system.
-    All fields are required unless marked optional.
+    Canonical input contract for one transaction sent to the inference layer.
+
+    Internal field names stay in snake_case.
+    Aliases allow compatibility with dataset/backend naming conventions.
     """
-    transaction_id: str
-    account_id: str = Field(..., alias="Account_Id")         
-    timestamp: datetime = Field(..., alias="TX_Time")
-    amount: float = Field(..., gt=0, alias="TX_Amount")
-    postal_code: Optional[str] = Field(None, alias="Customer_Postal_Code")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="forbid"
+    )
+
+    transaction_id: str | None = None
+    account_id: str = Field(..., alias="Account_Id")
+    tx_time: datetime = Field(..., alias="TX_Time")
+    tx_amount: float = Field(..., gt=0, alias="TX_Amount")
+    customer_postal_code: str | None = Field(None, alias="Customer_Postal_Code")
     channel: str = Field(..., alias="Channel")
     category: str
 
-    # Pre‑computed fields (may be absent if backend does not supply them)
-    client_avg_tx_per_day: Optional[float] = None
-    client_avg_tx_amount: Optional[float] = None
-    client_hours_since_last_tx: Optional[float] = None
-    client_usual_region: Optional[str] = None
-    client_risk_score: Optional[float] = Field(None, ge=0, le=1)
-
-    class Config:
-        allow_population_by_field_name = True
-        extra = "forbid"          # no unexpected fields
+    # Optional precomputed features from backend or feature service
+    client_avg_tx_per_day: float | None = None
+    client_avg_tx_amount: float | None = None
+    client_hours_since_last_tx: float | None = None
+    client_usual_region: str | None = None
+    client_risk_score: float | None = Field(None, ge=0, le=1)
 
 
 class PredictionOutput(BaseModel):
     """
-    Standardised prediction response.
+    Standard prediction response for one transaction.
     """
-    transaction_id: str
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    transaction_id: str | None = None
+    account_id: str
     fraud_probability: float = Field(..., ge=0, le=1)
-    fraud_score: float                     # raw model score before calibration
-    threshold: float                        # threshold used to decide is_fraud
+    fraud_score: float | None = None
+    threshold: float = Field(..., ge=0, le=1)
     is_fraud: bool
     model_name: str
-    model_version: str = "1.0.0"            # could be taken from config
+    model_version: str = "1.0.0"
+    risk_score: float | None = Field(None, ge=0, le=1)
+    explanation: dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+
+class BatchPredictionRequest(BaseModel):
+    """
+    Batch inference request.
+    """
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    transactions: list[TransactionInput]
+    model_name: str = "ensemble"
+
+
+class BatchPredictionResponse(BaseModel):
+    """
+    Batch inference response.
+    """
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    predictions: list[PredictionOutput]
+    model_name: str
+    total_transactions: int = Field(..., ge=0)
+    total_flagged: int = Field(..., ge=0)
+    processing_time_ms: float = Field(default=0.0, ge=0)

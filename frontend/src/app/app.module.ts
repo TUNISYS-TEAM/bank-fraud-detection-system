@@ -10,17 +10,17 @@ import { AuthInterceptor } from './core/interceptors/auth.interceptor';
 import { FeatherModule } from 'angular-feather';
 import {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
-  ExternalLink, Settings, LogOut, Bell, X, Mail, Lock,
-  Eye, EyeOff, Users, Database, FileText, Plus, Download, 
-  CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, Info, Clock,
+  ExternalLink, Settings, LogOut, Bell, X, Mail, Lock, HelpCircle, TrendingUp, Play,
+  Eye, EyeOff, Users, Database, FileText, Plus, Download, Target, Hash, HardDrive,
+  CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, Info, Clock, List,
   AlertOctagon, Sliders, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight,
-  Power, RefreshCw, Copy, Chrome, 
+  Power, RefreshCw, Copy, Chrome, Search, Tag, Calendar, AlertCircle
 } from 'angular-feather/icons';
 
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
-  ExternalLink, Settings, LogOut, Bell, X, Mail, Lock,
-  Eye, EyeOff, Users, Database, FileText, Plus, Download,
+  ExternalLink, Settings, LogOut, Bell, X, Mail, Lock, Tag, Calendar, Target, Hash, HardDrive, List,
+  Eye, EyeOff, Users, Database, FileText, Plus, Download, Search, AlertCircle, HelpCircle, TrendingUp, Play,
   CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome,
   AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight 
 };

@@ -31,6 +31,7 @@ public class SecurityConfig {
                 "/api-docs/**",
                 "/actuator/**",
                 "/auth/**",
+                "/api/auth/**",
                 "/public/**",
                 "/error",
                 "/ws/**",

@@ -1,21 +1,34 @@
-"""
-Configuration module for the ML pipeline.
-
-This module provides:
-- ModelConfig: Load model hyperparameters from JSON (managed by Spring Boot UI)
-- settings: Global application settings from environment variables
-- schemas: Pydantic models for data validation
-"""
+"""Configuration subpackage for model config schemas and runtime settings."""
 
 from .model_config import ModelConfig
-from .settings import settings
-from . import schemas
+from .config_schema import (
+    GlobalConfig,
+    LightGBMConfig,
+    XGBoostConfig,
+    RandomForestConfig,
+    CatBoostConfig,
+    AutoencoderConfig,
+    AnomalyConfig,
+    EnsembleConfig,
+    FeatureConfig,
+    ONNXExportConfig,
+    FullModelConfig,
+)
+from .settings import Settings, settings
 
 __all__ = [
-    "ModelConfig",    # Main config class for model hyperparameters
-    "settings",       # Global settings (paths, DB connections, etc.)
-    "schemas",        # Data validation schemas
+    "ModelConfig",
+    "GlobalConfig",
+    "LightGBMConfig",
+    "XGBoostConfig",
+    "RandomForestConfig",
+    "CatBoostConfig",
+    "AutoencoderConfig",
+    "AnomalyConfig",
+    "EnsembleConfig",
+    "FeatureConfig",
+    "ONNXExportConfig",
+    "FullModelConfig",
+    "Settings",
+    "settings",
 ]
-
-# Version of the configuration module
-__version__ = "1.0.0"

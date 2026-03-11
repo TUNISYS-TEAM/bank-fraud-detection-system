@@ -1,0 +1,7 @@
+{
+  "name": "COPOD",
+  "class": "COPODFraudModel",
+  "threshold": 0.880527453416149,
+  "fit_time_sec": 0.08073687553405762,
+  "saved_at": "2026-03-09T19:48:13.258920+00:00"
+}

@@ -68,6 +68,9 @@ server:
         path: /
         max-age: 3600
 
+ml-pipeline:
+  base-url: http://ml-pipeline:8888
+
 # Cookie settings
 app:
   cookie:

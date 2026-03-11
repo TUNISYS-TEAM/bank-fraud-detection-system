@@ -1,0 +1,39 @@
+# IDE
+.vscode/
+.idea/
+
+# SQLTools
+*.session.sql
+
+# Env files (contiennent des mots de passe)
+.env
+docker/.env
+
+# Java / Maven
+backend/target/
+*.class
+*.jar
+
+# Node / Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest / mypy / notebooks
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Optional local envs
+.venv/
+venv/
+env/

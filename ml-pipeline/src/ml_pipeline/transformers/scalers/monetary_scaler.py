@@ -1,8 +1,3 @@
-# src/ml_pipeline/transformers/scalers/monetary_scaler.py
-"""
-Safe scaler that scales only continuous numeric columns, leaving binary flags untouched.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -21,17 +16,17 @@ _MIN_UNIQUE = 10
 
 class SafeScaler(BaseEstimator, TransformerMixin):
     """
-    Scales only continuous numeric columns, skipping binary flags.
+    Met à l'échelle uniquement les colonnes numériques continues, en ignorant les indicateurs binaires.
 
-    Parameters
+    Paramètres
     ----------
     scaler_type : {'robust', 'standard', 'minmax'}
-        'robust'   → RobustScaler  (recommended for fraud data with outliers)
+        'robust'   → RobustScaler (recommandé pour les données de fraude avec des valeurs aberrantes/outliers)
         'standard' → StandardScaler
         'minmax'   → MinMaxScaler
     min_unique : int
-        Columns with fewer distinct values are treated as binary/categorical
-        and left unscaled.
+        Les colonnes avec moins de valeurs distinctes sont traitées comme binaires/catégorielles
+        et ne sont pas mises à l'échelle.
     """
 
     def __init__(self, scaler_type: str = "robust", min_unique: int = _MIN_UNIQUE):
@@ -42,7 +37,6 @@ class SafeScaler(BaseEstimator, TransformerMixin):
         self._scale_cols: list[str] = []
         self.feature_names_in_: list[str] = []
 
-    # ------------------------------------------------------------------
     def fit(self, X: pd.DataFrame, y=None) -> "SafeScaler":
         self.feature_names_in_ = list(X.columns)
         self._scale_cols = _identify_scale_cols(X, self.min_unique)
@@ -51,14 +45,15 @@ class SafeScaler(BaseEstimator, TransformerMixin):
             self._scaler.fit(X[self._scale_cols])
             logger.info(
                 "SafeScaler.fit (%s) — scaling %d/%d columns",
-                self.scaler_type, len(self._scale_cols), len(X.columns),
+                self.scaler_type,
+                len(self._scale_cols),
+                len(X.columns),
             )
         else:
             logger.warning("SafeScaler.fit — no continuous columns found to scale")
 
         return self
 
-    # ------------------------------------------------------------------
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         check_is_fitted(self, "_scale_cols")
         X = X.copy()
@@ -72,23 +67,20 @@ class SafeScaler(BaseEstimator, TransformerMixin):
                 X[col] = np.float32(0)
             cols_to_scale.append(col)
 
-        # Log new columns that weren't in fit (passthrough, no scaling)
         new_cols = set(X.columns) - set(self.feature_names_in_)
         if new_cols:
             logger.warning(
                 "SafeScaler.transform: %d new columns not seen in fit "
                 "(passing through): %s",
-                len(new_cols), sorted(new_cols)[:5],
+                len(new_cols),
+                sorted(new_cols)[:5],
             )
 
         if cols_to_scale:
-            X[cols_to_scale] = self._scaler.transform(
-                X[cols_to_scale]
-            ).astype(np.float32)
+            X[cols_to_scale] = self._scaler.transform(X[cols_to_scale]).astype(np.float32)
 
         return X
 
-    # ------------------------------------------------------------------
     def get_feature_names_out(self, input_features=None) -> list[str]:
         check_is_fitted(self, "_scale_cols")
         return self.feature_names_in_
@@ -101,9 +93,6 @@ class SafeScaler(BaseEstimator, TransformerMixin):
         )
 
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
 def _build_scaler(scaler_type: str):
     if scaler_type == "robust":
         return RobustScaler()
@@ -122,7 +111,7 @@ def _identify_scale_cols(X: pd.DataFrame, min_unique: int) -> list[str]:
     for col in X.columns:
         if any(pat in col for pat in _SKIP_PATTERNS):
             continue
-        if X[col].dtype not in (np.float32, np.float64, float):
+        if not pd.api.types.is_numeric_dtype(X[col]):
             continue
         if X[col].nunique(dropna=True) < min_unique:
             continue

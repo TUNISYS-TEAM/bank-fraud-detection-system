@@ -39,7 +39,7 @@ def setup_logging(
     Root logger
     """
     numeric_level = getattr(logging, level.upper(), logging.INFO)
-    formatter = logging.Formatter(fmt, datefmt=datefmt)
+    formatter     = logging.Formatter(fmt, datefmt=datefmt)
 
     root = logging.getLogger()
     root.setLevel(numeric_level)

@@ -1,0 +1,7 @@
+{
+  "name": "XGBoost",
+  "class": "XGBoostFraudModel",
+  "threshold": 0.0207248192816275,
+  "fit_time_sec": 0.3175506591796875,
+  "saved_at": "2026-03-09T19:48:07.401103+00:00"
+}

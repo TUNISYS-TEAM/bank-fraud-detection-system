@@ -44,7 +44,7 @@
   },
 
   "catboost": {
-    "enabled": true,
+    "enabled": false,
     "iterations": 500,
     "depth": 6,
     "learning_rate": 0.05,

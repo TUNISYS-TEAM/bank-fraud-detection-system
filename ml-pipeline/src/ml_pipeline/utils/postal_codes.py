@@ -1,23 +1,25 @@
 """
-Resolves Tunisian postal codes to Governorate and Delegation
-using the official zip-postcodes.json dataset (4,868 entries, 24 Governorates).
+postal_codes.py
+===============
+Résout les codes postaux tunisiens en Gouvernorat et Délégation
+en utilisant le jeu de données officiel zip-postcodes.json (4 868 entrées, 24 gouvernorates).
 
-Replaces the old hardcoded 2-digit prefix map with exact zip lookups.
+Remplace l'ancienne carte de préfixes à 2 chiffres codée en dur par des recherches exactes par code postal.
 
 Usage
 -----
     from ml_pipeline.utils.postal_codes import PostalCodeResolver
 
-    resolver = PostalCodeResolver()                  # loads bundled JSON
+    resolver = PostalCodeResolver()                  # charge le JSON inclus
     resolver.get_gov("2036")                         # → "Ariana"
     resolver.get_deleg("2036")                       # → "La Soukra"
     resolver.get_region("2036")                      # → "Nord-Est"
     resolver.enrich_dataframe(df, "Customer_Postal_Code")
 
-Governorate → Region mapping
+Mapping Gouvernorat → Région
 -----------------------------
-Tunisia's 24 governorates are grouped into 7 geographic regions
-(used as the fraud-detection behavioral feature `region`):
+Les 24 gouvernorats de la Tunisie sont regroupés en 7 régions géographiques
+(utilisées comme caractéristique comportementale `region` pour la détection de fraude) :
 
     Grand_Tunis   : Tunis, Ariana, Ben Arous, Mannouba
     Nord_Est      : Bizerte, Nabeul, Zaghouan
@@ -40,7 +42,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Governorate → geographic region
+# Gouvernorat → région géographique
 # ---------------------------------------------------------------------------
 GOV_TO_REGION: dict[str, str] = {
     # Grand Tunis
@@ -87,15 +89,15 @@ _DEFAULT_JSON = Path(__file__).parent / "resources" / "zip_gov_map.json"
 # ---------------------------------------------------------------------------
 class PostalCodeResolver:
     """
-    Thread-safe, zero-dependency resolver.
-    The JSON is loaded once at construction and held in memory (~50 KB).
+    Résolveur sans dépendance, sécurisé pour les threads.
+    Le JSON est chargé une fois à la construction et conservé en mémoire (~50 Ko).
 
-    Parameters
+    Paramètres
     ----------
     json_path : str | Path | None
-        Path to zip_gov_map.json.  Defaults to the bundled file.
-    unknown_gov    : str   fallback governorate when zip not found
-    unknown_region : str   fallback region when zip not found
+        Chemin vers zip_gov_map.json. Par défaut, utilise le fichier inclus.
+    unknown_gov    : str   gouvernorat de repli lorsque le code postal n'est pas trouvé
+    unknown_region : str   région de repli lorsque le code postal n'est pas trouvé
     """
 
     def __init__(
@@ -135,7 +137,7 @@ class PostalCodeResolver:
     # ------------------------------------------------------------------
     @lru_cache(maxsize=1024)
     def _normalise_zip(self, raw) -> str:
-        """Normalise to 4-digit string; return empty string on failure."""
+        """Normalise en une chaîne de 4 chiffres ; retourne une chaîne vide en cas d'échec."""
         try:
             return str(int(str(raw).strip())).zfill(4)
         except (ValueError, TypeError):
@@ -143,17 +145,17 @@ class PostalCodeResolver:
 
     # ------------------------------------------------------------------
     def get_gov(self, postal_code) -> str:
-        """Return Governorate name for a postal code."""
+        """Retourne le nom du Gouvernorat pour un code postal."""
         z = self._normalise_zip(postal_code)
         return self._zip_to_gov.get(z, self.unknown_gov)
 
     def get_deleg(self, postal_code) -> str:
-        """Return Delegation name for a postal code."""
+        """Retourne le nom de la Délégation pour un code postal."""
         z = self._normalise_zip(postal_code)
         return self._zip_to_deleg.get(z, self.unknown_gov)
 
     def get_region(self, postal_code) -> str:
-        """Return 7-region geographic group for a postal code."""
+        """Retourne le groupe géographique de 7 régions pour un code postal."""
         gov = self.get_gov(postal_code)
         return GOV_TO_REGION.get(gov, self.unknown_region)
 
@@ -178,15 +180,15 @@ class PostalCodeResolver:
         add_region: bool = True,
     ) -> pd.DataFrame:
         """
-        Add gov / deleg / region columns to a DataFrame in one pass.
+        Ajoute des colonnes gov / deleg / region à un DataFrame en une seule passe.
 
-        Parameters
+        Paramètres
         ----------
-        df          : input DataFrame (not modified in place)
-        postal_col  : name of the postal code column
-        add_gov     : add 'gov' column
-        add_deleg   : add 'deleg' column
-        add_region  : add 'region' column (used by ClientBehaviorTransformer)
+        df          : DataFrame de données (non modifié sur place)
+        postal_col  : nom de la colonne du code postal
+        add_gov     : ajouter la colonne 'gov'
+        add_deleg   : ajouter la colonne 'deleg'
+        add_region  : ajouter la colonne 'region' (utilisée par ClientBehaviorTransformer)
         """
         if postal_col not in df.columns:
             raise ValueError(
@@ -216,7 +218,7 @@ class PostalCodeResolver:
 
     # ------------------------------------------------------------------
     def coverage_report(self, df: pd.DataFrame, postal_col: str = "Customer_Postal_Code") -> dict:
-        """Quick coverage stats — useful for data quality checks."""
+        """Rapport rapide de couverture — utile pour les vérifications de qualité des données."""
         total  = len(df)
         zips   = df[postal_col].apply(self._normalise_zip)
         known  = zips.isin(self._zip_to_gov).sum()
@@ -230,13 +232,13 @@ class PostalCodeResolver:
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton (lazy init, thread-safe via GIL)
+# Singleton au niveau du module (initialisation paresseuse, sécurisée pour les threads via le GIL)
 # ---------------------------------------------------------------------------
 _resolver: PostalCodeResolver | None = None
 
 
 def get_resolver(json_path: str | Path | None = None) -> PostalCodeResolver:
-    """Return the module-level singleton resolver (created on first call)."""
+    """Retourne le résolveur singleton du module (créé au premier appel)."""
     global _resolver
     if _resolver is None:
         _resolver = PostalCodeResolver(json_path)

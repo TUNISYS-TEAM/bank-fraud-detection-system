@@ -5,9 +5,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import lightgbm as lgb
 import numpy as np
 from sklearn.calibration import CalibratedClassifierCV
-import lightgbm as lgb
 
 from ml_pipeline.models.base_model import FraudBaseModel
 
@@ -15,6 +15,17 @@ logger = logging.getLogger(__name__)
 
 
 class LightGBMFraudModel(FraudBaseModel):
+    """
+    Classificateur de fraude LightGBM pour la production.
+
+    Améliorations par rapport aux expérimentations en notebook :
+    - scale_pos_weight calculé à partir des étiquettes (labels) d'entraînement
+    - arrêt précoce (early stopping) surveillé sur l'AUC
+    - calibration isotonique optionnelle sur l'ensemble de validation
+    - importances des caractéristiques et booster exposés pour l'XAI / export
+    - export ONNX supporté pour le modèle LightGBM de base
+    """
+
     def __init__(
         self,
         n_estimators: int = 1000,
@@ -45,6 +56,7 @@ class LightGBMFraudModel(FraudBaseModel):
         self.calibrate = calibrate
         self.threshold_metric = threshold_metric
         self.beta = beta
+
         self._model: Optional[lgb.LGBMClassifier] = None
         self._calibrated = None
         self.feature_names_: list[str] = []
@@ -93,10 +105,12 @@ class LightGBMFraudModel(FraudBaseModel):
 
         if self.calibrate and X_val is not None and y_val is not None:
             self._calibrated = CalibratedClassifierCV(
-                self._model, method="isotonic", cv="prefit"
+                self._model,
+                method="isotonic",
+                cv="prefit",
             )
             self._calibrated.fit(X_val, y_val)
-            logger.info("LightGBM: isotonic calibration fitted on VAL")
+            logger.info("LightGBM: isotonic calibration fitted on validation set.")
 
         if X_val is not None and y_val is not None:
             self.find_best_threshold(
@@ -105,37 +119,58 @@ class LightGBMFraudModel(FraudBaseModel):
                 metric=self.threshold_metric,
                 beta=self.beta,
             )
+
+        self._fitted = True
         return self
 
     def predict_proba(self, X) -> np.ndarray:
         return self._raw_proba(X)
 
     def _raw_proba(self, X) -> np.ndarray:
+        if self._model is None:
+            raise ValueError("LightGBMFraudModel must be fitted before predict_proba().")
+
         if self._calibrated is not None:
             return self._calibrated.predict_proba(X)[:, 1]
+
         return self._model.predict_proba(X)[:, 1]
 
     @property
     def feature_importances_(self):
+        if self._model is None:
+            raise ValueError("LightGBMFraudModel must be fitted before accessing feature_importances_.")
         return self._model.feature_importances_
 
     def get_booster(self):
+        """Retourne le booster LightGBM sous-jacent pour SHAP ou les flux d'exportation."""
+        if self._model is None:
+            raise ValueError("LightGBMFraudModel must be fitted before get_booster().")
         return self._model.booster_
 
     def to_onnx(self, output_path: str | Path, feature_names: list[str] | None = None):
-        """Export LightGBM model to ONNX format."""
+        """
+        Exporte le modèle LightGBM au format ONNX.
+
+        Si la calibration est activée, seul le modèle LightGBM de base est exporté.
+        La calibration des probabilités doit alors être gérée séparément en aval.
+        """
+        if self._model is None:
+            raise ValueError("LightGBMFraudModel must be fitted before to_onnx().")
+
         try:
             import onnxmltools
             from skl2onnx.common.data_types import FloatTensorType
-        except ImportError:
-            raise ImportError("Please install onnxmltools and skl2onnx: pip install onnxmltools skl2onnx")
+        except ImportError as exc:
+            raise ImportError(
+                "Please install onnxmltools and skl2onnx to export ONNX models."
+            ) from exc
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if feature_names:
             n_features = len(feature_names)
-        elif hasattr(self, "feature_names_") and self.feature_names_:
+        elif self.feature_names_:
             n_features = len(self.feature_names_)
         else:
             n_features = self._model.n_features_in_
@@ -144,18 +179,19 @@ class LightGBMFraudModel(FraudBaseModel):
 
         if self._calibrated is not None:
             logger.warning(
-                "Calibrated model: exporting base LightGBM. Calibration must be handled separately."
+                "Calibrated model detected: exporting base LightGBM model only. "
+                "Calibration must be handled separately."
             )
-            onnx_model = onnxmltools.convert_lightgbm(
-                self._model.booster_, initial_types=initial_types
-            )
-        else:
-            onnx_model = onnxmltools.convert_lightgbm(
-                self._model.booster_, initial_types=initial_types
-            )
+
+        onnx_model = onnxmltools.convert_lightgbm(
+            self._model.booster_,
+            initial_types=initial_types,
+        )
 
         with open(output_path, "wb") as f:
             f.write(onnx_model.SerializeToString())
+
+        logger.info("LightGBM model exported to ONNX: %s", output_path)
 
         meta = {
             "model_type": "lightgbm",
@@ -163,17 +199,23 @@ class LightGBMFraudModel(FraudBaseModel):
             "feature_names": feature_names or self.feature_names_,
             "calibrated": self._calibrated is not None,
             "threshold": self.threshold_,
+            "best_iteration": self.best_iteration_,
         }
         meta_path = output_path.with_suffix(".meta.json")
-        meta_path.write_text(json.dumps(meta, indent=2))
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
-        logger.info(f"LightGBM model exported to ONNX: {output_path}")
         return output_path
 
-    def get_feature_importance(self) -> dict:
+    def get_feature_importance(self) -> dict[str, float]:
+        """Retourne les importances des caractéristiques sous forme de mapping nom -> importance."""
         if self._model is None:
             return {}
+
         importances = self._model.feature_importances_
         if self.feature_names_ and len(self.feature_names_) == len(importances):
-            return dict(zip(self.feature_names_, importances.tolist()))
+            return {
+                name: float(value)
+                for name, value in zip(self.feature_names_, importances, strict=False)
+            }
+
         return {f"feature_{i}": float(v) for i, v in enumerate(importances)}

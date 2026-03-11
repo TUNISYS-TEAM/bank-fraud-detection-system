@@ -1,284 +1,258 @@
-"""
-ONNX Utilities for Fraud Detection
-===================================
-Helper functions for converting models to ONNX and verifying equivalence.
-"""
-
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any
 
 import numpy as np
 import onnx
+import onnxmltools
 import onnxruntime as ort
-import pandas as pd
-from sklearn.pipeline import Pipeline
+from onnxmltools.convert.common.data_types import FloatTensorType as OxmlFloatTensorType
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType as SkFloatTensorType
 
 logger = logging.getLogger(__name__)
 
 
+def _unwrap_model(model):
+    """
+    Extrait le vrai modèle exportable à partir d'un wrapper projet.
+
+    Règle importante :
+    - on unwrap d'abord le wrapper custom (_model, model_, etc.)
+    - on s'arrête si on a déjà un estimateur sklearn LightGBM/XGBoost/RandomForest
+    - on ne descend vers booster_ / booster qu'en dernier recours
+    """
+    current = model
+
+    for attr in (
+        "_model",
+        "_calibrated",
+        "model_",
+        "model",
+        "estimator_",
+        "estimator",
+        "clf",
+        "classifier",
+    ):
+        if hasattr(current, attr):
+            inner = getattr(current, attr)
+            if inner is not None and inner is not current:
+                current = inner
+                break
+
+    module_name = type(current).__module__
+    class_name = type(current).__name__
+
+    if module_name.startswith("lightgbm.sklearn"):
+        return current
+    if module_name.startswith("xgboost.sklearn"):
+        return current
+    if module_name.startswith("sklearn.ensemble"):
+        return current
+
+    if class_name in {
+        "LGBMClassifier",
+        "LGBMRegressor",
+        "XGBClassifier",
+        "XGBRegressor",
+        "RandomForestClassifier",
+        "RandomForestRegressor",
+    }:
+        return current
+
+    for attr in ("booster_", "booster"):
+        if hasattr(current, attr):
+            inner = getattr(current, attr)
+            if inner is not None and inner is not current:
+                return inner
+
+    return current
+
+
 def convert_tree_model_to_onnx(
-    model: Union[Pipeline, object],
+    model: Any,
     model_type: str,
-    output_dir: Path,
+    output_dir: str | Path,
     input_dim: int,
-    feature_names: Optional[list] = None,
+    feature_names: list[str] | None = None,
 ) -> Path:
     """
-    Convert tree-based models (LightGBM, XGBoost, RF, CatBoost) to ONNX.
-
-    Args:
-        model: Trained model or pipeline containing model
-        model_type: Type of model ('lightgbm', 'xgboost', 'random_forest', 'catboost')
-        output_dir: Directory to save ONNX file
-        input_dim: Number of input features
-        feature_names: Names of input features
-
-    Returns:
-        Path to saved ONNX file
+    Convertit un modèle arbre en ONNX.
+    Supporte :
+    - lightgbm via onnxmltools
+    - xgboost via onnxmltools
+    - random_forest via skl2onnx
     """
-    output_path = output_dir / f"{model_type}_pipeline.onnx"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Extract the actual model if pipeline is provided
-    if isinstance(model, Pipeline):
-        if "model" in model.named_steps:
-            model = model.named_steps["model"]
-        else:
-            # Assume last step is the model
-            model = model.steps[-1][1]
+    output_path = output_dir / f"{model_type}_model.onnx"
+    inner_model = _unwrap_model(model)
+
+    logger.info("ONNX export inner model type: %s", type(inner_model))
 
     if model_type == "lightgbm":
-        try:
-            import onnxmltools
-            from skl2onnx.common.data_types import FloatTensorType
-        except ImportError:
-            raise ImportError("Please install onnxmltools and skl2onnx: pip install onnxmltools skl2onnx")
-
-        # Check if it's a calibrated model
-        if hasattr(model, "_calibrated") and model._calibrated is not None:
-            logger.warning("Calibrated model detected. Exporting base LightGBM model.")
-            if hasattr(model, "get_booster"):
-                booster = model.get_booster()
-            else:
-                booster = model._model.booster_
-        else:
-            if hasattr(model, "get_booster"):
-                booster = model.get_booster()
-            else:
-                booster = model._model.booster_
-
-        initial_types = [('float_input', FloatTensorType([None, input_dim]))]
-        onnx_model = onnxmltools.convert_lightgbm(booster, initial_types=initial_types)
-
-        with open(output_path, "wb") as f:
-            f.write(onnx_model.SerializeToString())
+        initial_types = [("float_input", OxmlFloatTensorType([None, input_dim]))]
+        onnx_model = onnxmltools.convert_lightgbm(
+            inner_model,
+            initial_types=initial_types,
+        )
 
     elif model_type == "xgboost":
-        try:
-            import onnxmltools
-            from skl2onnx.common.data_types import FloatTensorType
-        except ImportError:
-            raise ImportError("Please install onnxmltools and skl2onnx")
-
-        initial_types = [('float_input', FloatTensorType([None, input_dim]))]
-        onnx_model = onnxmltools.convert_xgboost(model, initial_types=initial_types)
-
-        with open(output_path, "wb") as f:
-            f.write(onnx_model.SerializeToString())
+        initial_types = [("float_input", OxmlFloatTensorType([None, input_dim]))]
+        onnx_model = onnxmltools.convert_xgboost(
+            inner_model,
+            initial_types=initial_types,
+        )
 
     elif model_type == "random_forest":
-        try:
-            from skl2onnx import convert_sklearn
-            from skl2onnx.common.data_types import FloatTensorType
-        except ImportError:
-            raise ImportError("Please install skl2onnx")
-
-        initial_types = [('float_input', FloatTensorType([None, input_dim]))]
-        onnx_model = convert_sklearn(model, initial_types=initial_types)
-
-        with open(output_path, "wb") as f:
-            f.write(onnx_model.SerializeToString())
-
-    elif model_type == "catboost":
-        # CatBoost has native ONNX export
-        if not hasattr(model, "save_model"):
-            raise AttributeError("CatBoost model doesn't have save_model method")
-
-        model.save_model(
-            str(output_path),
-            format="onnx",
-            export_parameters={
-                'onnx_domain': 'ai.catboost',
-                'feature_names': feature_names or [f"f{i}" for i in range(input_dim)]
-            }
+        initial_types = [("float_input", SkFloatTensorType([None, input_dim]))]
+        onnx_model = convert_sklearn(
+            inner_model,
+            initial_types=initial_types,
         )
 
     else:
-        raise ValueError(f"Unsupported tree model: {model_type}")
+        raise ValueError(f"Unsupported tree model_type: {model_type}")
 
-    logger.info(f"ONNX model saved to {output_path}")
-    return output_path
-
-
-def convert_neural_model_to_onnx(
-    model,
-    pipeline: Optional[Pipeline],
-    output_dir: Path,
-    input_dim: int,
-) -> Path:
-    """
-    Convert PyTorch neural models to ONNX.
-
-    Args:
-        model: Trained neural model (should have a .model attribute)
-        pipeline: Optional preprocessing pipeline
-        output_dir: Directory to save ONNX file
-        input_dim: Number of input features
-
-    Returns:
-        Path to saved ONNX file
-    """
-    try:
-        import torch
-    except ImportError:
-        raise ImportError("Please install torch: pip install torch")
-
-    output_path = output_dir / "neural_pipeline.onnx"
-
-    # Extract the torch model
-    if hasattr(model, "model"):
-        torch_model = model.model
-    elif hasattr(model, "_model"):
-        torch_model = model._model
-    else:
-        torch_model = model
-
-    # Create dummy input
-    dummy_input = torch.randn(1, input_dim, dtype=torch.float32)
-
-    # Export the torch model
-    torch.onnx.export(
-        torch_model,
-        dummy_input,
-        output_path,
-        input_names=['float_input'],
-        output_names=['score'],
-        dynamic_axes={
-            'float_input': {0: 'batch_size'},
-            'score': {0: 'batch_size'}
-        },
-        opset_version=14,
-    )
-
-    logger.info(f"Neural model exported to ONNX: {output_path}")
+    onnx.save_model(onnx_model, str(output_path))
+    logger.info("ONNX model saved → %s", output_path)
     return output_path
 
 
 def verify_onnx_equivalence(
-    original_model,
-    onnx_path: Path,
-    test_data: Optional[np.ndarray] = None,
+    original_model: Any,
+    onnx_path: str | Path,
+    test_data: np.ndarray,
     tolerance: float = 1e-5,
 ) -> bool:
     """
-    Verify that ONNX model produces same outputs as original model.
-
-    Args:
-        original_model: Original trained model
-        onnx_path: Path to ONNX model
-        test_data: Test data for verification (generated if None)
-        tolerance: Maximum allowed difference
-
-    Returns:
-        True if equivalent within tolerance
+    Vérifie l'équivalence entre le modèle Python et le modèle ONNX.
+    Gère aussi les sorties ONNX de type liste de dictionnaires {classe: proba}.
     """
-    if test_data is None:
-        # Generate random test data
-        if hasattr(original_model, "feature_names_") and original_model.feature_names_:
-            n_features = len(original_model.feature_names_)
-        elif hasattr(original_model, "n_features_in_"):
-            n_features = original_model.n_features_in_
+    X = np.asarray(test_data, dtype=np.float32)
+    onnx_path = Path(onnx_path)
+
+    if hasattr(original_model, "predict_proba"):
+        py_proba = np.asarray(original_model.predict_proba(X))
+        py_scores = (
+            py_proba[:, 1]
+            if py_proba.ndim == 2 and py_proba.shape[1] >= 2
+            else py_proba.reshape(-1)
+        )
+    else:
+        inner_model = _unwrap_model(original_model)
+        if hasattr(inner_model, "predict_proba"):
+            proba = np.asarray(inner_model.predict_proba(X))
+            py_scores = (
+                proba[:, 1]
+                if proba.ndim == 2 and proba.shape[1] >= 2
+                else proba.reshape(-1)
+            )
+        elif hasattr(inner_model, "predict"):
+            py_scores = np.asarray(inner_model.predict(X)).reshape(-1)
         else:
-            n_features = 20  # Default fallback
+            raise TypeError(
+                "Model does not support predict_proba/predict for ONNX verification."
+            )
 
-        test_data = np.random.randn(100, n_features).astype(np.float32)
-        logger.info(f"Generated random test data with shape {test_data.shape}")
+    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    input_name = session.get_inputs()[0].name
+    outputs = session.run(None, {input_name: X})
 
-    # Get original predictions
-    try:
-        if hasattr(original_model, "predict_proba"):
-            original_scores = original_model.predict_proba(test_data)
-            if original_scores.ndim == 2:
-                original_scores = original_scores[:, 1]
+    onnx_scores = None
+
+    for out in reversed(outputs):
+        if isinstance(out, np.ndarray):
+            arr = np.asarray(out)
+            if arr.ndim == 2 and arr.shape[1] == 2:
+                onnx_scores = arr[:, 1]
+                break
+            if arr.ndim == 2 and arr.shape[1] == 1:
+                onnx_scores = arr.reshape(-1)
+                break
+            if arr.ndim == 1:
+                onnx_scores = arr
+                break
+
+        if isinstance(out, list) and len(out) > 0 and isinstance(out[0], dict):
+            extracted = []
+            for row in out:
+                if 1 in row:
+                    extracted.append(row[1])
+                elif "1" in row:
+                    extracted.append(row["1"])
+                else:
+                    k = sorted(row.keys(), key=lambda x: str(x))[-1]
+                    extracted.append(row[k])
+            onnx_scores = np.asarray(extracted, dtype=np.float32)
+            break
+
+        if isinstance(out, dict):
+            extracted = []
+            for key in sorted(out.keys(), key=lambda x: str(x)):
+                extracted.append(out[key])
+            onnx_scores = np.asarray(extracted, dtype=np.float32).reshape(-1)
+            break
+
+    if onnx_scores is None:
+        last = outputs[-1]
+
+        if isinstance(last, list) and len(last) > 0 and isinstance(last[0], dict):
+            extracted = []
+            for row in last:
+                if 1 in row:
+                    extracted.append(row[1])
+                elif "1" in row:
+                    extracted.append(row["1"])
+                else:
+                    k = sorted(row.keys(), key=lambda x: str(x))[-1]
+                    extracted.append(row[k])
+            onnx_scores = np.asarray(extracted, dtype=np.float32)
         else:
-            original_scores = original_model.predict(test_data)
-    except Exception as e:
-        logger.error(f"Error getting original predictions: {e}")
-        return False
+            onnx_scores = np.asarray(last, dtype=np.float32).reshape(-1)
 
-    # Get ONNX predictions
-    try:
-        ort_session = ort.InferenceSession(str(onnx_path))
-        input_name = ort_session.get_inputs()[0].name
-        onnx_input = {input_name: test_data}
-        onnx_scores = ort_session.run(None, onnx_input)[0]
+    onnx_scores = np.asarray(onnx_scores, dtype=np.float32).reshape(-1)
+    py_scores = np.asarray(py_scores, dtype=np.float32).reshape(-1)
 
-        if onnx_scores.ndim == 2:
-            onnx_scores = onnx_scores[:, 1]
-    except Exception as e:
-        logger.error(f"Error running ONNX model: {e}")
-        return False
+    ok = np.allclose(py_scores, onnx_scores, atol=tolerance)
 
-    # Compare
-    if len(original_scores) != len(onnx_scores):
-        logger.error(f"Output length mismatch: {len(original_scores)} vs {len(onnx_scores)}")
-        return False
+    if ok:
+        logger.info("ONNX equivalence check passed")
+    else:
+        max_diff = float(np.max(np.abs(py_scores - onnx_scores)))
+        logger.warning("ONNX equivalence check failed: max_diff=%.8f", max_diff)
 
-    max_diff = np.max(np.abs(original_scores - onnx_scores))
-    mean_diff = np.mean(np.abs(original_scores - onnx_scores))
-
-    logger.info(f"Max difference between original and ONNX: {max_diff:.6f}")
-    logger.info(f"Mean difference: {mean_diff:.6f}")
-
-    if max_diff > tolerance:
-        logger.error(f"Equivalence check failed! Max diff {max_diff:.6f} > {tolerance}")
-        return False
-
-    logger.info(f"ONNX equivalence verified (max diff: {max_diff:.6f})")
-    return True
-
-
-def get_onnx_input_shape(onnx_path: Path) -> tuple:
-    """Get expected input shape from ONNX model."""
-    model = onnx.load(str(onnx_path))
-    input_shape = model.graph.input[0].type.tensor_type.shape.dim
-    return tuple(dim.dim_value for dim in input_shape)
+    return ok
 
 
 def save_onnx_metadata(
-    onnx_path: Path,
+    onnx_path: str | Path,
     model_type: str,
-    feature_names: list[str],
-    additional_metadata: dict = None
+    feature_names: list[str] | None = None,
+    extra_metadata: dict | None = None,
 ) -> Path:
-    """Save metadata for ONNX model (for Java consumption)."""
-    meta = {
-        "model_type": model_type,
-        "onnx_path": str(onnx_path),
-        "input_features": feature_names,
-        "input_dim": len(feature_names),
-        "output_type": "probability",
-        "exported_at": pd.Timestamp.now().isoformat(),
-    }
-
-    if additional_metadata:
-        meta.update(additional_metadata)
+    """
+    Sauvegarde les métadonnées du modèle ONNX à côté du fichier .onnx.
+    Signature alignée avec onnx_exporter.py.
+    """
+    onnx_path = Path(onnx_path)
+    onnx_path.parent.mkdir(parents=True, exist_ok=True)
 
     meta_path = onnx_path.with_suffix(".meta.json")
-    meta_path.write_text(json.dumps(meta, indent=2))
-    logger.info(f"ONNX metadata saved to {meta_path}")
 
+    payload = {
+        "model_type": model_type,
+        "onnx_file": onnx_path.name,
+        "feature_names": feature_names or [],
+    }
+
+    if extra_metadata:
+        payload.update(extra_metadata)
+
+    meta_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    logger.info("ONNX metadata saved → %s", meta_path)
     return meta_path

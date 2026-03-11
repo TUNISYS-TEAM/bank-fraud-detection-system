@@ -1,9 +1,6 @@
-import pytest
 import numpy as np
-import pandas as pd
-from pathlib import Path
+import pytest
 
-# Skip ONNX tests if required packages not installed
 pytest.importorskip("onnx")
 pytest.importorskip("onnxruntime")
 pytest.importorskip("skl2onnx")
@@ -15,10 +12,11 @@ from ml_pipeline.utils.onnx_utils import verify_onnx_equivalence
 
 @pytest.fixture
 def sample_data():
-    X = np.random.randn(50, 5).astype(np.float32)
-    y = np.random.choice([0, 1], 50, p=[0.8, 0.2])
-    X_val = np.random.randn(20, 5).astype(np.float32)
-    y_val = np.random.choice([0, 1], 20, p=[0.8, 0.2])
+    rng = np.random.default_rng(42)
+    X = rng.normal(size=(50, 5)).astype(np.float32)
+    y = rng.choice([0, 1], size=50, p=[0.8, 0.2])
+    X_val = rng.normal(size=(20, 5)).astype(np.float32)
+    y_val = rng.choice([0, 1], size=20, p=[0.8, 0.2])
     return X, y, X_val, y_val
 
 
@@ -37,36 +35,33 @@ def trained_lightgbm(sample_data):
 
 class TestONNXExport:
     def test_export_lightgbm(self, tmp_path, trained_lightgbm):
-        exporter = ONNXExporter(
-            model_type="lightgbm",
-            model_path=None,  # we'll pass model directly? In exporter we load from path, so need to save first.
-            # Instead, we can test the conversion function directly.
-        )
-        # But our ONNXExporter expects a path. We'll save the model first.
         model_path = tmp_path / "model.joblib"
         trained_lightgbm.save(model_path)
-        exporter = ONNXExporter(
-            model_type="lightgbm",
-            model_path=model_path,
-            output_dir=tmp_path,
-        )
-        onnx_path = exporter.export(verify=False)  # skip verify because we need test data
-        assert onnx_path.exists()
-        assert onnx_path.with_suffix(".meta.json").exists()
 
-    def test_verify_equivalence(self, tmp_path, trained_lightgbm, sample_data):
-        X, _, _, _ = sample_data
-        model_path = tmp_path / "model.joblib"
-        trained_lightgbm.save(model_path)
         exporter = ONNXExporter(
             model_type="lightgbm",
             model_path=model_path,
             output_dir=tmp_path,
         )
         onnx_path = exporter.export(verify=False)
-        # Generate test data
-        test_data = np.random.randn(10, 5).astype(np.float32)
-        # Verify equivalence
+
+        assert onnx_path.exists()
+        assert onnx_path.with_suffix(".meta.json").exists()
+
+    def test_verify_equivalence(self, tmp_path, trained_lightgbm):
+        rng = np.random.default_rng(123)
+        test_data = rng.normal(size=(10, 5)).astype(np.float32)
+
+        model_path = tmp_path / "model.joblib"
+        trained_lightgbm.save(model_path)
+
+        exporter = ONNXExporter(
+            model_type="lightgbm",
+            model_path=model_path,
+            output_dir=tmp_path,
+        )
+        onnx_path = exporter.export(verify=False)
+
         result = verify_onnx_equivalence(
             original_model=trained_lightgbm,
             onnx_path=onnx_path,

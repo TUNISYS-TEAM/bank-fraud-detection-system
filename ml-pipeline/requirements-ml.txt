@@ -6,6 +6,7 @@ joblib>=1.1.0
 lightgbm>=3.3.0
 catboost>=1.1.0
 xgboost>=1.6.0
+tensorflow==2.21.0
 
 # ONNX dependencies
 onnx>=1.12.0
@@ -13,31 +14,36 @@ onnxruntime>=1.14.0
 onnxmltools>=1.11.0
 skl2onnx>=1.14.0
 
-# For visualization 
+# For visualization
 netron>=7.0.0
 
 # Utilities
 pyyaml>=6.0
 tqdm>=4.65.0
-psycopg2-binary>=2.9.0  # For PostgreSQL
-boto3>=1.26.0  # For MinIO/S3
-minio>=7.1.0  # MinIO Python client
+psycopg2-binary>=2.9.0
+boto3>=1.26.0
+minio>=7.1.0
+python-dotenv>=1.0.0
 
-# Jupyter for development 
+# Jupyter for development
 jupyter>=1.0.0
 ipykernel>=6.0.0
 
-# Data validation and schemas
+# Validation / settings
 pydantic>=2.0.0
-pydantic-settings>=2.0.0  # For BaseSettings
+pydantic-settings>=2.0.0
+pandera>=0.17.0
 
+# Anomaly detection / scientific stack
+pyod>=1.0.0
+scipy>=1.7.0
 
-# Testing (optional, can be moved to dev requirements)
-pytest>=7.0.0
-pytest-cov>=4.0.0
+# Parquet support
+pyarrow>=14.0.0
 
-# Additional utilities that might be needed
-python-dotenv>=1.0.0  # For loading environment variables
-pyarrow>=14.0.0  # For parquet support (used by pandas)
+# Testing
+pytest>=8.0.0
 
-lz4>=4.0.0
+# API (Flask) 
+flask>=2.0.0
+flask-cors>=4.0.0  

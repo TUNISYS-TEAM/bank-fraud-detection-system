@@ -56,8 +56,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     ports:
-      - "9000:9000"   
-      - "9001:9001"  
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -82,22 +82,13 @@ services:
   # ML Pipeline Service
   ml-pipeline:
     build:
-      context: ../ml-pipeline          # assumes compose file is in a 'docker/' folder
+      context: ../ml-pipeline
       dockerfile: Dockerfile.ml
     container_name: fraud-ml-pipeline
     ports:
-      - "8888:8888"                     # for Jupyter if needed
+      - "8888:8888"
     volumes:
-      # Mount code for live development (overrides the copied code)
       - ../ml-pipeline:/app
-      # Persist data and artifacts on the host (relative to compose file)
-      - ./exported_models:/app/exported_models
-      - ./exported_onnx:/app/exported_onnx
-      - ./logs:/app/logs
-      - ./data:/app/data
-      - ./test_models:/app/test_models
-      - ./test_onnx:/app/test_onnx
-      - ./exported_parquet:/app/exported_parquet
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app/src
@@ -106,14 +97,15 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
       - POSTGRES_HOST=postgres-app
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=fraud_db
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=${POSTGRES_DB:-fraud_db}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-admin}
     depends_on:
       postgres-app:
         condition: service_healthy
       minio:
         condition: service_healthy
+
     command: >
       sh -c "
       echo 'ML Pipeline Container Started' &&
@@ -123,8 +115,8 @@ services:
       echo '' &&
       echo 'Available commands:' &&
       echo '  docker exec -it fraud-ml-pipeline python scripts/generate_sample_data.py' &&
-      echo '  docker exec -it fraud-ml-pipeline python scripts/run_export_onnx.py --help' &&
-      echo '  docker exec -it fraud-ml-pipeline python -m ml_pipeline.cli.main train --help' &&
+      echo '  docker exec -it fraud-ml-pipeline python -m ml_pipeline.cli.main' &&
+      echo '  docker exec -it fraud-ml-pipeline python -m ml_pipeline.training.train_models --export-onnx' &&
       echo '' &&
       tail -f /dev/null
       "

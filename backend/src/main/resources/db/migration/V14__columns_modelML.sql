@@ -1,0 +1,7 @@
+BEGIN;
+
+ALTER TABLE model_ml
+ADD COLUMN dataset_path VARCHAR(500),
+ADD COLUMN artifacts JSONB;
+
+COMMIT;

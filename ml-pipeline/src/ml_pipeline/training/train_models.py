@@ -1,68 +1,65 @@
-"""
-train_models.py  v2
-===================
-All hyperparameters come from config/model_config.json.
-Spring Boot UI writes that file → Python reads it here.
-No hardcoded params in this script.
-
-Usage
------
-    python -m ml_pipeline.training.train_models \
-        --data_dir  exported_parquet/ \
-        --out       exported_models/ \
-        --config    config/model_config.json \
-        --log       logs/train_models.log \
-        --export-onnx
-"""
-
 from __future__ import annotations
 
 import argparse
 import json
-import sys
+import logging
 from pathlib import Path
-
-# Add parent directory to path to allow running as script
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import pandas as pd
 
 from ml_pipeline.config.model_config import ModelConfig
 from ml_pipeline.models.ensemble.ensemble import compare_models
-from ml_pipeline.utils.logging_config import setup_logging
 from ml_pipeline.pipeline.onnx_exporter import ONNXExporter
+from ml_pipeline.utils.logging_config import setup_logging
 
-logger = None  # will be set after setup_logging
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
-    p = argparse.ArgumentParser()
-    p.add_argument("--data_dir", default="exported_parquet")
-    p.add_argument("--out", default="exported_models")
-    p.add_argument("--config", default="config/model_config.json")
-    p.add_argument("--log", default=None)
-    p.add_argument("--level", default="INFO")
-    p.add_argument("--export-onnx", action="store_true",
-                   help="Export models to ONNX after training")
-    p.add_argument("--onnx-dir", default="exported_onnx",
-                   help="Directory to save ONNX models")
-    return p.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_dir", default="exported_parquet")
+    parser.add_argument("--out", default="exported_models")
+    parser.add_argument("--config", default="config/model_config.json")
+    parser.add_argument("--log", default=None)
+    parser.add_argument("--level", default="INFO")
+    parser.add_argument(
+        "--export-onnx",
+        action="store_true",
+        help="Export supported trained models to ONNX after training",
+    )
+    parser.add_argument(
+        "--onnx-dir",
+        default="exported_onnx",
+        help="Directory to save ONNX models",
+    )
+    return parser.parse_args()
 
 
 def load_data(data_dir):
-    d = Path(data_dir)
-    sets = {name: {split: pd.read_parquet(d / f"{split}_{name}.parquet").fillna(0).values
-                   for split in ["train", "val", "test"]}
-            for name in ["tree", "catboost", "dl_robust"]}
-    y = {split: pd.read_parquet(d / f"y_{split}.parquet")["fraud"].values
-         for split in ["train", "val", "test"]}
-    return sets, y
+    data_dir = Path(data_dir)
+    if not data_dir.exists():
+        raise FileNotFoundError(f"Data directory not found: {data_dir}")
+
+    feature_sets = {
+        name: {
+            split: pd.read_parquet(data_dir / f"{split}_{name}.parquet").fillna(0).values
+            for split in ["train", "val", "test"]
+        }
+        for name in ["tree", "catboost", "dl_robust"]
+    }
+
+    targets = {
+        split: pd.read_parquet(data_dir / f"y_{split}.parquet")["fraud"].values
+        for split in ["train", "val", "test"]
+    }
+
+    return feature_sets, targets
 
 
 def export_to_onnx(model_name, model_path, pipeline_path, onnx_dir):
-    """Export a trained model to ONNX."""
+    """Exporte un modèle entraîné au format ONNX."""
     try:
-        logger.info(f"Exporting {model_name} to ONNX...")
+        logger.info("Exporting %s to ONNX...", model_name)
         exporter = ONNXExporter(
             model_type=model_name,
             model_path=model_path,
@@ -70,17 +67,17 @@ def export_to_onnx(model_name, model_path, pipeline_path, onnx_dir):
             output_dir=onnx_dir,
         )
         onnx_path = exporter.export(verify=True)
-        logger.info(f"SUCCESS: {model_name} exported to {onnx_path}")
+        logger.info("Exported %s to %s", model_name, onnx_path)
         return onnx_path
-    except Exception as e:
-        logger.error(f"Failed to export {model_name} to ONNX: {e}")
+    except Exception as exc:
+        logger.error("Failed to export %s to ONNX: %s", model_name, exc)
         return None
 
 
 def main():
-    global logger
     args = parse_args()
-    logger = setup_logging(level=args.level, log_file=args.log)
+    setup_logging(level=args.level, log_file=args.log)
+
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -89,7 +86,7 @@ def main():
         onnx_dir.mkdir(parents=True, exist_ok=True)
 
     cfg = ModelConfig(args.config)
-    logger.info("Config: %s", cfg)
+    logger.info("Loaded model config from %s", args.config)
 
     sets, y = load_data(args.data_dir)
     Xtr, Xval, Xte = (sets["tree"][s] for s in ["train", "val", "test"])
@@ -97,9 +94,9 @@ def main():
     Dtr, Dval, Dte = (sets["dl_robust"][s] for s in ["train", "val", "test"])
 
     fitted = {}
-    pipeline_map = {}  # Map model names to their pipeline paths
+    pipeline_map = {}
 
-    # ── Tree-space models ──────────────────────────────────────────────
+    # Tree-space models
     for name, tr, val, te in [
         ("lightgbm", Xtr, Xval, Xte),
         ("xgboost", Xtr, Xval, Xte),
@@ -109,57 +106,57 @@ def main():
     ]:
         if not cfg.is_enabled(name):
             continue
-        print(f"\n{'='*55}\n  {name.upper()}\n{'='*55}")
-        m = getattr(cfg, f"build_{name}")()
-        m.fit(tr, y["train"], val, y["val"])
+
+        print(f"\n{'=' * 55}\n  {name.upper()}\n{'=' * 55}")
+        model = getattr(cfg, f"build_{name}")()
+        model.fit(tr, y["train"], val, y["val"])
 
         model_path = out / f"{name}.joblib"
-        m.save(model_path)
-        fitted[name] = m
+        model.save(model_path)
+
+        fitted[name] = model
         pipeline_map[name] = out / "pipeline_tree.joblib"
 
-    # ── CatBoost (own feature space) ──────────────────────────────────
+    # CatBoost
     if cfg.is_enabled("catboost"):
-        print(f"\n{'='*55}\n  CATBOOST\n{'='*55}")
-        m = cfg.build_catboost()
-        m.fit(Ctr, y["train"], Cval, y["val"])
+        print(f"\n{'=' * 55}\n  CATBOOST\n{'=' * 55}")
+        model = cfg.build_catboost()
+        model.fit(Ctr, y["train"], Cval, y["val"])
 
         model_path = out / "catboost.joblib"
-        m.save(model_path)
-        fitted["catboost"] = m
+        model.save(model_path)
+
+        fitted["catboost"] = model
         pipeline_map["catboost"] = out / "pipeline_catboost.joblib"
 
-    # ── DL models ─────────────────────────────────────────────────────
-    for name, tr, val, te in [
-        ("neural_network", Dtr, Dval, Dte),
-        ("autoencoder", Dtr, Dval, Dte),
-    ]:
-        if not cfg.is_enabled(name):
-            continue
-        print(f"\n{'='*55}\n  {name.upper()}\n{'='*55}")
-        m = getattr(cfg, f"build_{name}")()
-        m.fit(tr, y["train"], val, y["val"])
+    # Autoencoder
+    if cfg.is_enabled("autoencoder"):
+        print(f"\n{'=' * 55}\n  AUTOENCODER\n{'=' * 55}")
+        model = cfg.build_autoencoder()
+        model.fit(Dtr, y["train"], Dval, y["val"])
 
-        model_path = out / f"{name}.joblib"
-        m.save(model_path)
-        fitted[name] = m
-        pipeline_map[name] = out / "pipeline_dl_robust.joblib"
+        model_path = out / "autoencoder.joblib"
+        model.save(model_path)
 
-    # ── Ensemble ──────────────────────────────────────────────────────
-    print(f"\n{'='*55}\n  ENSEMBLE\n{'='*55}")
-    ens = cfg.build_ensemble(fitted)
-    ens.fit(Xval, y["val"], Xval, y["val"])
-    ens.save(out / "ensemble.joblib")
-    fitted["ensemble"] = ens
+        fitted["autoencoder"] = model
+        pipeline_map["autoencoder"] = out / "pipeline_dl_robust.joblib"
 
-    # ── ONNX Export ───────────────────────────────────────────────────
+    # Ensemble
+    print(f"\n{'=' * 55}\n  ENSEMBLE\n{'=' * 55}")
+    # Les poids de l'ensemble sont optimisés sur les prédictions de validation.
+    ensemble_model = cfg.build_ensemble(fitted)
+    ensemble_model.fit(Xval, y["val"], Xval, y["val"])
+    ensemble_model.save(out / "ensemble.joblib")
+    fitted["ensemble"] = ensemble_model
+
+    # ONNX export
     if args.export_onnx:
-        print(f"\n{'='*55}\n  EXPORTING TO ONNX\n{'='*55}")
+        print(f"\n{'=' * 55}\n  EXPORTING TO ONNX\n{'=' * 55}")
         onnx_results = {}
 
-        for name, model in fitted.items():
-            if name in ["ecod", "copod", "ensemble"]:
-                logger.info(f"Skipping {name} ONNX export (not supported yet)")
+        for name in fitted:
+            if name in {"ecod", "copod", "ensemble", "autoencoder"}:
+                logger.info("Skipping %s ONNX export (not supported yet)", name)
                 continue
 
             model_path = out / f"{name}.joblib"
@@ -167,37 +164,40 @@ def main():
 
             if pipeline_path and pipeline_path.exists():
                 onnx_path = export_to_onnx(name, model_path, pipeline_path, onnx_dir)
-                if onnx_path:
-                    onnx_results[name] = onnx_path
             else:
-                logger.warning(f"No pipeline found for {name}, exporting model only")
+                logger.warning("No pipeline found for %s, exporting model only", name)
                 onnx_path = export_to_onnx(name, model_path, None, onnx_dir)
-                if onnx_path:
-                    onnx_results[name] = onnx_path
 
-        print(f"\nSUCCESS: Exported {len(onnx_results)} models to ONNX in {onnx_dir}")
+            if onnx_path:
+                onnx_results[name] = onnx_path
 
-    # ── Comparison ────────────────────────────────────────────────────
-    tree_models = [fitted[n] for n in
-                   ["lightgbm", "xgboost", "random_forest", "ecod", "copod", "ensemble"]
-                   if n in fitted]
-    print(f"\n{'='*55}\n  FINAL COMPARISON (TEST)\n{'='*55}")
-    comp = compare_models(tree_models, y["test"], Xte)
-    print(comp.to_string(index=False))
-    comp.to_csv(out / "model_comparison.csv", index=False)
+        print(f"\nExported {len(onnx_results)} models to ONNX in {onnx_dir}")
 
-    # Write learned thresholds back to a config sidecar for Spring Boot
-    out_cfg = dict(cfg._cfg)
-    for name, m in fitted.items():
+    # Final comparison
+    tree_models = [
+        fitted[name]
+        for name in ["lightgbm", "xgboost", "random_forest", "ecod", "copod", "ensemble"]
+        if name in fitted
+    ]
+
+    print(f"\n{'=' * 55}\n  FINAL COMPARISON (TEST)\n{'=' * 55}")
+    comparison = compare_models(tree_models, y["test"], Xte)
+    print(comparison.to_string(index=False))
+    comparison.to_csv(out / "model_comparison.csv", index=False)
+
+    # Save learned thresholds for backend reuse
+    out_cfg = cfg._cfg.model_dump(by_alias=True)
+    for name, model in fitted.items():
         if name in out_cfg:
-            out_cfg[name]["best_threshold"] = round(m.threshold_, 6)
+            out_cfg[name]["best_threshold"] = round(model.threshold_, 6)
 
     (out / "model_config_with_thresholds.json").write_text(
-        json.dumps(out_cfg, indent=2)
+        json.dumps(out_cfg, indent=2),
+        encoding="utf-8",
     )
 
-    print(f"\nComparison  → {out}/model_comparison.csv")
-    print(f"Thresholds  → {out}/model_config_with_thresholds.json")
+    print(f"\nComparison  → {out / 'model_comparison.csv'}")
+    print(f"Thresholds  → {out / 'model_config_with_thresholds.json'}")
     if args.export_onnx:
         print(f"ONNX models → {onnx_dir}/")
 

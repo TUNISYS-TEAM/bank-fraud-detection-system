@@ -1,30 +1,24 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 from scipy.optimize import minimize
 from sklearn.metrics import fbeta_score
 
-from ml_pipeline.models.base_model import FraudBaseModel, _safe
+from ml_pipeline.models.base_model import FraudBaseModel
 
 logger = logging.getLogger(__name__)
 
 
 class WeightedEnsemble(FraudBaseModel):
     """
-    Weighted average of N fitted FraudBaseModel instances.
+    Moyenne pondérée des instances FraudBaseModel ajustées.
 
-    All models must expose predict_proba() returning rank-normalized [0,1]
-    scores (i.e. built on RankNormalizer — LightGBM uses isotonic calibration
-    which also gives stable [0,1] output).
-
-    Parameters
-    ----------
-    models      : list of fitted FraudBaseModel instances
-    beta        : Fbeta weight for threshold search (default 2.0 = favour recall)
-    n_weight_restarts : random restarts for weight optimization
+    Tous les modèles doivent exposer predict_proba() retournant des scores calibrés
+    ou normalisés par rang sur une échelle comparable [0, 1].
     """
 
     def __init__(
@@ -34,36 +28,39 @@ class WeightedEnsemble(FraudBaseModel):
         n_weight_restarts: int = 10,
     ):
         super().__init__("WeightedEnsemble")
+        if not models:
+            raise ValueError("WeightedEnsemble requires at least one base model.")
+
         self.models = models
         self.beta = beta
         self.n_weight_restarts = n_weight_restarts
         self.weights_: Optional[np.ndarray] = None
 
     def fit(self, X, y, X_val=None, y_val=None):
+        """Optimise les poids de l'ensemble sur les données de validation en utilisant F-beta."""
         if X_val is None or y_val is None:
-            raise ValueError("WeightedEnsemble.fit requires X_val and y_val")
+            raise ValueError("WeightedEnsemble.fit requires X_val and y_val.")
 
         y_val = np.asarray(y_val)
         n = len(self.models)
-
-        # Collect scores from each model on VAL
         scores_val = np.column_stack([m.predict_proba(X_val) for m in self.models])
 
         def _neg_fbeta(raw_w):
-            # Softmax ensures weights sum to 1 and are positive
             w = np.exp(raw_w - raw_w.max())
             w /= w.sum()
+
             composite = scores_val @ w
-            # Use best threshold for this weight combination
             lo, hi = np.percentile(composite, [1, 99])
+
             best = -1.0
             for t in np.linspace(lo, hi, 200):
                 yp = (composite > t).astype(int)
                 if yp.sum() == 0:
                     continue
-                s = fbeta_score(y_val, yp, beta=self.beta, zero_division=0)
-                if s > best:
-                    best = s
+                score = fbeta_score(y_val, yp, beta=self.beta, zero_division=0)
+                if score > best:
+                    best = score
+
             return -best
 
         best_result = None
@@ -72,8 +69,10 @@ class WeightedEnsemble(FraudBaseModel):
         for _ in range(self.n_weight_restarts):
             x0 = rng.normal(0, 1, n)
             result = minimize(
-                _neg_fbeta, x0, method="Nelder-Mead",
-                options={"maxiter": 2000, "xatol": 1e-4}
+                _neg_fbeta,
+                x0,
+                method="Nelder-Mead",
+                options={"maxiter": 2000, "xatol": 1e-4},
             )
             if best_result is None or result.fun < best_result.fun:
                 best_result = result
@@ -88,29 +87,34 @@ class WeightedEnsemble(FraudBaseModel):
             {m.name: f"{wi:.3f}" for m, wi in zip(self.models, w)},
         )
 
-        # Find threshold on VAL composite score
         composite_val = scores_val @ self.weights_
         self.find_best_threshold(y_val, composite_val, metric="fbeta", beta=self.beta)
+
         self._fitted = True
         return self
 
     def predict_proba(self, X) -> np.ndarray:
+        if self.weights_ is None:
+            raise ValueError("WeightedEnsemble must be fitted before predict_proba().")
+
         scores = np.column_stack([m.predict_proba(X) for m in self.models])
         return scores @ self.weights_
 
     def to_onnx(self, output_path: str | Path, feature_names: list[str] | None = None):
-        raise NotImplementedError("WeightedEnsemble ONNX export not implemented.")
+        raise NotImplementedError("Ensemble ONNX export not supported.")
 
 
 class ANDEnsemble(FraudBaseModel):
     """
-    Flag a transaction only when ALL models exceed their individual thresholds.
-    Maximises precision at the cost of recall.
-    Combined score = geometric mean of all model scores (all on [0,1]).
+    Signale une transaction uniquement lorsque tous les modèles sont d'accord.
+    Maximise la précision au détriment du rappel.
     """
 
     def __init__(self, models: list[FraudBaseModel], beta: float = 2.0):
         super().__init__("ANDEnsemble")
+        if not models:
+            raise ValueError("ANDEnsemble requires at least one base model.")
+
         self.models = models
         self.beta = beta
 
@@ -135,14 +139,13 @@ class ANDEnsemble(FraudBaseModel):
         return preds.all(axis=1).astype(int)
 
     def to_onnx(self, output_path: str | Path, feature_names: list[str] | None = None):
-        raise NotImplementedError("ANDEnsemble ONNX export not implemented.")
+        raise NotImplementedError("ANDEnsemble ONNX export not supported.")
 
 
 class ORBoostEnsemble(FraudBaseModel):
     """
-    Flag when ANY model is highly confident (score > high_conf_threshold)
-    OR when the weighted average exceeds a lower combined threshold.
-    Maximises recall for high-value fraud detection.
+    Signale lorsqu'un modèle est très confiant, ou lorsque le score composite boosté
+    dépasse le seuil appris.
     """
 
     def __init__(
@@ -152,6 +155,9 @@ class ORBoostEnsemble(FraudBaseModel):
         beta: float = 2.0,
     ):
         super().__init__("ORBoostEnsemble")
+        if not models:
+            raise ValueError("ORBoostEnsemble requires at least one base model.")
+
         self.models = models
         self.high_conf_threshold = high_conf_threshold
         self.beta = beta
@@ -171,17 +177,16 @@ class ORBoostEnsemble(FraudBaseModel):
         scores = np.column_stack([m.predict_proba(X) for m in self.models])
         avg = scores.mean(axis=1)
         max_s = scores.max(axis=1)
-        boost = np.where(max_s > self.high_conf_threshold, max_s, avg)
-        return boost
+        return np.where(max_s > self.high_conf_threshold, max_s, avg)
 
     def predict(self, X) -> np.ndarray:
         scores = np.column_stack([m.predict_proba(X) for m in self.models])
         any_high = (scores > self.high_conf_threshold).any(axis=1)
-        composite_alert = scores.mean(axis=1) > self.threshold_
+        composite_alert = self.predict_proba(X) > self.threshold_
         return (any_high | composite_alert).astype(int)
 
     def to_onnx(self, output_path: str | Path, feature_names: list[str] | None = None):
-        raise NotImplementedError("ORBoostEnsemble ONNX export not implemented.")
+        raise NotImplementedError("ORBoostEnsemble ONNX export not supported.")
 
 
 def compare_models(
@@ -190,7 +195,9 @@ def compare_models(
     X,
     sort_by: str = "f2",
 ) -> "pd.DataFrame":
-    """Evaluate all models and return a sorted comparison DataFrame."""
+    """
+    Évalue tous les modèles et retourne un DataFrame de comparaison trié.
+    """
     import pandas as pd
 
     rows = [m.evaluate(y_true, X) for m in models]

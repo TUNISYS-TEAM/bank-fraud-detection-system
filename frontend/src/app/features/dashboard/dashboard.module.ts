@@ -14,6 +14,9 @@ import { PerformanceComponent } from './pages/performance/performance.component'
 import { SimulationComponent } from './pages/simulation/simulation.component';
 import { MessagesComponent } from './pages/messaging/messaging.component';
 
+import { CardsComponent } from '../../shared/cards/cards.component';
+
+
 @NgModule({
   declarations: [
     OverviewComponent,
@@ -22,7 +25,7 @@ import { MessagesComponent } from './pages/messaging/messaging.component';
     ImportDataComponent,
     PerformanceComponent,
     SimulationComponent,
-    MessagesComponent 
+    MessagesComponent, 
   ],
   imports: [
     CommonModule,
@@ -30,6 +33,7 @@ import { MessagesComponent } from './pages/messaging/messaging.component';
     DashboardRoutingModule,
     LayoutModule,
     FeatherModule,
+    CardsComponent
   ]
 })
 export class DashboardModule { }

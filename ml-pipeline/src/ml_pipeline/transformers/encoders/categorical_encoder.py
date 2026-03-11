@@ -1,12 +1,6 @@
-# src/ml_pipeline/transformers/encoders/categorical_encoder.py
-"""
-Safe one‑hot encoder that handles missing columns and unknown categories gracefully.
-"""
-
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -27,15 +21,15 @@ _RAW_CATEGORICAL_COLS = ["region", "Channel", "category"]
 
 class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
     """
-    One‑hot encodes a fixed list of categorical columns.
+    Encode par One-hot une liste fixe de colonnes catégorielles.
 
-    Parameters
+    Paramètres
     ----------
     categorical_cols : list[str]
-        Columns to encode. All others are passed through unchanged.
+        Colonnes à encoder. Toutes les autres sont transmises sans modification.
     include_raw_cats : bool
-        If True, also encodes the raw region / Channel / category columns
-        (useful when you want both the raw and the usual_* encoded).
+        Si True, encode également les colonnes brutes region / Channel / category
+        (utile si vous souhaitez à la fois les colonnes brutes et les colonnes usual_* encodées).
     """
 
     def __init__(
@@ -50,7 +44,6 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
         self._encoded_names: list[str] = []
         self.feature_names_in_: list[str] = []
 
-    # ------------------------------------------------------------------
     def fit(self, X: pd.DataFrame, y=None) -> "SafeOneHotEncoder":
         cols = list(self.categorical_cols)
         if self.include_raw_cats:
@@ -73,15 +66,17 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
             )
             enc.fit(values)
             self._encoders[col] = enc
-            self._encoded_names.extend([f"{col}__{cat}" for cat in enc.categories_[0]])
+            self._encoded_names.extend(
+                [f"{col}__{cat}" for cat in enc.categories_[0]]
+            )
 
         logger.info(
             "SafeOneHotEncoder.fit — %d columns encoded → %d OHE features",
-            len(self._encoders), len(self._encoded_names),
+            len(self._encoders),
+            len(self._encoded_names),
         )
         return self
 
-    # ------------------------------------------------------------------
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         check_is_fitted(self, "_encoders")
 
@@ -106,7 +101,6 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
 
             values = X[[col]].fillna("Unknown")
 
-            # Log unknown categories for monitoring
             known = set(enc.categories_[0])
             seen = set(values[col].unique())
             unknowns = seen - known
@@ -114,7 +108,9 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
                 logger.warning(
                     "SafeOneHotEncoder.transform: column '%s' has %d unknown "
                     "categories not seen in fit: %s",
-                    col, len(unknowns), list(unknowns)[:5],
+                    col,
+                    len(unknowns),
+                    list(unknowns)[:5],
                 )
 
             encoded = enc.transform(values)
@@ -124,7 +120,6 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
         logger.debug("SafeOneHotEncoder.transform — output shape %s", result.shape)
         return result
 
-    # ------------------------------------------------------------------
     def get_feature_names_out(self, input_features=None) -> list[str]:
         check_is_fitted(self, "_encoders")
         non_cat = [c for c in self.feature_names_in_ if c not in self._encoders]

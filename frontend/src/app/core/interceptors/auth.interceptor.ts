@@ -1,4 +1,3 @@
-// core/interceptors/auth.interceptor.ts
 import { Injectable, inject } from '@angular/core';
 import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError, BehaviorSubject, EMPTY } from 'rxjs';
@@ -15,13 +14,21 @@ export class AuthInterceptor implements HttpInterceptor {
 
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     // Clone request with credentials and headers
+    // Clone request with credentials
+    let headers: any = {
+      'Accept': 'application/json'
+    };
+
+    // Only set Content-Type to application/json if not sending FormData
+    if (!(req.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
+
     const authReq = req.clone({
       withCredentials: true,
-      setHeaders: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
+      setHeaders: headers
     });
+
 
     return next.handle(authReq).pipe(
       catchError((error: HttpErrorResponse) => {
@@ -31,15 +38,15 @@ export class AuthInterceptor implements HttpInterceptor {
           // Return EMPTY to complete silently without error
           return EMPTY;
         }
-        
+
         // Don't refresh on 401 for auth endpoints
-        if (error.status === 401 && 
-            !req.url.includes('/api/auth/login') && 
-            !req.url.includes('/api/auth/csrf') && 
-            !req.url.includes('/api/auth/refresh')) {
+        if (error.status === 401 &&
+          !req.url.includes('/api/auth/login') &&
+          !req.url.includes('/api/auth/csrf') &&
+          !req.url.includes('/api/auth/refresh')) {
           return this.handle401Error(authReq, next);
         }
-        
+
         return throwError(() => error);
       })
     );

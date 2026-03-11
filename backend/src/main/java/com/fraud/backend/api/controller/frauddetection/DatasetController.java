@@ -6,9 +6,11 @@ import com.fraud.backend.data.service.frauddetection.DatasetService;
 import com.fraud.backend.api.dto.frauddetection.dataset.DatasetMapper;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetResponse;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetPreviewResponse;
+import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetAnalysisResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -64,4 +66,16 @@ public class DatasetController {
         return datasetMapper.toResponse(datasetService.update(uuid, request));
     }
 
+    // Analyse du dataset
+    @PostMapping("/{uuid}/analyze")
+    public ResponseEntity<DatasetAnalysisResponse> analyzeDataset(@PathVariable UUID uuid) throws Exception {
+        DatasetAnalysisResponse response = datasetService.analyzeDataset(uuid);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{uuid}/analysis")
+    public ResponseEntity<DatasetAnalysisResponse> getAnalysis(@PathVariable UUID uuid) {
+        DatasetAnalysisResponse response = datasetService.getAnalysis(uuid);
+        return ResponseEntity.ok(response);
+    }
 }

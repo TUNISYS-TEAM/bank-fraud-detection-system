@@ -227,31 +227,31 @@ public class AuthController {
         try {
             // Get the refresh token from cookie
             String refreshToken = getCookieValue(httpRequest, "refresh_token");
-            
+
             // Get the access token to extract session state
             String accessToken = getCookieValue(httpRequest, "access_token");
-            
+
             if (refreshToken != null) {
                 // Call Keycloak logout endpoint to invalidate the session
                 String logoutUrl = keycloakUrl + "/realms/" + realm + "/protocol/openid-connect/logout";
-                
+
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-                
+
                 MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
                 body.add("client_id", clientId);
                 body.add("client_secret", clientSecret);
                 body.add("refresh_token", refreshToken);
-                
+
                 HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
-                
+
                 try {
                     restTemplate.postForEntity(logoutUrl, entity, String.class);
                 } catch (Exception e) {
                     log.error("Keycloak logout failed: {}", e.getMessage());
                 }
             }
-            
+
             // Extract session state from access token and end session in database
             if (accessToken != null) {
                 String sessionState = extractSessionState(accessToken);
@@ -263,7 +263,7 @@ public class AuthController {
                     }
                 }
             }
-            
+
         } catch (Exception e) {
             log.error("Error during logout process: {}", e.getMessage());
         } finally {

@@ -7,12 +7,13 @@
         [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()" (click)="$event.stopPropagation()">
 
         <!-- Header -->
-        <div class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50">
+        <div
+            class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50">
             <div class="flex items-center space-x-4">
                 <div class="p-3 bg-indigo-100 rounded-xl">
                     <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                              d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                 </div>
                 <div>
@@ -20,8 +21,8 @@
                     <p class="text-sm text-gray-500 mt-1">Ajouter un nouvel ensemble de données</p>
                 </div>
             </div>
-            <button (click)="closeModal()" 
-                    class="text-gray-400 hover:text-gray-600 hover:bg-white/50 p-2 rounded-lg transition-colors">
+            <button (click)="closeModal()"
+                class="text-gray-400 hover:text-gray-600 hover:bg-white/50 p-2 rounded-lg transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -30,21 +31,15 @@
 
         <!-- Body -->
         <div class="px-8 py-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-            @if (errorMessage()) {
-                <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-3">
-                    <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                    </svg>
-                    <p class="text-sm text-red-700">{{ errorMessage() }}</p>
-                </div>
-            }
+
 
             <form [formGroup]="datasetForm" (ngSubmit)="onSubmit()" class="space-y-6">
                 <!-- Nom du dataset -->
                 <div class="space-y-2">
                     <label class="flex items-center text-sm font-semibold text-gray-700">
                         <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                         </svg>
                         Nom du Dataset
                     </label>
@@ -57,96 +52,114 @@
                 <div class="space-y-2">
                     <label class="flex items-center text-sm font-semibold text-gray-700">
                         <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
                         Fichier CSV
                     </label>
-                    
+
                     <!-- Drop Zone -->
-                    <div class="relative"
-                         (dragover)="onDragOver($event)"
-                         (dragleave)="onDragLeave($event)"
-                         (drop)="onDrop($event)"
-                         [class.opacity-50]="isLoading()">
-                        
+                    <div class="relative" (dragover)="onDragOver($event)" (dragleave)="onDragLeave($event)"
+                        (drop)="onDrop($event)" [class.opacity-50]="isLoading()">
+
                         <div class="flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-8 transition-all duration-300 cursor-pointer"
-                             [class.border-indigo-400]="isDragging() && !selectedFile()"
-                             [class.bg-indigo-50]="isDragging() && !selectedFile()"
-                             [class.border-indigo-500]="selectedFile()"
-                             [class.bg-indigo-50]="selectedFile()"
-                             [class.border-gray-200]="!isDragging() && !selectedFile()"
-                             [class.hover:border-indigo-400]="!selectedFile()"
-                             [class.hover:bg-indigo-30]="!selectedFile()"
-                             (click)="!isLoading() && fileInput.click()">
+                            [class.border-indigo-400]="isDragging() && !selectedFile()"
+                            [class.bg-indigo-50]="isDragging() && !selectedFile()"
+                            [class.border-indigo-500]="selectedFile()" [class.bg-indigo-50]="selectedFile()"
+                            [class.border-gray-200]="!isDragging() && !selectedFile()"
+                            [class.hover:border-indigo-400]="!selectedFile()"
+                            [class.hover:bg-indigo-30]="!selectedFile()" (click)="!isLoading() && fileInput.click()">
 
                             @if (!selectedFile()) {
-                                <!-- État par défaut / Drag over -->
-                                @if (isDragging()) {
-                                    <div class="p-3 bg-indigo-100 rounded-full mb-3">
-                                        <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                        </svg>
-                                    </div>
-                                    <p class="text-sm font-medium text-indigo-600">Déposez votre fichier ici</p>
-                                } @else {
-                                    <div class="p-3 bg-gray-100 rounded-full mb-3 group-hover:bg-indigo-100 transition-colors">
-                                        <svg class="w-8 h-8 text-gray-500 group-hover:text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                        </svg>
-                                    </div>
-                                    <p class="text-sm font-medium text-gray-700">Cliquez ou glissez un fichier</p>
-                                }
-                                <p class="text-xs text-gray-400 mt-1">Format CSV uniquement (max. 200MB)</p>
+                            <!-- État par défaut / Drag over -->
+                            @if (isDragging()) {
+                            <div class="p-3 bg-indigo-100 rounded-full mb-3">
+                                <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                            </div>
+                            <p class="text-sm font-medium text-indigo-600">Déposez votre fichier ici</p>
                             } @else {
-                                <!-- Fichier sélectionné -->
-                                <div class="p-3 bg-green-100 rounded-full mb-3">
-                                    <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                </div>
-                                <p class="text-sm font-semibold text-gray-900">{{ selectedFile()?.name }}</p>
-                                <p class="text-xs text-gray-500 mt-1">{{ (selectedFile()?.size || 0) / 1024 / 1024 | number:'1.1-2' }} MB</p>
-                                <button type="button" (click)="$event.stopPropagation(); selectedFile.set(null)"
-                                    class="mt-3 text-xs text-indigo-600 hover:underline font-medium">
-                                    Choisir un autre fichier
-                                </button>
+                            <div class="p-3 bg-gray-100 rounded-full mb-3 group-hover:bg-indigo-100 transition-colors">
+                                <svg class="w-8 h-8 text-gray-500 group-hover:text-indigo-600" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                            </div>
+                            <p class="text-sm font-medium text-gray-700">Cliquez ou glissez un fichier</p>
+                            }
+                            <p class="text-xs text-gray-400 mt-1">Format CSV uniquement (max. 200MB)</p>
+                            } @else {
+                            <!-- Fichier sélectionné -->
+                            <div class="p-3 bg-green-100 rounded-full mb-3">
+                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <p class="text-sm font-semibold text-gray-900">{{ selectedFile()?.name }}</p>
+                            <p class="text-xs text-gray-500 mt-1">{{ (selectedFile()?.size || 0) / 1024 / 1024 |
+                                number:'1.1-2' }} MB</p>
+                            <button type="button" (click)="$event.stopPropagation(); selectedFile.set(null)"
+                                class="mt-3 text-xs text-indigo-600 hover:underline font-medium">
+                                Choisir un autre fichier
+                            </button>
                             }
                         </div>
-                        
+
                         <!-- Input file caché -->
-                        <input #fileInput 
-                               type="file" 
-                               (change)="onFileSelected($event)" 
-                               accept=".csv" 
-                               class="hidden">
+                        <input #fileInput type="file" (change)="onFileSelected($event)" accept=".csv" class="hidden">
                     </div>
 
                     <!-- Message d'information sur le format -->
                     <p class="text-xs text-gray-400 flex items-center mt-2">
                         <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         Le fichier doit être au format CSV avec en-têtes
                     </p>
                 </div>
 
                 <!-- Actions -->
+                @if (errorMessage()) {
+                <div
+                    class="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start space-x-3 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div class="p-2 bg-amber-100 rounded-lg">
+                        <svg class="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-bold text-amber-800">Validation des colonnes requise</h4>
+                        <p class="text-xs text-amber-700 mt-1 leading-relaxed">{{ errorMessage() }}</p>
+                    </div>
+                </div>
+                }
+
                 <div class="flex items-center space-x-4 pt-4">
                     <button type="button" (click)="closeModal()"
                         class="flex-1 px-6 py-3 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-all text-sm shadow-sm">
                         Annuler
                     </button>
-                    <button type="submit" 
-                            [disabled]="datasetForm.invalid || !selectedFile() || isLoading()"
-                            class="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all text-sm font-medium shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
+                    <button type="submit" [disabled]="datasetForm.invalid || !selectedFile() || isLoading()"
+                        class="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all text-sm font-medium shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
                         @if (isLoading()) {
-                            <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                            <span>Importation...</span>
+                        <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                                fill="none" />
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span>Importation...</span>
                         } @else {
-                            <span>Importer</span>
+                        <span>Importer</span>
                         }
                     </button>
                 </div>

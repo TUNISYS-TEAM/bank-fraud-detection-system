@@ -1,11 +1,4 @@
-"""
-Training module for fraud detection models.
-
-Provides:
-- train_models: Main orchestrator for training all models defined in config.
-- train_supervised: Train a single supervised model with CV.
-- validate_pipeline: Sanity checks for leakage and signal.
-"""
+"""Training subpackage — model training and pipeline validation utilities."""
 
 from .train_models import main as train_models_main
 from .train_supervised import main as train_supervised_main

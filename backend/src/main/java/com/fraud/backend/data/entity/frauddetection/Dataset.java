@@ -4,11 +4,14 @@ import com.fraud.backend.data.enums.DatasetStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.Map;
 
 @Entity
 @Table(name = "dataset")
@@ -55,6 +58,14 @@ public class Dataset {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "feature_columns", columnDefinition = "jsonb")
+    private Map<String, Object> featureColumns;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "statistics", columnDefinition = "jsonb")
+    private Map<String, Object> statistics;
 
     // =========================
     // Lifecycle Hooks

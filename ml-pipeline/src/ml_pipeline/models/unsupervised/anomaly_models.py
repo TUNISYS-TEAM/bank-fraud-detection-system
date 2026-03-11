@@ -1,4 +1,3 @@
-# src/ml_pipeline/models/unsupervised/anomaly_models.py
 from __future__ import annotations
 
 import json
@@ -15,19 +14,27 @@ logger = logging.getLogger(__name__)
 
 class RankNormalizer:
     """
-    Maps raw anomaly scores to [0,1] via the empirical CDF fitted on TRAIN.
+    Maps raw anomaly scores to [0, 1] via the empirical CDF fitted on training scores.
+
+    This makes anomaly scores stable across batches and comparable with other
+    model outputs inside hybrid or ensemble strategies.
     """
 
     def __init__(self):
         self._sorted_scores: Optional[np.ndarray] = None
 
     def fit(self, scores: np.ndarray) -> "RankNormalizer":
+        scores = np.asarray(scores).reshape(-1)
+        if scores.size == 0:
+            raise ValueError("RankNormalizer.fit() received an empty score array.")
         self._sorted_scores = np.sort(scores)
         return self
 
     def transform(self, scores: np.ndarray) -> np.ndarray:
         if self._sorted_scores is None:
-            raise RuntimeError("RankNormalizer.fit() must be called first")
+            raise RuntimeError("RankNormalizer.fit() must be called before transform().")
+
+        scores = np.asarray(scores).reshape(-1)
         ranks = np.searchsorted(self._sorted_scores, scores, side="right")
         return ranks / len(self._sorted_scores)
 
@@ -36,6 +43,11 @@ class RankNormalizer:
 
 
 class AnomalyAutoencoder(FraudBaseModel):
+    """
+    Autoencoder trained on normal transactions only.
+    High reconstruction error indicates anomalous behavior.
+    """
+
     def __init__(
         self,
         encoding_dim: int = 32,
@@ -50,21 +62,23 @@ class AnomalyAutoencoder(FraudBaseModel):
         self.batch_size = batch_size
         self.threshold_metric = threshold_metric
         self.beta = beta
+
         self._model = None
         self._normalizer = RankNormalizer()
         self.input_dim_: int = 0
 
     def fit(self, X, y, X_val=None, y_val=None):
-        import tensorflow as tf
         from tensorflow import keras
+
         layers = keras.layers
 
         y = np.asarray(y)
         X_normal = X[y == 0]
         if len(X_normal) == 0:
-            raise ValueError("Autoencoder.fit: no normal (y=0) samples in TRAIN")
+            raise ValueError("Autoencoder.fit: no normal (y=0) samples found in training data.")
 
         self.input_dim_ = X.shape[1]
+
         inp = keras.Input(shape=(self.input_dim_,))
         encoded = layers.Dense(64, activation="relu")(inp)
         encoded = layers.Dropout(0.2)(encoded)
@@ -104,10 +118,9 @@ class AnomalyAutoencoder(FraudBaseModel):
 
         self._time_fit(_fit)
 
-        # Fit rank normalizer on TRAIN MSE scores
         train_mse = self._raw_mse(X)
         self._normalizer.fit(train_mse)
-        logger.info("Autoencoder: rank normalizer fitted on %d TRAIN scores", len(train_mse))
+        logger.info("Autoencoder: rank normalizer fitted on %d training scores", len(train_mse))
 
         if X_val is not None and y_val is not None:
             scores_val = self._normalizer.transform(self._raw_mse(X_val))
@@ -117,16 +130,31 @@ class AnomalyAutoencoder(FraudBaseModel):
                 metric=self.threshold_metric,
                 beta=self.beta,
             )
+
+        self._fitted = True
         return self
 
     def _raw_mse(self, X) -> np.ndarray:
+        if self._model is None:
+            raise ValueError("AnomalyAutoencoder must be fitted before scoring.")
         recon = self._model.predict(X, verbose=0)
         return np.mean(np.square(X - recon), axis=1)
 
     def predict_proba(self, X) -> np.ndarray:
+        """Return rank-normalized anomaly scores in [0, 1]."""
         return self._normalizer.transform(self._raw_mse(X))
 
+    def to_onnx(self, output_path, feature_names=None):
+        raise NotImplementedError(
+            "Autoencoder ONNX export is not supported in this project. "
+            "Use Keras SavedModel export instead."
+        )
+
     def save(self, path):
+        """Save joblib state + Keras model file + metadata JSON."""
+        if self._model is None:
+            raise ValueError("AnomalyAutoencoder must be fitted before save().")
+
         import joblib
         import os
         import tempfile
@@ -134,21 +162,29 @@ class AnomalyAutoencoder(FraudBaseModel):
 
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        keras_path = path.parent / (path.stem + "_keras")
+
+        keras_path = path.parent / f"{path.stem}_keras.keras"
         self._model.save(str(keras_path))
+
         model_backup = self._model
         self._model = None
+
         fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
         try:
             os.close(fd)
-            joblib.dump(self, tmp, compress=("lz4", 3))
+            try:
+                joblib.dump(self, tmp, compress=("lz4", 3))
+            except ValueError:
+                joblib.dump(self, tmp, compress=("gzip", 3))
             os.replace(tmp, path)
         except Exception:
-            os.unlink(tmp)
+            if os.path.exists(tmp):
+                os.unlink(tmp)
             raise
         finally:
             self._model = model_backup
-        (path.with_suffix(".meta.json")).write_text(
+
+        Path(str(path) + ".meta.json").write_text(
             json.dumps(
                 {
                     "name": self.name,
@@ -157,55 +193,27 @@ class AnomalyAutoencoder(FraudBaseModel):
                     "saved_at": datetime.now(timezone.utc).isoformat(),
                 },
                 indent=2,
-            )
-        )
+            ),
+        encoding="utf-8",
+    )
 
     @classmethod
     def load(cls, path):
         import joblib
-        import json
         from tensorflow import keras
 
         path = Path(path)
         obj = joblib.load(path)
-        meta = json.loads((path.with_suffix(".meta.json")).read_text())
+        meta = json.loads(Path(str(path) + ".meta.json").read_text(encoding="utf-8"))
         obj._model = keras.models.load_model(meta["keras_path"])
         return obj
 
-    def to_onnx(self, output_path: str | Path, feature_names: list[str] | None = None):
-        """Export Autoencoder to ONNX via tf2onnx."""
-        try:
-            import tf2onnx
-            import tensorflow as tf
-        except ImportError:
-            raise ImportError("Please install tf2onnx and tensorflow")
-
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        spec = (tf.TensorSpec((None, self.input_dim_), tf.float32, name="input"),)
-        _, _ = tf2onnx.convert.from_keras(
-            self._model,
-            input_signature=spec,
-            opset=13,
-            output_path=str(output_path),
-        )
-
-        meta = {
-            "model_type": "autoencoder",
-            "input_dim": self.input_dim_,
-            "encoding_dim": self.encoding_dim,
-            "feature_names": feature_names or [],
-            "threshold": self.threshold_,
-        }
-        meta_path = output_path.with_suffix(".meta.json")
-        meta_path.write_text(json.dumps(meta, indent=2))
-
-        logger.info(f"Autoencoder exported to ONNX: {output_path}")
-        return output_path
-
 
 class ECODFraudModel(FraudBaseModel):
+    """
+    ECOD unsupervised anomaly detector with rank-normalized output scores.
+    """
+
     def __init__(
         self,
         contamination: float = 0.05,
@@ -216,6 +224,7 @@ class ECODFraudModel(FraudBaseModel):
         self.contamination = contamination
         self.threshold_metric = threshold_metric
         self.beta = beta
+
         self._model = None
         self._normalizer = RankNormalizer()
 
@@ -227,7 +236,7 @@ class ECODFraudModel(FraudBaseModel):
 
         raw_train = self._model.decision_function(X)
         self._normalizer.fit(raw_train)
-        logger.info("ECOD: rank normalizer fitted on %d TRAIN scores", len(raw_train))
+        logger.info("ECOD: rank normalizer fitted on %d training scores", len(raw_train))
 
         if X_val is not None and y_val is not None:
             self.find_best_threshold(
@@ -236,21 +245,25 @@ class ECODFraudModel(FraudBaseModel):
                 metric=self.threshold_metric,
                 beta=self.beta,
             )
+
+        self._fitted = True
         return self
 
     def predict_proba(self, X) -> np.ndarray:
+        if self._model is None:
+            raise ValueError("ECODFraudModel must be fitted before predict_proba().")
         raw = self._model.decision_function(X)
         return self._normalizer.transform(raw)
 
-    def to_onnx(self, output_path: str | Path, feature_names: list[str] | None = None):
-        """ECOD model cannot be exported to ONNX easily."""
-        raise NotImplementedError(
-            "ECOD (pyod) does not have built-in ONNX export. "
-            "Consider using a different model for ONNX deployment."
-        )
+    def to_onnx(self, output_path, feature_names=None):
+        raise NotImplementedError("ECOD ONNX export not supported.")
 
 
 class COPODFraudModel(FraudBaseModel):
+    """
+    COPOD unsupervised anomaly detector with rank-normalized output scores.
+    """
+
     def __init__(
         self,
         contamination: float = 0.05,
@@ -261,6 +274,7 @@ class COPODFraudModel(FraudBaseModel):
         self.contamination = contamination
         self.threshold_metric = threshold_metric
         self.beta = beta
+
         self._model = None
         self._normalizer = RankNormalizer()
 
@@ -272,7 +286,7 @@ class COPODFraudModel(FraudBaseModel):
 
         raw_train = self._model.decision_function(X)
         self._normalizer.fit(raw_train)
-        logger.info("COPOD: rank normalizer fitted on %d TRAIN scores", len(raw_train))
+        logger.info("COPOD: rank normalizer fitted on %d training scores", len(raw_train))
 
         if X_val is not None and y_val is not None:
             self.find_best_threshold(
@@ -281,15 +295,15 @@ class COPODFraudModel(FraudBaseModel):
                 metric=self.threshold_metric,
                 beta=self.beta,
             )
+
+        self._fitted = True
         return self
 
     def predict_proba(self, X) -> np.ndarray:
+        if self._model is None:
+            raise ValueError("COPODFraudModel must be fitted before predict_proba().")
         raw = self._model.decision_function(X)
         return self._normalizer.transform(raw)
 
-    def to_onnx(self, output_path: str | Path, feature_names: list[str] | None = None):
-        """COPOD model cannot be exported to ONNX easily."""
-        raise NotImplementedError(
-            "COPOD (pyod) does not have built-in ONNX export. "
-            "Consider using a different model for ONNX deployment."
-        )
+    def to_onnx(self, output_path, feature_names=None):
+        raise NotImplementedError("COPOD ONNX export not supported.")

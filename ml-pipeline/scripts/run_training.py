@@ -1,9 +1,9 @@
 """
-run_training.py
-===============
-Simple wrapper to run the full training pipeline with sensible defaults.
-Calls the CLI `train` subcommand.
+Wrapper simple pour exécuter le pipeline d'entraînement complet avec des paramètres par défaut.
+Appelle la sous-commande `train` du CLI.
 """
+
+from __future__ import annotations
 
 import argparse
 import subprocess
@@ -11,33 +11,76 @@ import sys
 from pathlib import Path
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Run model training.")
-    parser.add_argument("--config", default="config/model_config.json", help="Path to model config JSON")
-    parser.add_argument("--data-dir", default="exported_parquet", help="Directory with preprocessed parquet files")
-    parser.add_argument("--out", default="exported_models", help="Output directory for trained models")
-    parser.add_argument("--export-onnx", action="store_true", help="Export models to ONNX after training")
-    parser.add_argument("--onnx-dir", default="exported_onnx", help="Directory for ONNX exports")
-    parser.add_argument("--log", help="Log file path (optional)")
-    parser.add_argument("--log-level", default="INFO", help="Logging level")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CONFIG = PROJECT_ROOT / "config" / "model_config.json"
+DEFAULT_DATA_DIR = PROJECT_ROOT / "artifacts" / "exported_parquet"
+DEFAULT_OUT_DIR = PROJECT_ROOT / "artifacts" / "exported_models"
+DEFAULT_ONNX_DIR = PROJECT_ROOT / "artifacts" / "exported_onnx"
+DEFAULT_LOG_FILE = PROJECT_ROOT / "artifacts" / "logs" / "training.log"
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Exécute l'entraînement du modèle.")
+    parser.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG),
+        help="Chemin vers le JSON de configuration du modèle",
+    )
+    parser.add_argument(
+        "--data-dir",
+        default=str(DEFAULT_DATA_DIR),
+        help="Répertoire contenant les fichiers parquet prétraités",
+    )
+    parser.add_argument(
+        "--out",
+        default=str(DEFAULT_OUT_DIR),
+        help="Répertoire de sortie pour les modèles entraînés",
+    )
+    parser.add_argument(
+        "--export-onnx",
+        action="store_true",
+        help="Exporter les modèles vers ONNX après l'entraînement",
+    )
+    parser.add_argument(
+        "--onnx-dir",
+        default=str(DEFAULT_ONNX_DIR),
+        help="Répertoire pour les exportations ONNX",
+    )
+    parser.add_argument(
+        "--log",
+        default=str(DEFAULT_LOG_FILE),
+        help="Chemin du fichier de log",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help="Niveau de journalisation (logging)",
+    )
     args = parser.parse_args()
 
-    # Build CLI command
     cmd = [
-        sys.executable, "-m", "ml_pipeline.cli.main",
+        sys.executable,
+        "-m",
+        "ml_pipeline.cli.main",
         "train",
-        "--config", args.config,
-        "--data-dir", args.data_dir,
-        "--out", args.out,
-        "--log-level", args.log_level,
+        "--config",
+        args.config,
+        "--data-dir",
+        args.data_dir,
+        "--out",
+        args.out,
+        "--log-level",
+        args.log_level,
     ]
+
     if args.log:
         cmd.extend(["--log", args.log])
+
     if args.export_onnx:
         cmd.append("--export-onnx")
         cmd.extend(["--onnx-dir", args.onnx_dir])
 
-    print("Running: " + " ".join(cmd))
+    print("Exécution :", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
 

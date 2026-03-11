@@ -1,6 +1,4 @@
-"""
-Command-line interface for the ML pipeline.
-"""
+"""CLI entry points for the ML pipeline."""
 
 from .main import main
 
