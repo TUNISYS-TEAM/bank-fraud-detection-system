@@ -5,6 +5,7 @@ import { environment } from '../../../environments/environment';
 
 export enum DatasetStatus {
     ACTIVE = 'ACTIVE',
+    PROCESSED = 'PROCESSED', 
     INACTIVE = 'INACTIVE'
 }
 
@@ -14,6 +15,7 @@ export interface Dataset {
     datasetName: string;
     fileSizeMb: number;
     rowCount: number;
+    columnCount: number;
     status: DatasetStatus;
     importedAt: string;
 }
@@ -75,5 +77,31 @@ export class DatasetService {
 
     update(uuid: string, data: { datasetName?: string; status?: DatasetStatus }): Observable<Dataset> {
         return this.http.put<Dataset>(`${this.apiUrl}/${uuid}`, data);
+    }
+
+    download(uuid: string): Observable<Blob> {
+        return this.http.get(`${this.apiUrl}/${uuid}/download`, { responseType: 'blob' });
+    }
+
+    // Méthodes spécifiques pour la gestion des statuts
+    activateDataset(uuid: string): Observable<Dataset> {
+        return this.update(uuid, { status: DatasetStatus.ACTIVE });
+    }
+
+    deactivateDataset(uuid: string): Observable<Dataset> {
+        return this.update(uuid, { status: DatasetStatus.PROCESSED }); // Désactiver = retour à PROCESSED
+    }
+
+    markAsProcessed(uuid: string): Observable<Dataset> {
+        return this.update(uuid, { status: DatasetStatus.PROCESSED });
+    }
+
+    // Méthode pour nettoyer un dataset (appel au backend Python)
+    cleanDataset(uuid: string): Observable<any> {
+        return this.http.post(`${this.apiUrl}/${uuid}/clean`, {});
+    }
+
+    getCleaningStatus(uuid: string): Observable<any> {
+        return this.http.get(`${this.apiUrl}/${uuid}/clean/status`);
     }
 }

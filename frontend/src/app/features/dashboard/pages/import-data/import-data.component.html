@@ -6,7 +6,7 @@
                 {{ selectedDataset() ? selectedDataset()!.datasetName : 'Importation & Préparation' }}
             </h1>
             <p class="mt-1 text-lg text-gray-500">
-                {{ selectedDataset() ? 'Analyse et entraînement des modèles' : 'Sélectionnez un dataset actif pour commencer l\'entraînement' }}
+                {{ selectedDataset() ? 'Analyse et préparation des données' : 'Sélectionnez un dataset actif pour commencer' }}
             </p>
         </div>
         @if (selectedDataset()) {
@@ -21,7 +21,7 @@
     @if (!selectedDataset()) {
     <div class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden animate-fadeIn">
         <div class="p-6 border-b border-gray-50 bg-gray-50/20">
-            <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">Datasets Actifs</span>
+            <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">Datasets Actifs & Traités</span>
         </div>
 
         <!-- Loading State -->
@@ -57,8 +57,10 @@
                             </div>
                         </td>
                         <td class="px-8 py-5">
-                            <span
-                                class="px-3 py-1 bg-green-50 text-green-600 text-[10px] font-bold rounded-full border border-green-100">ACTIF</span>
+                            <span class="px-3 py-1 text-[10px] font-bold rounded-full border"
+                                  [ngClass]="getStatusClass(ds.status)">
+                                {{ getStatusText(ds.status) }}
+                            </span>
                         </td>
                         <td class="px-8 py-5">
                             <span class="text-sm font-medium text-gray-600">{{ formatNumber(ds.rowCount) }}
@@ -75,7 +77,7 @@
                     <tr>
                         <td colspan="5" class="px-8 py-20 text-center text-gray-500">
                             <i-feather name="database" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i-feather>
-                            <p class="text-sm">Aucun dataset actif disponible</p>
+                            <p class="text-sm">Aucun dataset actif ou traité disponible</p>
                         </td>
                     </tr>
                     }
@@ -100,8 +102,10 @@
                 <div>
                     <h4 class="font-bold text-indigo-900">{{ selectedDataset()!.datasetName }}</h4>
                     <div class="flex items-center space-x-3 mt-1">
-                        <span
-                            class="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded-md uppercase">ACTIF</span>
+                        <span class="px-3 py-1 text-[10px] font-bold rounded-full border"
+                              [ngClass]="getStatusClass(selectedDataset()!.status)">
+                            {{ getStatusText(selectedDataset()!.status) }}
+                        </span>
                         <span class="text-xs text-indigo-400 font-medium">
                             {{ formatNumber(selectedDataset()!.rowCount) }} lignes •
                             {{ formatSize(selectedDataset()!.fileSizeMb) }} •
@@ -270,7 +274,7 @@
         </div>
         }
 
-        <!-- Section de l'aperçu du tableau - TOUJOURS affichée (avec ou sans analyse) -->
+        <!-- Section de l'aperçu du tableau -->
         @if (selectedDataset() && analyzingDatasetId() !== selectedDataset()?.datasetUuid) {
             @if (previewLoading()) {
             <div class="flex justify-center items-center py-20">
@@ -335,78 +339,149 @@
                     </p>
                 </div>
             </div>
-            } @else {
-            <div class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden p-12 flex justify-center">
-                <p class="text-sm text-gray-500">Aucune donnée d'aperçu disponible</p>
-            </div>
-            }
+            } 
         }
 
-        <!-- Actions de préparation - UNIQUEMENT si l'analyse existe -->
+        <!-- Actions de préparation - UNIQUEMENT si le dataset n'est pas PROCESSED -->
         @if (hasValidAnalysis() && analyzingDatasetId() !== selectedDataset()?.datasetUuid) {
-        <div class="space-y-4 pt-4 border-t border-gray-100/50">
-            <h3 class="text-lg font-bold text-gray-800 ml-2">Actions de Préparation</h3>
-            <div class="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-5xl mx-auto">
-                <button
-                    class="group p-4 bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-2xl text-left text-white shadow-lg hover:shadow-indigo-200 transition-all flex-1 min-w-[300px] max-w-[400px]">
-                    <div class="flex items-center space-x-4">
-                        <div class="p-2 bg-white/20 rounded-xl group-hover:bg-white/30 transition-colors">
-                            <i-feather name="trash-2" class="w-5 h-5"></i-feather>
-                        </div>
-                        <div>
-                            <h4 class="text-lg font-bold">Nettoyer les Données</h4>
-                            <p class="text-indigo-100 text-xs opacity-70 italic">Supprimer doublons et valeurs
-                                aberrantes</p>
-                        </div>
-                    </div>
-                </button>
-
-                <button (click)="startTraining()" [disabled]="training"
-                    class="group p-4 bg-indigo-900 rounded-2xl text-left text-white shadow-lg hover:shadow-indigo-300 transition-all flex-1 min-w-[340px] max-w-[450px]">
-                    <div class="flex items-center justify-between">
+            @if (selectedDataset()!.status !== 'PROCESSED') {
+            <div class="space-y-4 pt-4 border-t border-gray-100/50">
+                <h3 class="text-lg font-bold text-gray-800 ml-2">Actions de Préparation</h3>
+                
+                <!-- Bouton Nettoyage -->
+                <div class="flex justify-center w-full max-w-5xl mx-auto">
+                    <button (click)="startCleaning(selectedDataset()!.datasetUuid)" [disabled]="cleaning()"
+                        class="group p-6 bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-2xl text-left text-white shadow-lg hover:shadow-indigo-200 transition-all w-full max-w-[500px] disabled:opacity-50 disabled:cursor-not-allowed">
                         <div class="flex items-center space-x-4">
-                            <div class="p-2 bg-white/20 rounded-xl group-hover:bg-white/30 transition-colors">
-                                @if (!training) {
-                                <i-feather name="play" class="w-5 h-5"></i-feather>
+                            <div class="p-3 bg-white/20 rounded-xl group-hover:bg-white/30 transition-colors">
+                                @if (!cleaning()) {
+                                <i-feather name="trash-2" class="w-6 h-6"></i-feather>
                                 } @else {
-                                <i-feather name="loader" class="w-5 h-5 animate-spin"></i-feather>
+                                <i-feather name="loader" class="w-6 h-6 animate-spin"></i-feather>
                                 }
                             </div>
                             <div>
-                                <h4 class="text-lg font-bold">{{ training ? 'Entraînement...' : 'Lancer Entraînement' }}
-                                </h4>
-                                <p class="text-indigo-100 text-xs opacity-70 italic">Démarrer l'apprentissage du modèle
+                                <h4 class="text-xl font-bold">{{ cleaning() ? 'Nettoyage en cours...' : 'Nettoyer les Données' }}</h4>
+                                <p class="text-indigo-100 text-sm opacity-80 italic">
+                                    @if (!cleaning()) {
+                                        Supprimer doublons et valeurs aberrantes
+                                    } @else {
+                                        Veuillez patienter pendant le traitement...
+                                    }
                                 </p>
                             </div>
                         </div>
-                        <input [(ngModel)]="modelName" (click)="$event.stopPropagation()"
-                            class="bg-white/10 border-none rounded-lg px-2 py-1 text-[10px] font-bold text-indigo-50 placeholder:text-indigo-200 focus:ring-0 w-24 ml-2"
-                            placeholder="Nom du modèle...">
-                    </div>
-                </button>
-            </div>
-        </div>
-        }
+                    </button>
+                </div>
 
-        <!-- Retour de succès -->
-        @if (trainingSuccess) {
-        <div
-            class="bg-green-50 border border-green-100 rounded-3xl p-8 flex items-center justify-between animate-in zoom-in duration-300">
-            <div class="flex items-center">
-                <div
-                    class="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-green-600 shadow-sm mr-6">
-                    <i-feather name="check" class="w-10 h-10"></i-feather>
+                <!-- Section de progression du nettoyage -->
+                @if (cleaning()) {
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 mt-4">
+                    <div class="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+                        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
+                            <i-feather name="trash-2" class="w-5 h-5 text-purple-600 animate-pulse"></i-feather>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Nettoyage des données</h3>
+                            <p class="text-xs text-gray-500">Suppression des doublons et valeurs aberrantes</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-600">Progression</span>
+                            <span class="font-mono text-purple-600">{{ cleaningProgress().toFixed(0) }}%</span>
+                        </div>
+
+                        <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                            <div class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300 relative"
+                                [style.width.%]="cleaningProgress()">
+                                @if (cleaningProgress() > 30) {
+                                <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+                            <div class="flex items-center gap-2">
+                                <i-feather name="clock" class="w-3 h-3"></i-feather>
+                                <span>Temps écoulé: {{ cleaningElapsedTime() }}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <i-feather name="database" class="w-3 h-3"></i-feather>
+                                <span>{{ formatNumber(selectedDataset()?.rowCount || 0) }} lignes à traiter</span>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 p-3 bg-purple-50 rounded-lg border border-purple-100">
+                            <div class="flex items-center gap-2 text-xs text-purple-700">
+                                <i-feather name="info" class="w-4 h-4 shrink-0"></i-feather>
+                                <p>Nettoyage en cours. Cette opération peut prendre quelques instants selon la taille du fichier.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <h3 class="text-xl font-bold text-green-900">Entraînement Terminé !</h3>
-                    <p class="text-green-600 italic">Le modèle est prêt pour la simulation.</p>
+                }
+
+                <!-- Message de succès du nettoyage avec statistiques -->
+                @if (cleaningSuccess() && cleanedFilePath() && cleaningStats()) {
+                <div class="bg-green-50 rounded-2xl p-8 shadow-sm border border-green-200 mt-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-green-600 shadow-sm">
+                            <i-feather name="check-circle" class="w-8 h-8"></i-feather>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-xl font-bold text-green-900">Nettoyage terminé avec succès !</h3>
+                            <p class="text-green-700 mt-1">Les données ont été nettoyées et stockées en base de données</p>
+                            
+                            <!-- Statistiques de nettoyage -->
+                            @if (cleaningStats()) {
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                                <div class="bg-white p-3 rounded-xl border border-green-200">
+                                    <p class="text-xs text-green-600">Lignes originales</p>
+                                    <p class="text-xl font-bold text-gray-800">{{ formatNumber(cleaningStats()?.originalRows) }}</p>
+                                </div>
+                                <div class="bg-white p-3 rounded-xl border border-green-200">
+                                    <p class="text-xs text-green-600">Lignes nettoyées</p>
+                                    <p class="text-xl font-bold text-gray-800">{{ formatNumber(cleaningStats()?.cleanedRows) }}</p>
+                                </div>
+                                <div class="bg-white p-3 rounded-xl border border-green-200">
+                                    <p class="text-xs text-green-600">Doublons supprimés</p>
+                                    <p class="text-xl font-bold text-gray-800">{{ formatNumber(cleaningStats()?.duplicatesRemoved) }}</p>
+                                </div>
+                                <div class="bg-white p-3 rounded-xl border border-green-200">
+                                    <p class="text-xs text-green-600">Taux de fraude</p>
+                                    <p class="text-xl font-bold text-gray-800">{{ cleaningStats()?.fraudRate?.toFixed(2) }}%</p>
+                                </div>
+                            </div>
+                            }
+                            
+                            <div class="mt-4 flex items-center gap-2 text-sm text-green-600">
+                                <i-feather name="check-circle" class="w-4 h-4"></i-feather>
+                                <span>Fichier nettoyé disponible dans MinIO</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+                }
+
+                <!-- Message d'erreur de nettoyage -->
+                @if (cleaningError()) {
+                <div class="bg-red-50 rounded-2xl p-8 shadow-sm border border-red-200 mt-4">
+                    <div class="flex items-center gap-3 text-red-700">
+                        <i-feather name="alert-circle" class="w-6 h-6 shrink-0"></i-feather>
+                        <div>
+                            <p class="text-sm font-medium">{{ cleaningError() }}</p>
+                            <button (click)="startCleaning(selectedDataset()!.datasetUuid)"
+                                class="mt-2 text-xs text-red-600 hover:text-red-800 underline">
+                                Réessayer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                }
             </div>
-            <button routerLink="/dashboard/ml-models"
-                class="px-6 py-3 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 transition-all">
-                Voir les Modèles
-            </button>
-        </div>
+            }
         }
     </div>
     }

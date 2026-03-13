@@ -1,8 +1,10 @@
 package com.fraud.backend.data.service.messaging;
 
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
+import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
 import com.fraud.backend.data.entity.messaging.Message;
 import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
+import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
 import com.fraud.backend.data.repository.messaging.MessageRepository;
 import com.fraud.backend.api.dto.messaging.request.SendMessageRequest;
 import jakarta.persistence.EntityNotFoundException;
@@ -27,15 +29,27 @@ public class MessageService {
 
     private final MessageRepository messageRepository;
     private final AppUserRepository appUserRepository;
+    private final KeycloakMappingRepository keycloakMappingRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
+    private AppUser findUserByKeycloakId(String keycloakId) {
+        return keycloakMappingRepository.findByKeycloakId(keycloakId)
+                .map(KeycloakMapping::getUser)
+                .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + keycloakId));
+    }
+
+    private String getKeycloakIdForUser(AppUser user) {
+        return keycloakMappingRepository.findByUserId(user.getId())
+                .map(KeycloakMapping::getKeycloakId)
+                .orElseThrow(() -> new EntityNotFoundException("Keycloak mapping not found for user: " + user.getId()));
+    }
+
     @Transactional
-    public Message sendMessage(Long senderId, SendMessageRequest request) {
-        AppUser sender = appUserRepository.findById(senderId)
-                .orElseThrow(() -> new EntityNotFoundException("Sender not found"));
+    public Message sendMessage(String senderKeycloakId, SendMessageRequest request) {
+        AppUser sender = findUserByKeycloakId(senderKeycloakId);
         
         AppUser receiver = appUserRepository.findById(request.getReceiverId())
-                .orElseThrow(() -> new EntityNotFoundException("Receiver not found"));
+                .orElseThrow(() -> new EntityNotFoundException("Receiver not found with ID: " + request.getReceiverId()));
         
         Message parentMessage = null;
         if (request.getParentMessageUuid() != null) {
@@ -62,15 +76,17 @@ public class MessageService {
 
     private void notifyNewMessage(Message message) {
         try {
+            String receiverKeycloakId = getKeycloakIdForUser(message.getReceiver());
+            
             messagingTemplate.convertAndSendToUser(
-                    message.getReceiver().getId().toString(),
+                    receiverKeycloakId,
                     "/queue/messages",
                     message.getMessageUuid()
             );
             
             long unreadCount = messageRepository.countUnreadMessages(message.getReceiver().getId());
             messagingTemplate.convertAndSendToUser(
-                    message.getReceiver().getId().toString(),
+                    receiverKeycloakId,
                     "/queue/unread",
                     unreadCount
             );
@@ -79,33 +95,43 @@ public class MessageService {
         }
     }
 
-    public Page<Message> getInbox(Long userId, int page, int size) {
+    public Page<Message> getInbox(String userKeycloakId, int page, int size) {
+        AppUser user = findUserByKeycloakId(userKeycloakId);
+        
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return messageRepository.findByReceiverIdOrderByCreatedAtDesc(userId, pageable);
+        return messageRepository.findByReceiverIdOrderByCreatedAtDesc(user.getId(), pageable);
     }
 
-    public Page<Message> getSent(Long userId, int page, int size) {
+    public Page<Message> getSent(String userKeycloakId, int page, int size) {
+        AppUser user = findUserByKeycloakId(userKeycloakId);
+        
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return messageRepository.findBySenderIdOrderByCreatedAtDesc(userId, pageable);
+        return messageRepository.findBySenderIdOrderByCreatedAtDesc(user.getId(), pageable);
     }
 
-    public Page<Message> getConversation(Long userId1, Long userId2, int page, int size) {
+    public Page<Message> getConversation(String user1KeycloakId, String user2KeycloakId, int page, int size) {
+        AppUser user1 = findUserByKeycloakId(user1KeycloakId);
+        AppUser user2 = findUserByKeycloakId(user2KeycloakId);
+        
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return messageRepository.findConversation(userId1, userId2, pageable);
+        return messageRepository.findConversation(user1.getId(), user2.getId(), pageable);
     }
 
-    public long getUnreadCount(Long userId) {
-        return messageRepository.countUnreadMessages(userId);
+    public long getUnreadCount(String userKeycloakId) {
+        AppUser user = findUserByKeycloakId(userKeycloakId);
+        return messageRepository.countUnreadMessages(user.getId());
     }
 
     @Transactional
-    public int markAsRead(Long messageId, Long receiverId) {
-        int updated = messageRepository.markAsRead(messageId, receiverId, LocalDateTime.now());
+    public int markAsRead(Long messageId, String receiverKeycloakId) {
+        AppUser receiver = findUserByKeycloakId(receiverKeycloakId);
+        
+        int updated = messageRepository.markAsRead(messageId, receiver.getId(), LocalDateTime.now());
         
         if (updated > 0) {
-            long unreadCount = messageRepository.countUnreadMessages(receiverId);
+            long unreadCount = messageRepository.countUnreadMessages(receiver.getId());
             messagingTemplate.convertAndSendToUser(
-                    receiverId.toString(),
+                    receiverKeycloakId,
                     "/queue/unread",
                     unreadCount
             );
@@ -115,12 +141,14 @@ public class MessageService {
     }
 
     @Transactional
-    public int markAllAsRead(Long receiverId) {
-        int updated = messageRepository.markAllAsRead(receiverId, LocalDateTime.now());
+    public int markAllAsRead(String receiverKeycloakId) {
+        AppUser receiver = findUserByKeycloakId(receiverKeycloakId);
+        
+        int updated = messageRepository.markAllAsRead(receiver.getId(), LocalDateTime.now());
         
         if (updated > 0) {
             messagingTemplate.convertAndSendToUser(
-                    receiverId.toString(),
+                    receiverKeycloakId,
                     "/queue/unread",
                     0L
             );
@@ -131,6 +159,6 @@ public class MessageService {
 
     public Message getMessage(UUID messageUuid) {
         return messageRepository.findByMessageUuid(messageUuid)
-                .orElseThrow(() -> new EntityNotFoundException("Message not found"));
+                .orElseThrow(() -> new EntityNotFoundException("Message not found with UUID: " + messageUuid));
     }
 }

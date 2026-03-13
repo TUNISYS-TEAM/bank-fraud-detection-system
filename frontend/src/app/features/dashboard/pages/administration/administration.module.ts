@@ -24,6 +24,8 @@ import { DatasetCreateModalComponent } from '../../../../shared/modals/admin-sec
 import { DatasetUpdateModalComponent } from '../../../../shared/modals/admin-sections/datasets/dataset-update-modal/dataset-update-modal.component';
 import { DatasetDeleteModalComponent } from '../../../../shared/modals/admin-sections/datasets/dataset-delete-modal/dataset-delete-modal.component';
 import { DatasetViewModalComponent } from '../../../../shared/modals/admin-sections/datasets/dataset-view-modal/dataset-view-modal.component';
+import { ModalDeleteComponent } from '../../../../shared/modals/admin-sections/settings/settings-delete-modal/settings-delete-modal.component';
+import { ModalViewRollbackComponent } from '../../../../shared/modals/admin-sections/settings/settings-rollback-modal/settings-rollback-modal.component';
 import { CardsComponent } from '../../../../shared/cards/cards.component';
 
 @NgModule({
@@ -57,6 +59,9 @@ import { CardsComponent } from '../../../../shared/cards/cards.component';
     DatasetUpdateModalComponent,
     DatasetDeleteModalComponent,
     DatasetViewModalComponent, 
+
+    ModalDeleteComponent,
+    ModalViewRollbackComponent,
 
     CardsComponent
   ]

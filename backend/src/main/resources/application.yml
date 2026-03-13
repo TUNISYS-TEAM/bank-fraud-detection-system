@@ -78,3 +78,12 @@ app:
     same-site: lax
     domain: localhost  
     path: /
+
+ml:
+  onnx:
+    model-dir: src/main/resources/models   
+ 
+logging:
+  level:
+    org.springframework.web.servlet.mvc.method.annotation: DEBUG
+    com.fraud.backend.api.controller.messaging: DEBUG

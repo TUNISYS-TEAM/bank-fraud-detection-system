@@ -6,5 +6,7 @@ public enum TransactionChannel {
     ONLINE,
     MOBILE,
     VIREMENT,
-    CHEQUE
+    CHEQUE,
+    UNKNOWN, 
+    OTHER
 }

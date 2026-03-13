@@ -35,4 +35,9 @@ public class AuditLogService {
         }
         return auditLogRepository.findWithFiltersNoPaging(actionType, level);
     }
+
+    public long countToday() {
+        java.time.LocalDateTime startOfDay = java.time.LocalDateTime.of(java.time.LocalDate.now(), java.time.LocalTime.MIN);
+        return auditLogRepository.countByActionTimestampAfter(startOfDay);
+    }
 }

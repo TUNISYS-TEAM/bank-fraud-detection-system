@@ -10,9 +10,10 @@ export interface Dataset {
   datasetName: string;
   fileSizeMb: number;
   rowCount: number;
-  status: 'ACTIVE' | 'INACTIVE';
+  status: 'ACTIVE' | 'PROCESSED' | 'INACTIVE';
   importedAt: string;
   filePath?: string;
+  processedFilePath?: string;
   featureColumns?: any;
   statistics?: any;
 }
@@ -33,20 +34,23 @@ export interface AnalysisResult {
     memoryUsageMb: number;
     analyzedRows?: number;
     isPartialAnalysis?: boolean;
-    fraudRate?: number;           // Nouveau
-    duplicateCount?: number;      // Nouveau
-    duplicateRate?: number;       // Nouveau
-    totalMissingValues?: number;  // Nouveau
+    fraudRate?: number;
+    duplicateCount?: number;
+    duplicateRate?: number;
+    totalMissingValues?: number;
   } | null;
   suggestedFeatures: string[] | null;
   suggestedTarget: string | null;
 }
 
 export interface PreviewResponse {
+  datasetUuid: string;
+  datasetName: string;
   columns: string[];
   rows: any[];
   returnedRows: number;
   limit: number;
+  message?: string;
 }
 
 export interface ColumnInfo {
@@ -56,6 +60,23 @@ export interface ColumnInfo {
   nullRatio: number;
   stats: any;
   isTarget?: boolean;
+}
+
+export interface CleanResponse {
+  datasetUuid: string;
+  datasetName: string;
+  status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS';
+  jobId: string;
+  processedFilePath?: string;
+  stats?: {
+    originalRows: number;
+    cleanedRows: number;
+    duplicatesRemoved: number;
+    nullRowsRemoved: number;
+    reductionPercent: number;
+    fraudCount: number;
+    fraudRate: number;
+  };
 }
 
 @Component({
@@ -76,9 +97,9 @@ export class ImportDataComponent implements OnInit {
   totalPages = signal(0);
   searchQuery = signal('');
 
-  // Computed pour filtrer uniquement les datasets ACTIVE
-  datasets = computed(() =>
-    this.allDatasets().filter(d => d.status === 'ACTIVE')
+  // Computed pour filtrer les datasets ACTIVE et PROCESSED
+  datasets = computed(() => 
+    this.allDatasets().filter(d => d.status === 'ACTIVE' || d.status === 'PROCESSED')
   );
 
   // États pour l'analyse
@@ -89,22 +110,40 @@ export class ImportDataComponent implements OnInit {
   analysisError = signal<string | null>(null);
   previewLoading = signal(false);
 
-  // Progression et chrono
+  // Progression et chrono pour l'analyse
   analysisProgress = signal<number>(0);
-  elapsedTime = signal<number>(0);
-  private progressInterval: any;
-  private startTime: number = 0;
+  analysisElapsedTime = signal<number>(0);
+  private analysisProgressInterval: any;
+  private analysisStartTime: number = 0;
 
-  // États pour l'entraînement
-  training = false;
-  trainingSuccess = false;
-  modelName = '';
+  // États pour l'entraînement (gardés pour compatibilité mais non utilisés)
+  training = signal<boolean>(false);
+  trainingSuccess = signal<boolean>(false);
+  modelName = signal<string>('');
+
+  // État pour le nettoyage
+  cleaning = signal<boolean>(false);
+  cleaningSuccess = signal<boolean>(false);
+  cleaningError = signal<string | null>(null);
+  cleanedFilePath = signal<string | null>(null);
+  cleaningStats = signal<any | null>(null);
+  
+  // Progression et chrono pour le nettoyage
+  cleaningProgress = signal<number>(0);
+  cleaningElapsedTime = signal<string>('0:00');
+  private cleaningProgressInterval: any;
+  private cleaningStartTime: number = 0;
 
   // Computed pour vérifier si le dataset a une analyse valide
   hasValidAnalysis = computed(() => {
     const result = this.analysisResult();
     return result && result.columns && result.columns.length > 0;
   });
+
+  // Computed pour vérifier si le dataset est traité
+  isProcessed = computed(() => 
+    this.selectedDataset()?.status === 'PROCESSED'
+  );
 
   // Cartes KPI dynamiques
   kpiCards = signal<KpiCard[]>([
@@ -150,9 +189,9 @@ export class ImportDataComponent implements OnInit {
   hasDatasets = computed(() => this.datasets().length > 0);
   isLoading = computed(() => this.loading());
 
-  // Formatage du temps écoulé
+  // Formatage du temps écoulé pour l'analyse
   formattedElapsedTime = computed(() => {
-    const seconds = Math.floor(this.elapsedTime() / 1000);
+    const seconds = Math.floor(this.analysisElapsedTime() / 1000);
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
@@ -163,7 +202,8 @@ export class ImportDataComponent implements OnInit {
   }
 
   ngOnDestroy(): void {
-    this.clearProgressInterval();
+    this.clearAnalysisProgressInterval();
+    this.clearCleaningProgressInterval();
   }
 
   // ==================== DATASET METHODS ====================
@@ -202,15 +242,108 @@ export class ImportDataComponent implements OnInit {
     this.loadDatasets();
   }
 
-  // ==================== PROGRESS METHODS ====================
+  // ==================== CLEANING METHODS ====================
 
-  private startProgressSimulation(): void {
+  startCleaning(datasetUuid: string): void {
+    if (!datasetUuid) return;
+    
+    this.cleaning.set(true);
+    this.cleaningSuccess.set(false);
+    this.cleaningError.set(null);
+    this.cleanedFilePath.set(null);
+    this.cleaningStats.set(null);
+    
+    // Démarrer la progression simulée pour le nettoyage
+    this.startCleaningProgressSimulation();
+    
+    this.http.post<CleanResponse>(`${environment.apiUrl}/datasets/${datasetUuid}/clean`, {}).subscribe({
+      next: (response) => {
+        // Arrêter la progression simulée
+        this.stopCleaningProgress(true);
+        
+        this.cleaning.set(false);
+        this.cleaningSuccess.set(true);
+        this.cleanedFilePath.set(response.processedFilePath || null);
+        this.cleaningStats.set(response.stats || null);
+        
+        // Recharger le dataset pour mettre à jour le statut
+        this.loadDatasets();
+        
+        // Si c'est le dataset sélectionné, mettre à jour son statut
+        if (this.selectedDataset()?.datasetUuid === datasetUuid) {
+          this.selectedDataset.update(ds => {
+            if (ds) {
+              ds.status = 'PROCESSED';
+              ds.processedFilePath = response.processedFilePath;
+            }
+            return ds;
+          });
+          
+          // Recharger l'aperçu après mise à jour du statut
+          this.loadPreview(datasetUuid);
+        }
+        
+        console.log('Nettoyage terminé avec succès');
+      },
+      error: (err) => {
+        this.stopCleaningProgress(false);
+        this.cleaning.set(false);
+        this.cleaningError.set(err.error?.message || 'Erreur lors du nettoyage');
+        console.error('Error cleaning dataset:', err);
+      }
+    });
+  }
+
+  // ==================== CLEANING PROGRESS METHODS ====================
+
+  private startCleaningProgressSimulation(): void {
+    this.cleaningProgress.set(0);
+    this.cleaningElapsedTime.set('0:00');
+    this.cleaningStartTime = Date.now();
+
+    this.cleaningProgressInterval = setInterval(() => {
+      // Mettre à jour le temps écoulé
+      const elapsedSeconds = Math.floor((Date.now() - this.cleaningStartTime) / 1000);
+      const minutes = Math.floor(elapsedSeconds / 60);
+      const seconds = elapsedSeconds % 60;
+      this.cleaningElapsedTime.set(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+
+      // Simuler la progression (max 95% jusqu'à la réponse)
+      const currentProgress = this.cleaningProgress();
+      if (currentProgress < 95) {
+        const increment = Math.max(0.2, (95 - currentProgress) / 30);
+        this.cleaningProgress.update(p => Math.min(95, p + increment));
+      }
+    }, 300);
+  }
+
+  private stopCleaningProgress(completed: boolean = true): void {
+    if (completed) {
+      this.cleaningProgress.set(100);
+      setTimeout(() => {
+        this.clearCleaningProgressInterval();
+      }, 500);
+    } else {
+      this.clearCleaningProgressInterval();
+    }
+  }
+
+  private clearCleaningProgressInterval(): void {
+    if (this.cleaningProgressInterval) {
+      clearInterval(this.cleaningProgressInterval);
+      this.cleaningProgressInterval = null;
+    }
+  }
+
+  // ==================== ANALYSIS PROGRESS METHODS ====================
+
+  private startAnalysisProgressSimulation(): void {
     this.analysisProgress.set(0);
-    this.elapsedTime.set(0);
-    this.startTime = Date.now();
+    this.analysisElapsedTime.set(0);
+    this.analysisStartTime = Date.now();
 
-    this.progressInterval = setInterval(() => {
-      this.elapsedTime.set(Date.now() - this.startTime);
+    this.analysisProgressInterval = setInterval(() => {
+      this.analysisElapsedTime.set(Date.now() - this.analysisStartTime);
 
       const currentProgress = this.analysisProgress();
       if (currentProgress < 90) {
@@ -220,25 +353,25 @@ export class ImportDataComponent implements OnInit {
     }, 200);
   }
 
-  private updateProgress(percent: number): void {
+  private updateAnalysisProgress(percent: number): void {
     this.analysisProgress.set(percent);
   }
 
-  private stopProgress(completed: boolean = true): void {
+  private stopAnalysisProgress(completed: boolean = true): void {
     if (completed) {
       this.analysisProgress.set(100);
       setTimeout(() => {
-        this.clearProgressInterval();
+        this.clearAnalysisProgressInterval();
       }, 500);
     } else {
-      this.clearProgressInterval();
+      this.clearAnalysisProgressInterval();
     }
   }
 
-  private clearProgressInterval(): void {
-    if (this.progressInterval) {
-      clearInterval(this.progressInterval);
-      this.progressInterval = null;
+  private clearAnalysisProgressInterval(): void {
+    if (this.analysisProgressInterval) {
+      clearInterval(this.analysisProgressInterval);
+      this.analysisProgressInterval = null;
     }
   }
 
@@ -249,8 +382,12 @@ export class ImportDataComponent implements OnInit {
     this.analysisError.set(null);
     this.analysisResult.set(null);
     this.previewData.set(null);
-    this.modelName = `Model_${dataset.datasetName}_${new Date().getTime()}`;
-    this.trainingSuccess = false;
+    this.cleaningSuccess.set(false);
+    this.cleaningError.set(null);
+    this.cleanedFilePath.set(dataset.processedFilePath || null);
+    this.cleaningStats.set(null);
+    this.modelName.set(`Model_${dataset.datasetName}_${new Date().getTime()}`);
+    this.trainingSuccess.set(false);
 
     // Mettre à jour les KPIs avec les données du dataset
     this.updateKpiCards(dataset);
@@ -265,14 +402,11 @@ export class ImportDataComponent implements OnInit {
   private checkExistingAnalysis(datasetUuid: string): void {
     this.http.get<AnalysisResult>(`${environment.apiUrl}/datasets/${datasetUuid}/analysis`).subscribe({
       next: (result) => {
-        // Analyse trouvée (même si elle est null)
         this.analysisResult.set(result);
-        // Mettre à jour les KPIs avec les résultats de l'analyse
         this.updateKpiCardsFromAnalysis(result);
       },
       error: (error) => {
         if (error.status === 404) {
-          // Analyse non trouvée, on initialise avec null
           this.analysisResult.set({
             columns: null,
             statistics: null,
@@ -280,7 +414,6 @@ export class ImportDataComponent implements OnInit {
             suggestedTarget: null
           });
         } else {
-          // Autre erreur
           console.error('Error checking analysis:', error);
           this.analysisError.set('Erreur lors de la vérification de l\'analyse');
         }
@@ -297,44 +430,35 @@ export class ImportDataComponent implements OnInit {
   }
 
   private updateKpiCardsFromAnalysis(result: AnalysisResult): void {
-    if (!result) return;
+    if (!result || !result.statistics) return;
 
-    // Vérifier que statistics n'est pas null
     const stats = result.statistics;
-    if (!stats) return;
 
     this.kpiCards.update(cards => {
       const newCards = [...cards];
 
-      // Lignes importées
       if (stats.rowCount) {
-        newCards[0] = {
-          ...newCards[0],
-          value: this.formatNumber(stats.rowCount)
-        };
+        newCards[0] = { ...newCards[0], value: this.formatNumber(stats.rowCount) };
       }
 
-      // Taux de fraude
       if (stats.fraudRate !== undefined) {
         newCards[1] = {
           ...newCards[1],
-          value: `${stats.fraudRate}%`,
+          value: `${stats.fraudRate.toFixed(2)}%`,
           trend: stats.fraudRate > 2 ? 'Élevé' : 'Normal'
         };
       }
 
-      // Doublons
       if (stats.duplicateCount !== undefined) {
         newCards[2] = {
           ...newCards[2],
           value: this.formatNumber(stats.duplicateCount),
           trend: stats.duplicateRate !== undefined
-            ? `${stats.duplicateRate}% des lignes`
+            ? `${stats.duplicateRate.toFixed(1)}% des lignes`
             : 'À nettoyer'
         };
       }
 
-      // Valeurs manquantes
       if (stats.totalMissingValues !== undefined) {
         newCards[3] = {
           ...newCards[3],
@@ -351,14 +475,18 @@ export class ImportDataComponent implements OnInit {
 
   private loadPreview(datasetUuid: string): void {
     this.previewLoading.set(true);
+    this.previewData.set(null); // Réinitialiser les données précédentes
+    
     this.http.get<PreviewResponse>(`${environment.apiUrl}/datasets/${datasetUuid}/preview?limit=5`).subscribe({
       next: (preview) => {
+        console.log('Preview data received:', preview);
         this.previewData.set(preview);
         this.previewLoading.set(false);
       },
       error: (error) => {
         console.error('Error loading preview:', error);
         this.previewLoading.set(false);
+        this.previewData.set(null);
       }
     });
   }
@@ -376,18 +504,18 @@ export class ImportDataComponent implements OnInit {
   startAnalysis(datasetUuid: string): void {
     this.analyzingDatasetId.set(datasetUuid);
     this.analysisError.set(null);
-    this.analysisResult.set(null); // Cacher les anciens résultats pendant l'analyse
+    this.analysisResult.set(null);
 
-    this.startProgressSimulation();
+    this.startAnalysisProgressSimulation();
 
     this.http.post(`${environment.apiUrl}/datasets/${datasetUuid}/analyze`, {}).subscribe({
       next: () => {
-        this.updateProgress(50);
+        this.updateAnalysisProgress(50);
         this.pollAnalysis(datasetUuid);
       },
       error: (error) => {
         console.error('Error starting analysis:', error);
-        this.stopProgress(false);
+        this.stopAnalysisProgress(false);
         this.analyzingDatasetId.set(null);
         this.analysisError.set('Erreur lors du lancement de l\'analyse');
       }
@@ -402,19 +530,17 @@ export class ImportDataComponent implements OnInit {
       this.http.get<AnalysisResult>(`${environment.apiUrl}/datasets/${datasetUuid}/analysis`).subscribe({
         next: (result) => {
           if (result && result.columns && result.columns.length > 0) {
-            // Analyse terminée avec des données
-            this.stopProgress(true);
+            this.stopAnalysisProgress(true);
             this.analysisResult.set(result);
             this.updateKpiCardsFromAnalysis(result);
             this.analyzingDatasetId.set(null);
           } else {
-            // Analyse pas encore prête (résultats null)
             attempts++;
             const progress = Math.min(90, 50 + (attempts * 2));
-            this.updateProgress(progress);
+            this.updateAnalysisProgress(progress);
 
             if (attempts >= maxAttempts) {
-              this.stopProgress(false);
+              this.stopAnalysisProgress(false);
               this.analyzingDatasetId.set(null);
               this.analysisError.set('Délai d\'attente dépassé pour l\'analyse');
             } else {
@@ -424,18 +550,17 @@ export class ImportDataComponent implements OnInit {
         },
         error: (error) => {
           attempts++;
-
           const progress = Math.min(90, 50 + (attempts * 2));
-          this.updateProgress(progress);
+          this.updateAnalysisProgress(progress);
 
           if (attempts >= maxAttempts) {
-            this.stopProgress(false);
+            this.stopAnalysisProgress(false);
             this.analyzingDatasetId.set(null);
             this.analysisError.set('Délai d\'attente dépassé pour l\'analyse');
           } else if (error.status === 404 || error.status === 204) {
             setTimeout(checkAnalysis, 2000);
           } else {
-            this.stopProgress(false);
+            this.stopAnalysisProgress(false);
             this.analyzingDatasetId.set(null);
             this.analysisError.set('Erreur lors du chargement de l\'analyse');
           }
@@ -446,25 +571,10 @@ export class ImportDataComponent implements OnInit {
     setTimeout(checkAnalysis, 1000);
   }
 
-  // ==================== TRAINING METHODS ====================
+  // ==================== TRAINING METHODS (gardés pour compatibilité) ====================
 
   startTraining(): void {
-    if (!this.selectedDataset() || !this.modelName) return;
-
-    this.training = true;
-    this.http.post(`${environment.apiUrl}/models/train`, {
-      modelName: this.modelName,
-      datasetUuid: this.selectedDataset()!.datasetUuid
-    }).subscribe({
-      next: () => {
-        this.training = false;
-        this.trainingSuccess = true;
-      },
-      error: (err) => {
-        this.training = false;
-        alert("L'entraînement a échoué. Vérifiez les logs backend.");
-      }
-    });
+    console.log('Training method kept for compatibility');
   }
 
   exportCsv(): void {
@@ -481,11 +591,16 @@ export class ImportDataComponent implements OnInit {
     this.selectedDataset.set(null);
     this.analysisResult.set(null);
     this.previewData.set(null);
-    this.trainingSuccess = false;
+    this.trainingSuccess.set(false);
     this.analysisError.set(null);
     this.analyzingDatasetId.set(null);
-    this.modelName = '';
-    this.clearProgressInterval();
+    this.cleaningSuccess.set(false);
+    this.cleaningError.set(null);
+    this.cleanedFilePath.set(null);
+    this.cleaningStats.set(null);
+    this.modelName.set('');
+    this.clearAnalysisProgressInterval();
+    this.clearCleaningProgressInterval();
 
     // Réinitialiser les KPIs
     this.kpiCards.set([
@@ -544,6 +659,32 @@ export class ImportDataComponent implements OnInit {
   formatNumber(n: number): string {
     if (!n) return '0';
     return new Intl.NumberFormat('fr-FR').format(n);
+  }
+
+  getStatusClass(status: string): string {
+    switch(status) {
+      case 'ACTIVE':
+        return 'bg-green-50 text-green-600 border-green-100';
+      case 'PROCESSED':
+        return 'bg-blue-50 text-blue-600 border-blue-100';
+      case 'INACTIVE':
+        return 'bg-gray-50 text-gray-500 border-gray-100';
+      default:
+        return 'bg-gray-50 text-gray-500 border-gray-100';
+    }
+  }
+
+  getStatusText(status: string): string {
+    switch(status) {
+      case 'ACTIVE':
+        return 'ACTIF';
+      case 'PROCESSED':
+        return 'TRAITÉ';
+      case 'INACTIVE':
+        return 'INACTIF';
+      default:
+        return status;
+    }
   }
 
   getColumnTypeIcon(type: string): string {

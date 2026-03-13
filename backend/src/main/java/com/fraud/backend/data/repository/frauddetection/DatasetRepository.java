@@ -25,6 +25,9 @@ public interface DatasetRepository extends JpaRepository<Dataset, Long> {
             "LOWER(d.datasetName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
             "LOWER(d.datasetCode) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
     Page<Dataset> findByDatasetNameOrCode(@Param("searchTerm") String searchTerm, Pageable pageable);
+    
+    @Query("SELECT COALESCE(SUM(d.fileSizeMb), 0) FROM Dataset d")
+    java.math.BigDecimal sumFileSizeMb();
 
     Page<Dataset> findByImportedAtAfter(LocalDateTime date, Pageable pageable);
 }

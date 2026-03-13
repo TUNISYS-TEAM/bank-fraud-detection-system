@@ -1,0 +1,39 @@
+{
+  "original_file": "dataset_clean_4196048282318094655.csv",
+  "parquet_file": "/app/output/cleaned_2c98092f-c79b-4d1b-9a8e-073387a37973.parquet",
+  "cleaning_stats": {
+    "original_rows": 594643,
+    "cleaned_rows": 594643,
+    "duplicates_removed": 0,
+    "null_rows_removed": 0,
+    "reduction_percent": 0.0,
+    "fraud_count_before": 7200,
+    "fraud_count_after": 7200,
+    "fraud_rate": 1.2108,
+    "missing_values_by_column": {}
+  },
+  "columns": [
+    "Account_Id",
+    "Merchant_Id",
+    "category",
+    "TX_Amount",
+    "fraud",
+    "Customer_Postal_Code",
+    "Merchant_Postal_Code",
+    "Device_Id",
+    "TX_Time",
+    "Channel"
+  ],
+  "dtypes": {
+    "Account_Id": "object",
+    "Merchant_Id": "object",
+    "category": "object",
+    "TX_Amount": "float64",
+    "fraud": "int64",
+    "Customer_Postal_Code": "object",
+    "Merchant_Postal_Code": "object",
+    "Device_Id": "object",
+    "TX_Time": "object",
+    "Channel": "object"
+  }
+}

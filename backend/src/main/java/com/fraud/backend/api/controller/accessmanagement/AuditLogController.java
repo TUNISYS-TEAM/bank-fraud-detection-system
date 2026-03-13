@@ -189,4 +189,10 @@ public class AuditLogController {
         if (value == null) return "";
         return "\"" + value.replace("\"", "\"\"") + "\"";
     }
+
+    @GetMapping("/count/today")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Long> countToday() {
+        return ResponseEntity.ok(auditLogService.countToday());
+    }
 }

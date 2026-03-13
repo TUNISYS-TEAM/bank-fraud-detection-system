@@ -1,268 +1,483 @@
-<div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fadeIn">
-    <!-- Header -->
-    <div class="px-8 py-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50">
-        <div class="flex items-center space-x-4">
-            <div class="p-3 bg-indigo-100 rounded-xl">
-                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-            </div>
-            <div>
-                <h3 class="text-2xl font-bold text-gray-900 tracking-tight">Messagerie</h3>
-                <p class="text-sm text-gray-500 mt-1">Communications internes</p>
-            </div>
-        </div>
-    </div>
+<div class="flex flex-col bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden h-[calc(100vh-50px)]">
 
-    <!-- Tabs -->
-    <div class="flex border-b border-gray-200 bg-gray-50/50 px-8">
-        <button (click)="currentTab.set('inbox')" 
-                class="px-6 py-4 text-sm font-medium transition-colors relative"
-                [class.text-indigo-600]="currentTab() === 'inbox'"
-                [class.text-gray-600]="currentTab() !== 'inbox'">
-            <span>Boîte de réception</span>
-            @if (currentTab() === 'inbox') {
-                <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600"></div>
-            }
-        </button>
-        <button (click)="currentTab.set('sent')" 
-                class="px-6 py-4 text-sm font-medium transition-colors relative"
-                [class.text-indigo-600]="currentTab() === 'sent'"
-                [class.text-gray-600]="currentTab() !== 'sent'">
-            <span>Messages envoyés</span>
-            @if (currentTab() === 'sent') {
-                <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600"></div>
-            }
-        </button>
-        <button (click)="currentTab.set('compose')" 
-                class="px-6 py-4 text-sm font-medium transition-colors relative"
-                [class.text-indigo-600]="currentTab() === 'compose'"
-                [class.text-gray-600]="currentTab() !== 'compose'">
-            <span>Nouveau message</span>
-            @if (currentTab() === 'compose') {
-                <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600"></div>
-            }
-        </button>
-    </div>
+    <!-- ======================================================= -->
+    <!-- TOOLBAR                                                 -->
+    <!-- ======================================================= -->
+    <div class="flex-shrink-0 border-b border-gray-100 bg-white/80 backdrop-blur-sm">
+        <div class="flex items-center px-4 py-2 justify-between">
 
-    <!-- Loading State -->
-    @if (loading()) {
-        <div class="flex justify-center items-center py-20">
-            <div class="animate-spin rounded-full h-12 w-12 border-4 border-indigo-200 border-t-indigo-600"></div>
-        </div>
-    }
+            <!-- Left side - actions -->
+            <div class="flex items-center gap-1">
 
-    <!-- Inbox Tab -->
-    @if (!loading() && currentTab() === 'inbox') {
-        <div class="divide-y divide-gray-100">
-            @for (message of inbox(); track message.messageUuid) {
-                <div class="p-6 hover:bg-gray-50/80 cursor-pointer transition-colors"
-                     (click)="selectMessage(message)">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center space-x-3 mb-2">
-                                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
-                                    {{ getInitials(message.senderName) }}
-                                </div>
-                                <div>
-                                    <p class="text-sm font-semibold text-gray-900">{{ message.senderName || 'Utilisateur' }}</p>
-                                    <p class="text-xs text-gray-500">{{ message.senderEmail || '' }}</p>
-                                </div>
-                                @if (!message.isRead) {
-                                    <span class="ml-2 w-2 h-2 bg-indigo-600 rounded-full"></span>
-                                }
-                            </div>
-                            <p class="text-sm font-medium text-gray-900 mb-1">{{ message.subject || '(Sans objet)' }}</p>
-                            <p class="text-sm text-gray-600 line-clamp-2">{{ message.content }}</p>
-                        </div>
-                        <div class="ml-4 flex flex-col items-end space-y-2">
-                            <span class="text-xs text-gray-400">{{ formatDate(message.createdAt) }}</span>
-                            <span class="px-2 py-1 text-xs rounded-full" [ngClass]="getPriorityClass(message.priority)">
-                                {{ message.priority }}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            } @empty {
-                <div class="text-center py-16 text-gray-500">
-                    <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" 
-                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <p class="text-gray-500">Aucun message dans votre boîte de réception</p>
-                </div>
-            }
-        </div>
-    }
+                <!-- Compose button -->
+                @if (ribbonCollapsed()) {
+                    <button (click)="currentTab.set('compose'); selectedMessage.set(null); clearSelection()"
+                            class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-sm font-medium transition-all shadow-sm hover:shadow">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        <span>Nouveau message</span>
+                    </button>
+                } @else {
+                    <button (click)="currentTab.set('compose'); selectedMessage.set(null); clearSelection()"
+                            class="flex flex-col items-center px-3 py-1.5 rounded-xl hover:bg-indigo-50 transition-colors group min-w-[64px]">
+                        <svg class="w-5 h-5 text-gray-500 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                        </svg>
+                        <span class="text-xs text-gray-600 mt-1 group-hover:text-indigo-600">Nouveau</span>
+                    </button>
+                }
 
-    <!-- Sent Tab -->
-    @if (!loading() && currentTab() === 'sent') {
-        <div class="divide-y divide-gray-100">
-            @for (message of sent(); track message.messageUuid) {
-                <div class="p-6 hover:bg-gray-50/80 cursor-pointer transition-colors"
-                     (click)="selectMessage(message)">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center space-x-3 mb-2">
-                                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white text-xs font-bold">
-                                    {{ getInitials(message.receiverName) }}
-                                </div>
-                                <div>
-                                    <p class="text-sm font-semibold text-gray-900">{{ message.receiverName || 'Utilisateur' }}</p>
-                                    <p class="text-xs text-gray-500">{{ message.receiverEmail || '' }}</p>
-                                </div>
-                                @if (message.isRead) {
-                                    <span class="text-xs text-gray-400 ml-2">Lu</span>
-                                }
-                            </div>
-                            <p class="text-sm font-medium text-gray-900 mb-1">{{ message.subject || '(Sans objet)' }}</p>
-                            <p class="text-sm text-gray-600 line-clamp-2">{{ message.content }}</p>
-                        </div>
-                        <div class="ml-4 flex flex-col items-end space-y-2">
-                            <span class="text-xs text-gray-400">{{ formatDate(message.createdAt) }}</span>
-                            <span class="px-2 py-1 text-xs rounded-full" [ngClass]="getPriorityClass(message.priority)">
-                                {{ message.priority }}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            } @empty {
-                <div class="text-center py-16 text-gray-500">
-                    <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" 
-                              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                    <p class="text-gray-500">Aucun message envoyé</p>
-                </div>
-            }
-        </div>
-    }
+                <div class="w-px h-8 bg-gray-200 mx-1"></div>
 
-    <!-- Compose Tab -->
-    @if (!loading() && currentTab() === 'compose') {
-        <div class="p-8">
-            @if (loadingUsers()) {
-                <div class="flex justify-center py-8">
-                    <div class="animate-spin rounded-full h-8 w-8 border-4 border-indigo-200 border-t-indigo-600"></div>
-                </div>
-            } @else {
-                <form (ngSubmit)="sendNewMessage()" class="space-y-6">
-                    <!-- Destinataire -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Destinataire</label>
-                        <select [(ngModel)]="newMessage().receiverId" name="receiverId" required
-                                class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white">
-                            <option [ngValue]="null">Sélectionner un destinataire</option>
-                            @for (user of users(); track user.id) {
-                                @if (user.id !== authStore.userId() && user.isActive) {
-                                    <option [value]="user.id">{{ user.firstName }} {{ user.lastName }} ({{ user.email }})</option>
-                                }
-                            }
-                        </select>
-                    </div>
-
-                    <!-- Priorité -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Priorité</label>
-                        <select [(ngModel)]="newMessage().priority" name="priority"
-                                class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white">
-                            <option value="LOW">Basse</option>
-                            <option value="NORMAL">Normale</option>
-                            <option value="HIGH">Haute</option>
-                            <option value="URGENT">Urgente</option>
-                        </select>
-                    </div>
-
-                    <!-- Sujet -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Sujet</label>
-                        <input type="text" [(ngModel)]="newMessage().subject" name="subject"
-                               class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white"
-                               placeholder="Objet du message">
-                    </div>
-
-                    <!-- Contenu -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Message</label>
-                        <textarea [(ngModel)]="newMessage().content" name="content" rows="6" required
-                                  class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white resize-none"
-                                  placeholder="Votre message..."></textarea>
-                    </div>
-
-                    <!-- Actions -->
-                    <div class="flex justify-end space-x-3">
-                        <button type="button" (click)="currentTab.set('inbox')"
-                                class="px-6 py-2.5 text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">
-                            Annuler
-                        </button>
-                        <button type="submit"
-                                [disabled]="!newMessage().receiverId || !newMessage().content"
-                                class="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed">
-                            Envoyer
-                        </button>
-                    </div>
-                </form>
-            }
-        </div>
-    }
-
-    <!-- Message Detail Modal -->
-    @if (selectedMessage(); as message) {
-        <div class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-                <!-- Header -->
-                <div class="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-xl font-bold text-gray-900">{{ message.subject || '(Sans objet)' }}</h3>
-                        <button (click)="selectedMessage.set(null)" class="text-gray-400 hover:text-gray-600">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <!-- Delete button -->
+                <button (click)="deleteSelected()"
+                        [disabled]="selectedMessages().size === 0"
+                        class="flex items-center transition-colors rounded-xl disabled:cursor-not-allowed disabled:opacity-40">
+                    @if (ribbonCollapsed()) {
+                        <span class="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-red-50 transition-colors"
+                              [title]="'Supprimer'">
+                            <svg class="w-5 h-5 transition-colors"
+                                 [class.text-gray-400]="selectedMessages().size === 0"
+                                 [class.text-red-500]="selectedMessages().size > 0"
+                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                             </svg>
+                        </span>
+                    } @else {
+                        <span class="flex flex-col items-center px-3 py-1.5 rounded-xl min-w-[64px] transition-colors"
+                              [class.hover:bg-red-50]="selectedMessages().size > 0">
+                            <svg class="w-5 h-5 transition-colors"
+                                 [class.text-gray-400]="selectedMessages().size === 0"
+                                 [class.text-red-500]="selectedMessages().size > 0"
+                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                            <span class="text-xs mt-1 transition-colors"
+                                  [class.text-gray-400]="selectedMessages().size === 0"
+                                  [class.text-red-500]="selectedMessages().size > 0">Supprimer</span>
+                        </span>
+                    }
+                </button>
+
+                <!-- Archive button -->
+                <button (click)="archiveSelected()"
+                        [disabled]="selectedMessages().size === 0"
+                        class="flex items-center transition-colors rounded-xl disabled:cursor-not-allowed disabled:opacity-40">
+                    @if (ribbonCollapsed()) {
+                        <span class="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-gray-100 transition-colors"
+                              [title]="'Archiver'">
+                            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+                            </svg>
+                        </span>
+                    } @else {
+                        <span class="flex flex-col items-center px-3 py-1.5 rounded-xl min-w-[64px] transition-colors"
+                              [class.hover:bg-gray-100]="selectedMessages().size > 0">
+                            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+                            </svg>
+                            <span class="text-xs text-gray-500 mt-1">Archiver</span>
+                        </span>
+                    }
+                </button>
+
+                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+
+                <!-- Read/unread toggle -->
+                <button (click)="toggleReadSelected()"
+                        [disabled]="selectedMessages().size === 0"
+                        class="flex items-center transition-colors rounded-xl disabled:cursor-not-allowed disabled:opacity-40">
+                    @if (ribbonCollapsed()) {
+                        <span class="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-gray-100 transition-colors"
+                              [title]="'Lu / non lu'">
+                            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                        </span>
+                    } @else {
+                        <span class="flex flex-col items-center px-3 py-1.5 rounded-xl min-w-[64px] transition-colors"
+                              [class.hover:bg-gray-100]="selectedMessages().size > 0">
+                            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                            <span class="text-xs text-gray-500 mt-1">Lu / non lu</span>
+                        </span>
+                    }
+                </button>
+
+                <!-- Selection badge -->
+                @if (selectedMessages().size > 0) {
+                    <div class="ml-4 flex items-center gap-3">
+                        <span class="text-xs bg-indigo-50 text-indigo-700 font-medium px-3 py-1.5 rounded-full border border-indigo-100">
+                            {{ selectedMessages().size }} sélectionné(s)
+                        </span>
+                        <button (click)="clearSelection()"
+                                class="text-xs text-gray-500 hover:text-gray-700 hover:underline transition-colors">
+                            Désélectionner
                         </button>
                     </div>
-                </div>
+                }
+            </div>
 
-                <!-- Body -->
-                <div class="p-8 overflow-y-auto max-h-[calc(90vh-200px)]">
-                    <!-- Infos -->
-                    <div class="flex items-center space-x-4 mb-6">
-                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">
-                            {{ getInitials(message.senderName) }}
-                        </div>
-                        <div>
-                            <p class="text-sm font-semibold text-gray-900">{{ message.senderName || 'Utilisateur' }}</p>
-                            <p class="text-xs text-gray-500">{{ message.senderEmail || '' }}</p>
-                            <p class="text-xs text-gray-400 mt-1">{{ formatDate(message.createdAt) }}</p>
-                        </div>
-                        <span class="ml-auto px-3 py-1 text-xs rounded-full" [ngClass]="getPriorityClass(message.priority)">
-                            {{ message.priority }}
+            <!-- Collapse button -->
+            <button (click)="ribbonCollapsed.set(!ribbonCollapsed())"
+                    class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors py-1.5 px-3 rounded-xl hover:bg-gray-100 flex-shrink-0"
+                    [title]="ribbonCollapsed() ? 'Développer' : 'Réduire'">
+                <svg class="w-4 h-4 transition-transform duration-200"
+                     [class.rotate-180]="ribbonCollapsed()"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- MAIN CONTENT                                            -->
+    <!-- ======================================================= -->
+    <div class="flex flex-1 overflow-hidden min-h-0">
+
+        <!-- Left sidebar -->
+        <div class="w-56 flex-shrink-0 border-r border-gray-100 bg-gray-50/50 flex flex-col">
+            <nav class="flex-1 p-3 space-y-1">
+
+                <!-- Inbox -->
+                <button (click)="switchTab('inbox')"
+                        class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all"
+                        [class.bg-white]="currentTab() === 'inbox'"
+                        [class.shadow-sm]="currentTab() === 'inbox'"
+                        [class.border]="currentTab() === 'inbox'"
+                        [class.border-indigo-100]="currentTab() === 'inbox'"
+                        [class.text-indigo-700]="currentTab() === 'inbox'"
+                        [class.font-medium]="currentTab() === 'inbox'"
+                        [class.text-gray-600]="currentTab() !== 'inbox'"
+                        [class.hover:bg-white]="currentTab() !== 'inbox'"
+                        [class.hover:shadow-sm]="currentTab() !== 'inbox'">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                        <span>Boîte de réception</span>
+                    </div>
+                    @if (unreadCount() > 0) {
+                        <span class="text-xs bg-indigo-600 text-white rounded-full px-2 py-0.5 min-w-[20px] text-center font-medium">
+                            {{ unreadCount() }}
                         </span>
+                    }
+                </button>
+
+                <!-- Sent -->
+                <button (click)="switchTab('sent')"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all"
+                        [class.bg-white]="currentTab() === 'sent'"
+                        [class.shadow-sm]="currentTab() === 'sent'"
+                        [class.border]="currentTab() === 'sent'"
+                        [class.border-indigo-100]="currentTab() === 'sent'"
+                        [class.text-indigo-700]="currentTab() === 'sent'"
+                        [class.font-medium]="currentTab() === 'sent'"
+                        [class.text-gray-600]="currentTab() !== 'sent'"
+                        [class.hover:bg-white]="currentTab() !== 'sent'"
+                        [class.hover:shadow-sm]="currentTab() !== 'sent'">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                    </svg>
+                    <span>Messages envoyés</span>
+                </button>
+
+                <!-- Validation -->
+                <button (click)="switchTab('validation')"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all"
+                        [class.bg-white]="currentTab() === 'validation'"
+                        [class.shadow-sm]="currentTab() === 'validation'"
+                        [class.border]="currentTab() === 'validation'"
+                        [class.border-indigo-100]="currentTab() === 'validation'"
+                        [class.text-indigo-700]="currentTab() === 'validation'"
+                        [class.font-medium]="currentTab() === 'validation'"
+                        [class.text-gray-600]="currentTab() !== 'validation'"
+                        [class.hover:bg-white]="currentTab() !== 'validation'"
+                        [class.hover:shadow-sm]="currentTab() !== 'validation'">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>Validation modèle</span>
+                </button>
+
+            </nav>
+        </div>
+
+        <!-- Center + right panels -->
+        <div class="flex flex-1 overflow-hidden min-h-0">
+
+            <!-- Message list -->
+            @if (currentTab() !== 'compose' && currentTab() !== 'validation') {
+                <div class="w-80 flex-shrink-0 border-r border-gray-100 flex flex-col overflow-hidden bg-white">
+
+                    <!-- List header -->
+                    <div class="px-4 py-3 border-b border-gray-100 bg-white/80 backdrop-blur-sm flex items-center justify-between flex-shrink-0">
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox"
+                                   class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                   [checked]="isAllSelected()"
+                                   (change)="toggleSelectAll($event)">
+                            <h2 class="text-sm font-semibold text-gray-900">
+                                {{ currentTab() === 'inbox' ? 'Boîte de réception' : 'Messages envoyés' }}
+                            </h2>
+                        </div>
+                        @if (currentTab() === 'inbox' && unreadCount() > 0) {
+                            <button (click)="markAllAsRead()" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+                                Tout marquer lu
+                            </button>
+                        }
                     </div>
 
-                    <!-- Message -->
-                    <div class="bg-gray-50 rounded-xl p-6 mb-6">
-                        <p class="text-gray-700 whitespace-pre-wrap">{{ message.content }}</p>
-                    </div>
-
-                    <!-- Reply -->
-                    @if (message.receiverId === authStore.userId()) {
-                        <div>
-                            <label class="block text-sm font-semibold text-gray-700 mb-2">Répondre</label>
-                            <textarea [(ngModel)]="replyContent" rows="4"
-                                      class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white resize-none"
-                                      placeholder="Votre réponse..."></textarea>
-                            <div class="flex justify-end mt-3">
-                                <button (click)="sendReply()"
-                                        [disabled]="!replyContent()"
-                                        class="px-6 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50">
-                                    Répondre
-                                </button>
-                            </div>
+                    <!-- Loading -->
+                    @if (loading()) {
+                        <div class="flex justify-center items-center flex-1">
+                            <div class="animate-spin rounded-full h-8 w-8 border-2 border-indigo-100 border-t-indigo-600"></div>
                         </div>
                     }
+
+                    <!-- Inbox list -->
+                    @if (!loading() && currentTab() === 'inbox') {
+                        <div class="flex-1 overflow-y-auto divide-y divide-gray-50 min-h-0">
+                            @for (message of inbox(); track message.messageUuid) {
+                                <div class="flex items-start p-4 cursor-pointer transition-all group relative hover:bg-gray-50"
+                                     [class.bg-indigo-50]="isMessageSelected(message.messageUuid)"
+                                     [class.border-l-2]="selectedMessage()?.messageUuid === message.messageUuid"
+                                     [class.border-l-indigo-500]="selectedMessage()?.messageUuid === message.messageUuid"
+                                     (click)="selectMessage(message)">
+                                    <div class="flex-shrink-0 mr-3 mt-0.5" (click)="$event.stopPropagation()">
+                                        <input type="checkbox"
+                                               class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                               [class.opacity-100]="isMessageSelected(message.messageUuid)"
+                                               [checked]="isMessageSelected(message.messageUuid)"
+                                               (change)="toggleMessageSelection(message.messageUuid, $event)">
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <div class="flex items-center gap-1.5 min-w-0">
+                                                @if (!message.isRead) {
+                                                    <span class="w-2 h-2 bg-indigo-600 rounded-full flex-shrink-0"></span>
+                                                }
+                                                <span class="text-sm truncate"
+                                                      [class.font-semibold]="!message.isRead"
+                                                      [class.text-gray-900]="!message.isRead"
+                                                      [class.text-gray-600]="message.isRead">
+                                                    {{ message.senderName || 'Utilisateur' }}
+                                                </span>
+                                            </div>
+                                            <span class="text-xs text-gray-400 flex-shrink-0 ml-2 whitespace-nowrap">
+                                                {{ formatDateShort(message.createdAt) }}
+                                            </span>
+                                        </div>
+                                        <p class="text-sm truncate"
+                                           [class.font-medium]="!message.isRead"
+                                           [class.text-gray-800]="!message.isRead"
+                                           [class.text-gray-500]="message.isRead">
+                                            {{ message.subject || '(Sans objet)' }}
+                                        </p>
+                                        <p class="text-xs text-gray-400 truncate mt-1">{{ message.content }}</p>
+                                    </div>
+                                </div>
+                            } @empty {
+                                <div class="flex flex-col items-center justify-center h-full py-16 text-gray-300">
+                                    <svg class="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                    </svg>
+                                    <p class="text-sm">Aucun message</p>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <!-- Sent list -->
+                    @if (!loading() && currentTab() === 'sent') {
+                        <div class="flex-1 overflow-y-auto divide-y divide-gray-50 min-h-0">
+                            @for (message of sent(); track message.messageUuid) {
+                                <div class="flex items-start p-4 cursor-pointer transition-all group hover:bg-gray-50"
+                                     [class.bg-indigo-50]="isMessageSelected(message.messageUuid)"
+                                     [class.border-l-2]="selectedMessage()?.messageUuid === message.messageUuid"
+                                     [class.border-l-indigo-500]="selectedMessage()?.messageUuid === message.messageUuid"
+                                     (click)="selectMessage(message)">
+                                    <div class="flex-shrink-0 mr-3 mt-0.5" (click)="$event.stopPropagation()">
+                                        <input type="checkbox"
+                                               class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                               [class.opacity-100]="isMessageSelected(message.messageUuid)"
+                                               [checked]="isMessageSelected(message.messageUuid)"
+                                               (change)="toggleMessageSelection(message.messageUuid, $event)">
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="text-sm font-medium text-gray-900 truncate">
+                                                {{ message.receiverName || 'Utilisateur' }}
+                                            </span>
+                                            <span class="text-xs text-gray-400 flex-shrink-0 ml-2 whitespace-nowrap">
+                                                {{ formatDateShort(message.createdAt) }}
+                                            </span>
+                                        </div>
+                                        <p class="text-sm text-gray-600 truncate">{{ message.subject || '(Sans objet)' }}</p>
+                                        <p class="text-xs text-gray-400 truncate mt-1">{{ message.content }}</p>
+                                    </div>
+                                </div>
+                            } @empty {
+                                <div class="flex flex-col items-center justify-center h-full py-16 text-gray-300">
+                                    <svg class="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                                    </svg>
+                                    <p class="text-sm">Aucun message envoyé</p>
+                                </div>
+                            }
+                        </div>
+                    }
+
                 </div>
+            }
+
+            <!-- Right panel -->
+            <div class="flex-1 overflow-hidden flex flex-col min-h-0 bg-gray-50/30">
+
+                <!-- Compose view -->
+                @if (currentTab() === 'compose') {
+                    <div class="flex-1 overflow-y-auto p-8 min-h-0">
+                        <div class="max-w-2xl mx-auto">
+                            <h2 class="text-xl font-semibold text-gray-900 mb-6">Nouveau message</h2>
+                            @if (loadingUsers()) {
+                                <div class="flex justify-center py-12">
+                                    <div class="animate-spin rounded-full h-8 w-8 border-2 border-indigo-100 border-t-indigo-600"></div>
+                                </div>
+                            } @else {
+                                <form (ngSubmit)="sendNewMessage()" class="space-y-5">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Destinataire</label>
+                                        <select [(ngModel)]="newMessage().receiverId" name="receiverId" required
+                                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white shadow-sm">
+                                            <option [ngValue]="null">Sélectionner un destinataire</option>
+                                            @for (user of users(); track user.id) {
+                                                @if (user.id !== authStore.userId() && user.isActive) {
+                                                    <option [value]="user.id">{{ user.firstName }} {{ user.lastName }} ({{ user.email }})</option>
+                                                }
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="flex gap-4">
+                                        <div class="flex-1">
+                                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Sujet</label>
+                                            <input type="text" [(ngModel)]="newMessage().subject" name="subject"
+                                                   class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white shadow-sm"
+                                                   placeholder="Objet du message">
+                                        </div>
+                                        <div class="w-36">
+                                            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Priorité</label>
+                                            <select [(ngModel)]="newMessage().priority" name="priority"
+                                                    class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white shadow-sm">
+                                                <option value="LOW">Basse</option>
+                                                <option value="NORMAL">Normale</option>
+                                                <option value="HIGH">Haute</option>
+                                                <option value="URGENT">Urgente</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Message</label>
+                                        <textarea [(ngModel)]="newMessage().content" name="content" rows="10" required
+                                                  class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white shadow-sm resize-none"
+                                                  placeholder="Votre message..."></textarea>
+                                    </div>
+                                    <div class="flex justify-end gap-3 pt-2">
+                                        <button type="button" (click)="switchTab('inbox')"
+                                                class="px-5 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 shadow-sm">
+                                            Annuler
+                                        </button>
+                                        <button type="submit"
+                                                [disabled]="!newMessage().receiverId || !newMessage().content"
+                                                class="px-5 py-2 text-sm bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow">
+                                            Envoyer
+                                        </button>
+                                    </div>
+                                </form>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Validation view -->
+                @if (currentTab() === 'validation') {
+                    <div class="flex-1 flex flex-col items-center justify-center">
+                        <div class="p-6 bg-indigo-50 rounded-2xl mb-4">
+                            <svg class="w-16 h-16 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <p class="text-lg font-medium text-gray-700">Validation modèle</p>
+                        <p class="text-sm text-gray-400 mt-2">Cette fonctionnalité sera disponible prochainement</p>
+                    </div>
+                }
+
+                <!-- Reading panel -->
+                @if (currentTab() !== 'compose' && currentTab() !== 'validation') {
+                    @if (selectedMessage(); as message) {
+                        <div class="flex-1 overflow-y-auto flex flex-col min-h-0 bg-white">
+                            <div class="px-8 py-6 border-b border-gray-100 bg-white flex-shrink-0">
+                                <div class="flex items-start justify-between gap-4">
+                                    <h2 class="text-xl font-semibold text-gray-900 break-words">{{ message.subject || '(Sans objet)' }}</h2>
+                                    <span class="px-3 py-1 text-xs rounded-full flex-shrink-0 font-medium" [ngClass]="getPriorityClass(message.priority)">
+                                        {{ message.priority }}
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-4 mt-4">
+                                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-sm">
+                                        {{ getInitials(message.senderName) }}
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium text-gray-900">{{ message.senderName || 'Utilisateur' }}</p>
+                                        <p class="text-xs text-gray-500">{{ message.senderEmail || '' }}</p>
+                                    </div>
+                                    <span class="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">{{ formatDate(message.createdAt) }}</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 px-8 py-6 overflow-y-auto">
+                                <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ message.content }}</p>
+                            </div>
+                            @if (message.receiverId === authStore.userId()) {
+                                <div class="px-8 py-5 border-t border-gray-100 bg-gray-50/50 flex-shrink-0">
+                                    <textarea [(ngModel)]="replyContent" rows="3"
+                                              class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white shadow-sm resize-none"
+                                              placeholder="Répondre..."></textarea>
+                                    <div class="flex justify-end mt-3">
+                                        <button (click)="sendReply()"
+                                                [disabled]="!replyContent()"
+                                                class="px-5 py-2 text-sm bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl disabled:opacity-50 shadow-sm hover:shadow">
+                                            Répondre
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    } @else {
+                        <div class="flex-1 flex flex-col items-center justify-center text-gray-300 bg-white">
+                            <svg class="w-20 h-20 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                            <p class="text-base">Sélectionnez un message pour le lire</p>
+                        </div>
+                    }
+                }
             </div>
         </div>
-    }
+    </div>
 </div>

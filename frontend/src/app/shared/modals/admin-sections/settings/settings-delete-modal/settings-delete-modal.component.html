@@ -1,0 +1,58 @@
+@if (isVisible) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fadeIn">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-scaleIn">
+        <!-- Header -->
+        <div class="p-6 bg-red-50 border-b border-red-100 flex items-center space-x-4">
+            <div class="p-3 bg-red-100 rounded-2xl text-red-600">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <div>
+                <h5 class="text-xl font-bold text-red-800">Confirmation de purge</h5>
+                <p class="text-sm text-red-600">Action irréversible</p>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="p-8 space-y-4">
+            <p class="text-gray-600 text-center leading-relaxed">
+                Vous êtes sur le point de <span class="font-bold text-gray-800">supprimer définitivement</span>
+                toutes les archives stockées.
+            </p>
+            <div class="bg-red-50 p-4 rounded-2xl border border-red-100">
+                <ul class="text-xs text-red-700 space-y-2">
+                    <li class="flex items-start">
+                        <span class="mr-2">•</span>
+                        <span>Toutes les sauvegardes logs seront perdues</span>
+                    </li>
+                    <li class="flex items-start">
+                        <span class="mr-2">•</span>
+                        <span>Toutes les sauvegardes sessions seront perdues</span>
+                    </li>
+                    <li class="flex items-start">
+                        <span class="mr-2">•</span>
+                        <span>Aucun rollback ne sera possible après cette action</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-6 bg-gray-50 border-t border-gray-100 grid grid-cols-2 gap-4">
+            <button (click)="onCancel()"
+                class="px-6 py-3 border border-gray-200 text-gray-700 rounded-2xl font-bold hover:bg-white transition-all">
+                Annuler
+            </button>
+            <button (click)="onConfirm()" [disabled]="isSaving"
+                class="px-6 py-3 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-200 flex items-center justify-center space-x-2">
+                @if (isSaving) {
+                <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                }
+                <span>Confirmer</span>
+            </button>
+        </div>
+    </div>
+</div>
+}

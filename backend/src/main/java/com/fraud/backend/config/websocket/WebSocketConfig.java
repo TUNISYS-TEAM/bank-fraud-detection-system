@@ -1,11 +1,13 @@
 package com.fraud.backend.config.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.converter.DefaultContentTypeResolver;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.converter.MessageConverter;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
@@ -20,6 +22,7 @@ import java.util.List;
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final ObjectMapper objectMapper;
+    private final AuthChannelInterceptor authChannelInterceptor;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
@@ -30,9 +33,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws")
+        registry.addEndpoint("/api/ws")
                 .setAllowedOrigins("http://localhost:4200")
+                .addInterceptors(new CookieHandshakeInterceptor())
                 .withSockJS();
+    }
+
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(authChannelInterceptor);
     }
 
     @Override

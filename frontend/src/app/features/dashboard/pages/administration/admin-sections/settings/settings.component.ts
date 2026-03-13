@@ -2,6 +2,8 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../../../environments/environment';
 import { AuthStore } from '../../../../../../core/store/auth.store';
+import { FormsModule } from '@angular/forms';
+import { CommonModule } from '@angular/common';
 
 interface SystemSettings {
   security: {
@@ -21,9 +23,24 @@ interface SystemSettings {
   };
 }
 
-// Interface pour la réponse des settings
-interface SettingsResponse {
-  [key: string]: string;
+interface SystemSetting {
+  key: string;
+  value: string;
+}
+
+interface Archive {
+  id: number;
+  type: string;
+  startAt: string;
+  endAt: string;
+  objectKey: string;
+  status: string;
+  createdAt: string;
+}
+
+interface ArchivePageResponse {
+  content: Archive[];
+  totalElements: number;
 }
 
 @Component({
@@ -37,6 +54,11 @@ export class SettingsComponent implements OnInit {
 
   isLoading = signal(true);
   saving = signal(false);
+  showDeleteConfirm = signal(false);
+  archives = signal<Archive[]>([]);
+  selectedRollbackId = signal<number | null>(null);
+  showPreviewModal = signal(false);
+  previewData = signal<any>(null);
 
   settings: SystemSettings = {
     security: {
@@ -63,8 +85,8 @@ export class SettingsComponent implements OnInit {
   loadSettings(): void {
     this.isLoading.set(true);
 
-    // Charger les paramètres depuis le backend - utiliser le bon type
-    this.http.get<SettingsResponse>(`${environment.apiUrl}/settings`).subscribe({
+    // Charger les paramètres depuis le backend
+    this.http.get<SystemSetting[]>(`${environment.apiUrl}/settings`).subscribe({
       next: (response) => {
         this.mapSettingsFromResponse(response);
         this.isLoading.set(false);
@@ -72,7 +94,6 @@ export class SettingsComponent implements OnInit {
       error: (error) => {
         console.error('Error loading settings:', error);
         this.isLoading.set(false);
-        // Fallback sur les valeurs par défaut
       }
     });
 
@@ -83,24 +104,39 @@ export class SettingsComponent implements OnInit {
       },
       error: (error) => console.error('Error loading audit log status:', error)
     });
+
+    // Charger les archives pour le rollback
+    this.http.get<ArchivePageResponse>(`${environment.apiUrl}/archives?size=5`).subscribe({
+      next: (response) => {
+        this.archives.set(response.content);
+      },
+      error: (error) => console.error('Error loading archives:', error)
+    });
   }
 
-  mapSettingsFromResponse(response: SettingsResponse): void {
-    // Utiliser la notation par index avec l'interface SettingsResponse
-    this.settings.security.sessionTimeout = response['session_timeout'] || '30';
-    this.settings.system.dataRetention = response['data_retention'] || '90';
-    this.settings.system.autoBackup = response['auto_backup'] === 'true';
-    this.settings.system.emailNotifications = response['email_notifications'] === 'true';
-    this.settings.notifications.criticalAlerts = response['critical_alerts'] === 'true';
-    this.settings.notifications.dailyReports = response['daily_reports'] === 'true';
-    this.settings.notifications.modelDrift = response['model_drift'] === 'true';
-    this.settings.notifications.versionUpdates = response['version_updates'] === 'true';
+  mapSettingsFromResponse(response: SystemSetting[]): void {
+    if (!response || !Array.isArray(response)) return;
+
+    const settingsMap: { [key: string]: string } = {};
+    response.forEach(s => {
+      settingsMap[s.key] = s.value;
+    });
+
+    this.settings.security.sessionTimeout = settingsMap['session_timeout'] || '30';
+    this.settings.system.dataRetention = settingsMap['retention_days'] || '90';
+    this.settings.system.autoBackup = settingsMap['archive_enabled'] === 'true';
+    this.settings.system.emailNotifications = settingsMap['email_notifications'] === 'true';
+
+    this.settings.notifications.criticalAlerts = settingsMap['critical_alerts'] === 'true';
+    this.settings.notifications.dailyReports = settingsMap['daily_reports'] === 'true';
+    this.settings.notifications.modelDrift = settingsMap['model_drift'] === 'true';
+    this.settings.notifications.versionUpdates = settingsMap['version_updates'] === 'true';
   }
 
   toggleAuditLog(event: any): void {
     const enabled = event.target.checked;
     this.settings.security.auditLogEnabled = enabled;
-    
+
     this.http.patch(`${environment.apiUrl}/settings/audit-log`, { enabled })
       .subscribe({
         next: () => {
@@ -108,7 +144,6 @@ export class SettingsComponent implements OnInit {
         },
         error: (error) => {
           console.error('Error updating audit log status:', error);
-          // Revert on error
           this.settings.security.auditLogEnabled = !enabled;
           event.target.checked = !enabled;
         }
@@ -117,18 +152,22 @@ export class SettingsComponent implements OnInit {
 
   updateSetting(key: string, event: any): void {
     let value: string;
-    
+
     if (event.target) {
-      // Pour les checkboxes
       if (event.target.type === 'checkbox') {
         value = event.target.checked ? 'true' : 'false';
       } else {
-        // Pour les selects
         value = event.target.value;
       }
     } else {
-      // Pour les appels directs avec une valeur
       value = event;
+    }
+
+    // Modif de status d'activation
+    if (key === 'archive_enabled') {
+      this.settings.system.autoBackup = value === 'true';
+    } else if (key === 'email_notifications') {
+      this.settings.system.emailNotifications = value === 'true';
     }
 
     this.saving.set(true);
@@ -141,24 +180,84 @@ export class SettingsComponent implements OnInit {
         error: (error) => {
           console.error(`Error updating setting ${key}:`, error);
           this.saving.set(false);
-          // Recharger les paramètres pour annuler les changements locaux
           this.loadSettings();
         }
       });
   }
 
+  deleteAllArchives(): void {
+    this.saving.set(true);
+    this.http.delete(`${environment.apiUrl}/archives`).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.showDeleteConfirm.set(false);
+        this.archives.set([]);
+        alert('Toutes les archives ont été supprimées avec succès.');
+        this.loadSettings();
+      },
+      error: (error) => {
+        console.error('Error deleting archives:', error);
+        this.saving.set(false);
+        this.showDeleteConfirm.set(false);
+        alert('Erreur lors de la suppression des archives.');
+      }
+    });
+  }
+
+  deleteArchive(id: number): void {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cette archive ?')) {
+      this.http.delete(`${environment.apiUrl}/archives/${id}`).subscribe({
+        next: () => {
+          this.archives.update(list => list.filter(a => a.id !== id));
+        },
+        error: (error) => {
+          console.error('Error deleting archive:', error);
+          alert('Erreur lors de la suppression de l\'archive.');
+        }
+      });
+    }
+  }
+
   previewRollback(): void {
-    // Logique de prévisualisation du rollback
-    console.log('Preview rollback');
-    // TODO: Implémenter la prévisualisation
+    const id = this.selectedRollbackId();
+    if (!id) {
+      alert('Veuillez sélectionner un point de restauration pour prévisualiser.');
+      return;
+    }
+
+    this.http.get<any>(`${environment.apiUrl}/archives/${id}/preview`).subscribe({
+      next: (data) => {
+        this.previewData.set(data);
+        this.showPreviewModal.set(true);
+      },
+      error: (error) => {
+        console.error('Error previewing archive:', error);
+        alert('Erreur lors de la prévisualisation de l\'archive.');
+      }
+    });
   }
 
   executeRollback(): void {
-    // Logique d'exécution du rollback
-    console.log('Execute rollback');
-    // TODO: Implémenter le rollback avec confirmation
+    const id = this.selectedRollbackId();
+    if (!id) {
+      alert('Veuillez sélectionner un point de restauration.');
+      return;
+    }
+
     if (confirm('Êtes-vous sûr de vouloir restaurer cette version ? Cette action peut entraîner une perte de données récentes.')) {
-      // Exécuter le rollback
+      this.saving.set(true);
+      this.http.post(`${environment.apiUrl}/archives/${id}/restore`, {}).subscribe({
+        next: () => {
+          this.saving.set(false);
+          alert('Restauration réussie !');
+          this.loadSettings();
+        },
+        error: (error) => {
+          console.error('Error executing rollback:', error);
+          this.saving.set(false);
+          alert('Erreur lors de la restauration.');
+        }
+      });
     }
   }
 }

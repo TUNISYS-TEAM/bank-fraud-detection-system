@@ -1,7 +1,10 @@
 package com.fraud.backend.api.controller.messaging;
 
+import com.fraud.backend.api.dto.messaging.MessageDTO;
+import com.fraud.backend.api.dto.messaging.MessageMapper;
 import com.fraud.backend.api.dto.messaging.request.SendMessageRequest;
 import com.fraud.backend.data.entity.messaging.Message;
+import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
 import com.fraud.backend.data.service.messaging.MessageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,80 +16,76 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
 @RestController
-@RequestMapping("/messages")
+@RequestMapping("/api/messages")
 @RequiredArgsConstructor
 public class MessageController {
 
     private final MessageService messageService;
+    private final KeycloakMappingRepository keycloakMappingRepository;
+    private final MessageMapper messageMapper;
 
     @PostMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Message> sendMessage(
+    public ResponseEntity<MessageDTO> sendMessage(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody SendMessageRequest request) {
-        
-        Long senderId = jwt.getClaim("user_id");
-        Message message = messageService.sendMessage(senderId, request);
-        
-        return ResponseEntity.ok(message);
+
+        String senderKeycloakId = jwt.getSubject();
+        Message message = messageService.sendMessage(senderKeycloakId, request);
+        return ResponseEntity.ok(messageMapper.toDto(message));
     }
 
     @GetMapping("/inbox")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Page<Message>> getInbox(
+    public ResponseEntity<Page<MessageDTO>> getInbox(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        
-        Long userId = jwt.getClaim("user_id");
-        Page<Message> messages = messageService.getInbox(userId, page, size);
-        
+            @RequestParam(defaultValue = "10") int size) {
+
+        String userKeycloakId = jwt.getSubject();
+        Page<MessageDTO> messages = messageService.getInbox(userKeycloakId, page, size)
+                .map(messageMapper::toDto);
         return ResponseEntity.ok(messages);
     }
 
     @GetMapping("/sent")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Page<Message>> getSent(
+    public ResponseEntity<Page<MessageDTO>> getSent(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
-        Long userId = jwt.getClaim("user_id");
-        Page<Message> messages = messageService.getSent(userId, page, size);
-        
+
+        String userKeycloakId = jwt.getSubject();
+        Page<MessageDTO> messages = messageService.getSent(userKeycloakId, page, size)
+                .map(messageMapper::toDto);
         return ResponseEntity.ok(messages);
     }
 
-    @GetMapping("/conversation/{userId}")
+    @GetMapping("/conversation/{userKeycloakId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Page<Message>> getConversation(
+    public ResponseEntity<Page<MessageDTO>> getConversation(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long userId,
+            @PathVariable String userKeycloakId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
-        Long currentUserId = jwt.getClaim("user_id");
-        Page<Message> messages = messageService.getConversation(currentUserId, userId, page, size);
-        
+
+        String currentUserKeycloakId = jwt.getSubject();
+        Page<MessageDTO> messages = messageService.getConversation(currentUserKeycloakId, userKeycloakId, page, size)
+                .map(messageMapper::toDto);
         return ResponseEntity.ok(messages);
     }
 
     @GetMapping("/unread/count")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Long>> getUnreadCount(@AuthenticationPrincipal Jwt jwt) {
-        Long userId = jwt.getClaim("user_id");
-        long count = messageService.getUnreadCount(userId);
-        
-        Map<String, Long> response = new HashMap<>();
-        response.put("count", count);
-        
-        return ResponseEntity.ok(response);
+        String userKeycloakId = jwt.getSubject();
+        long count = messageService.getUnreadCount(userKeycloakId);
+        return ResponseEntity.ok(Map.of("count", count));
     }
 
     @PatchMapping("/{messageUuid}/read")
@@ -94,30 +93,33 @@ public class MessageController {
     public ResponseEntity<Void> markAsRead(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID messageUuid) {
-        
-        Long userId = jwt.getClaim("user_id");
+
+        String userKeycloakId = jwt.getSubject();
         Message message = messageService.getMessage(messageUuid);
-        
-        if (message.getReceiver().getId().equals(userId)) {
-            messageService.markAsRead(message.getId(), userId);
+
+        String receiverKeycloakId = keycloakMappingRepository.findByUserId(message.getReceiver().getId())
+                .map(mapping -> mapping.getKeycloakId())
+                .orElse(null);
+
+        if (receiverKeycloakId != null && receiverKeycloakId.equals(userKeycloakId)) {
+            messageService.markAsRead(message.getId(), userKeycloakId);
         }
-        
+
         return ResponseEntity.ok().build();
     }
 
     @PatchMapping("/read-all")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> markAllAsRead(@AuthenticationPrincipal Jwt jwt) {
-        Long userId = jwt.getClaim("user_id");
-        messageService.markAllAsRead(userId);
-        
+        String userKeycloakId = jwt.getSubject();
+        messageService.markAllAsRead(userKeycloakId);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{messageUuid}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Message> getMessage(@PathVariable UUID messageUuid) {
+    public ResponseEntity<MessageDTO> getMessage(@PathVariable UUID messageUuid) {
         Message message = messageService.getMessage(messageUuid);
-        return ResponseEntity.ok(message);
+        return ResponseEntity.ok(messageMapper.toDto(message));
     }
 }

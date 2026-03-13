@@ -1,4 +1,3 @@
-// core/services/auth.service.ts
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError, of, timer, BehaviorSubject } from 'rxjs';
