@@ -1,7 +1,8 @@
-// core/store/auth.store.ts
 import { signalStore, withState, withComputed, withMethods, patchState } from '@ngrx/signals';
 import { computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
+import { Observable, of } from 'rxjs';
+import { tap, map, switchMap, catchError } from 'rxjs/operators';
 import { AuthService } from '../services/auth.service';
 import { AuthUser, LoginRequest, MenuItem, UserRole } from '../models/auth.model';
 
@@ -23,7 +24,8 @@ const PERMISSION_ICONS: Record<string, string> = {
   'RUN_SIMULATION': 'play',
   'MANAGE_LOGS': 'file-text',
   'MANAGE_SETTINGS': 'sliders',
-  'MANAGE_DATASETS': 'database'
+  'MANAGE_DATASETS': 'database',
+  'MANAGE_CLIENTS_ACCOUNTS': 'users'
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -44,7 +46,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   'RUN_SIMULATION': 'Lancer Simulation',
   'MANAGE_LOGS': 'Journaux',
   'MANAGE_SETTINGS': 'Paramètres',
-  'MANAGE_DATASETS': 'Datasets'
+  'MANAGE_DATASETS': 'Datasets',
+  'MANAGE_CLIENTS_ACCOUNTS': 'Clients & Comptes'
 };
 
 const PERMISSION_ORDER: Record<string, number> = {
@@ -61,6 +64,7 @@ const PERMISSION_ORDER: Record<string, number> = {
   'MANAGE_SESSIONS': 73,
   'MANAGE_LOGS': 74,
   'MANAGE_DATASETS': 75,
+  'MANAGE_CLIENTS_ACCOUNTS': 75.5,
   'MANAGE_SETTINGS': 76,
   'MANAGE_ML_MODELS': 111,
   'MANAGE_ALERTS': 112,
@@ -75,6 +79,7 @@ const PARENT_PAGES: Record<string, { parentRoute: string; relativeRoute: string 
   'MANAGE_LOGS': { parentRoute: '/dashboard/administration', relativeRoute: 'logs' },
   'MANAGE_SETTINGS': { parentRoute: '/dashboard/administration', relativeRoute: 'settings' },
   'MANAGE_DATASETS': { parentRoute: '/dashboard/administration', relativeRoute: 'datasets' },
+  'MANAGE_CLIENTS_ACCOUNTS': { parentRoute: '/dashboard/administration', relativeRoute: 'clients-accounts' },
   'MANAGE_ML_MODELS': { parentRoute: '/dashboard/ml-models', relativeRoute: 'manage' },
   'MANAGE_ALERTS': { parentRoute: '/dashboard/alerts', relativeRoute: 'manage' },
   'IMPORT_DATA': { parentRoute: '/dashboard/import-data', relativeRoute: 'advanced' },
@@ -247,36 +252,55 @@ export const AuthStore = signalStore(
     // ──────────────────────────────────────────────────────────────────────
     // In auth.store.ts - update the restoreSession method:
 
-    restoreSession(): void {
-      // Don't show loading state for session restore
-      // Just check if we have a valid session silently
-      authService.checkSession().subscribe({
-        next: (isValid) => {
+    restoreSession(): Observable<boolean> {
+      return authService.checkSession().pipe(
+        switchMap((isValid) => {
           if (isValid) {
-            // Session is valid, load the full profile
             patchState(store, { loading: true });
-            authService.loadUserProfile().subscribe({
-              next: (user) => {
+            return authService.loadUserProfile().pipe(
+              tap((user) => {
                 patchState(store, {
                   user,
                   isAuthenticated: true,
                   loading: false,
                   error: null
                 });
-              },
-              error: () => {
+              }),
+              map(() => true),
+              catchError(() => {
                 patchState(store, { loading: false });
-              }
-            });
+                return of(false);
+              })
+            );
           } else {
-            // No valid session, just do nothing - don't show error
             patchState(store, { loading: false });
+            return of(false);
           }
-        },
-        error: () => {
-          // Silently fail - this is expected when not logged in
+        }),
+        catchError(() => {
           patchState(store, { loading: false });
-        }
+          return of(false);
+        })
+      );
+    },
+
+    init(): Promise<void> {
+      return new Promise((resolve) => {
+        authService.fetchCsrfToken().subscribe({
+          next: () => {
+            this.restoreSession().subscribe(() => {
+              authService.setupAutoRefresh();
+              resolve();
+            });
+          },
+          error: () => {
+            // Even if CSRF fails, try to restore session
+            this.restoreSession().subscribe(() => {
+              authService.setupAutoRefresh();
+              resolve();
+            });
+          }
+        });
       });
     },
 

@@ -1,8 +1,10 @@
 package com.fraud.backend.api.controller.frauddetection;
 
-import com.fraud.backend.data.enums.DatasetStatus;
 import com.fraud.backend.api.dto.frauddetection.dataset.request.DatasetUpdateRequest;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetCleanResponse;
+import com.fraud.backend.data.entity.frauddetection.Dataset;
+import com.fraud.backend.data.enums.datasets.DatasetStatus;
+import com.fraud.backend.data.enums.datasets.DatasetType;
 import com.fraud.backend.data.service.frauddetection.DatasetService;
 import com.fraud.backend.api.dto.frauddetection.dataset.DatasetMapper;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetResponse;
@@ -22,6 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -37,15 +41,45 @@ public class DatasetController {
     public Page<DatasetResponse> list(
             @RequestParam(value = "q", required = false) String q,
             @RequestParam(value = "status", required = false) DatasetStatus status,
+            @RequestParam(value = "type", required = false) DatasetType type,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
-        return datasetService.list(q, status, pageable).map(datasetMapper::toResponse);
+        return datasetService.list(q, status, type, pageable).map(datasetMapper::toResponse);
     }
 
     @GetMapping("/{uuid}")
     public DatasetResponse get(@PathVariable UUID uuid) {
         return datasetMapper.toResponse(datasetService.get(uuid));
+    }
+
+    /**
+     * Returns paginated TRANSACTIONS_TRAIN datasets with status ACTIVE or
+     * PROCESSED.
+     * Used by the model training pipeline to select a training dataset.
+     * GET /api/datasets/training?page=0&size=10&q=search
+     */
+    @GetMapping("/training")
+    public Page<DatasetResponse> listTrainingDatasets(
+            @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
+
+        log.info("Récupération paginée des datasets d'entraînement - page: {}, size: {}, search: {}", page, size, q);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
+        return datasetService.listTrainingDatasets(q, pageable).map(datasetMapper::toResponse);
+    }
+
+    @GetMapping("/training/all")
+    public Page<DatasetResponse> listAllTrainingDatasets(
+            @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
+
+        log.info("Récupération paginée de TOUS les datasets d'entraînement - page: {}, size: {}, search: {}", page,
+                size, q);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
+        return datasetService.listAllTrainingDatasets(q, pageable).map(datasetMapper::toResponse);
     }
 
     @GetMapping("/{uuid}/preview")
@@ -58,8 +92,15 @@ public class DatasetController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public DatasetResponse upload(
             @RequestPart("file") MultipartFile file,
-            @RequestPart("datasetName") String datasetName) throws IOException {
-        return datasetMapper.toResponse(datasetService.uploadTransactionsCsv(datasetName, file));
+            @RequestPart("datasetName") String datasetName,
+            @RequestPart(value = "type", required = false) String type) throws IOException {
+
+        DatasetType datasetType = (type != null && !type.isBlank())
+                ? DatasetType.valueOf(type.toUpperCase())
+                : DatasetType.TRANSACTIONS_TRAIN;
+
+        log.info("Uploading dataset: {} with type: {}", datasetName, datasetType);
+        return datasetMapper.toResponse(datasetService.uploadDataset(datasetName, datasetType, file));
     }
 
     @DeleteMapping("/{uuid}")
@@ -106,19 +147,7 @@ public class DatasetController {
         return ResponseEntity.ok(response);
     }
 
-    // ==================== AUTRES ENDPOINTS ====================
-
-    @GetMapping("/count")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
-    public Long count() {
-        return datasetService.count();
-    }
-
-    @GetMapping("/total-size")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
-    public java.math.BigDecimal getTotalSize() {
-        return datasetService.getTotalSize();
-    }
+    // ==================== DOWNLOAD ====================
 
     @GetMapping("/{uuid}/download")
     public ResponseEntity<Resource> download(@PathVariable UUID uuid) {
@@ -130,5 +159,21 @@ public class DatasetController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + ds.getDatasetName() + ".csv")
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .body(resource);
+    }
+
+    // ==================== STATISTIQUES ADMIN ====================
+
+    @GetMapping("/count")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Long> count(@RequestParam(required = false) List<DatasetType> types) {
+        long count = (types != null && !types.isEmpty()) ? datasetService.count(types) : datasetService.count();
+        return ResponseEntity.ok(count);
+    }
+
+    @GetMapping("/total-size")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<BigDecimal> getTotalSize(@RequestParam(required = false) List<DatasetType> types) {
+        BigDecimal totalSize = datasetService.getTotalSize(types);
+        return ResponseEntity.ok(totalSize);
     }
 }

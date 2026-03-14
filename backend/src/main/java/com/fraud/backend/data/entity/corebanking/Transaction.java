@@ -1,8 +1,9 @@
 package com.fraud.backend.data.entity.corebanking;
 
 import com.fraud.backend.data.entity.frauddetection.ModelML;
-import com.fraud.backend.data.enums.TransactionChannel;
-import com.fraud.backend.data.enums.TransactionStatus;
+import com.fraud.backend.data.enums.transactions.TransactionChannel;
+import com.fraud.backend.data.enums.transactions.TransactionStatus;
+
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;

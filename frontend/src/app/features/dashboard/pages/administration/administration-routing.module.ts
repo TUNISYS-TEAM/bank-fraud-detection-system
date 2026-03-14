@@ -8,74 +8,84 @@ import { SettingsComponent } from './admin-sections/settings/settings.component'
 import { permissionGuard } from '../../../../core/guards/auth.guard';
 import { RolesComponent } from './admin-sections/roles/roles.component';
 import { SessionsComponent } from './admin-sections/sessions/sessions.component';
+import { ClientsAccountsComponent } from './admin-sections/clients-accounts/clients-accounts.component';
 
 const routes: Routes = [
   {
     path: '',
     component: AdministrationComponent,
     canActivate: [permissionGuard],
-    data: { 
+    data: {
       permission: 'ACCESS_ADMINISTRATION',
       permissionFailRedirect: '/dashboard/overview'
     },
     children: [
       { path: '', redirectTo: 'users', pathMatch: 'full' },
-      
-      { 
-        path: 'users', 
+
+      {
+        path: 'users',
         component: UsersComponent,
         canActivate: [permissionGuard],
-        data: { 
+        data: {
           permission: 'MANAGE_USERS',
           permissionFailRedirect: '/dashboard/administration'
         }
       },
-      
-      { 
-        path: 'roles', 
+
+      {
+        path: 'roles',
         component: RolesComponent,
         canActivate: [permissionGuard],
-        data: { 
+        data: {
           permission: 'MANAGE_ROLES',
           permissionFailRedirect: '/dashboard/administration'
         }
       },
-      
-      { 
-        path: 'sessions', 
+
+      {
+        path: 'sessions',
         component: SessionsComponent,
         canActivate: [permissionGuard],
-        data: { 
+        data: {
           permission: 'MANAGE_SESSIONS',
           permissionFailRedirect: '/dashboard/administration'
         }
       },
-      
-      { 
-        path: 'datasets', 
+
+      {
+        path: 'datasets',
         component: DatasetsComponent,
         canActivate: [permissionGuard],
-        data: { 
-          permission: 'MANAGE_DATASETS', // À ajuster selon votre permission
+        data: {
+          permission: 'MANAGE_DATASETS',
           permissionFailRedirect: '/dashboard/administration'
         }
       },
-      
-      { 
-        path: 'logs', 
+      {
+        path: 'clients-accounts',
+        component: ClientsAccountsComponent,
+        canActivate: [permissionGuard],
+        data: {
+          permission: 'MANAGE_CLIENTS_ACCOUNTS',
+          permissionFailRedirect: '/dashboard/administration'
+        }
+      },
+
+      {
+        path: 'logs',
         component: LogsComponent,
         canActivate: [permissionGuard],
-        data: { 
-          permission: 'MANAGE_LOGS', 
+        data: {
+          permission: 'MANAGE_LOGS',
           permissionFailRedirect: '/dashboard/administration'
         }
       },
-      
-      { 
-        path: 'settings', 
+
+      {
+        path: 'settings',
         component: SettingsComponent,
         canActivate: [permissionGuard],
-        data: { 
+        data: {
           permission: 'MANAGE_SETTINGS',
           permissionFailRedirect: '/dashboard/administration'
         }

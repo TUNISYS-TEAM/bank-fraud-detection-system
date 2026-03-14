@@ -18,7 +18,7 @@ public class AccountMapper {
                 .isActive(account.getIsActive())
                 .closedDate(account.getClosedDate())
                 .riskLevel(account.getRiskLevel())
-                .clientId(account.getClient() != null ? account.getClient().getId() : null)
+                .clientId(account.getClient() != null ? account.getClient().getClientId() : null)
                 .clientFullName(account.getClient() != null ? account.getClient().getFullName() : null)
                 .createdAt(account.getCreatedAt())
                 .updatedAt(account.getUpdatedAt())

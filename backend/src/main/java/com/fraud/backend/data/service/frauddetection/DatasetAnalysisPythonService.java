@@ -3,7 +3,7 @@ package com.fraud.backend.data.service.frauddetection;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetAnalysisResponse;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetCleanResponse;
 import com.fraud.backend.data.entity.frauddetection.Dataset;
-import com.fraud.backend.data.enums.DatasetStatus;
+import com.fraud.backend.data.enums.datasets.DatasetStatus;
 import com.fraud.backend.data.repository.frauddetection.DatasetRepository;
 import com.fraud.backend.data.service.storage.StorageService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -14,8 +14,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.*;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -31,43 +34,55 @@ public class DatasetAnalysisPythonService {
     private final ObjectMapper objectMapper;
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
+    private static final long ANALYSIS_TIMEOUT_MINUTES = 5;
+    private static final long CLEANING_TIMEOUT_MINUTES = 10;
+
+    // ==================== ANALYSE ====================
 
     @Transactional
     public DatasetAnalysisResponse analyzeDataset(UUID datasetUuid) throws Exception {
         Dataset dataset = datasetRepository.findByDatasetUuid(datasetUuid)
                 .orElseThrow(() -> new IllegalArgumentException("Dataset not found: " + datasetUuid));
 
+        // Detect file format from stored path
+        String storedPath = dataset.getFilePath();
+        boolean isParquet = storedPath != null && storedPath.toLowerCase().endsWith(".parquet");
+        String extension = isParquet ? ".parquet" : ".csv";
+
+        log.info("Analysing dataset={} format={}", datasetUuid, isParquet ? "parquet" : "csv");
+
         Path tempFile = null;
+        Path utf8File = null;
         String containerFileName = null;
 
         try {
-            // 1. Télécharger le fichier depuis MinIO vers un fichier temporaire LOCAL
-            tempFile = Files.createTempFile("dataset_", ".csv");
-            try (InputStream in = storageService.download(dataset.getFilePath());
+            // 1. Download file from MinIO into a temp file with the correct extension
+            tempFile = Files.createTempFile("dataset_", extension);
+            try (InputStream in = storageService.download(storedPath);
                  OutputStream out = Files.newOutputStream(tempFile)) {
                 in.transferTo(out);
             }
+            log.info("Dataset downloaded to temp file: {}", tempFile);
 
-            // 2. Créer le dossier /app/data dans le conteneur s'il n'existe pas
-            ProcessBuilder mkdirPb = new ProcessBuilder(
-                    "docker", "exec", "fraud-ml-pipeline", "mkdir", "-p", "/app/data");
-            mkdirPb.start().waitFor();
-
-            // 3. Copier le fichier dans le conteneur ml-pipeline
-            containerFileName = "/app/data/" + tempFile.getFileName().toString();
-            ProcessBuilder copyPb = new ProcessBuilder(
-                    "docker", "cp", tempFile.toAbsolutePath().toString(),
-                    "fraud-ml-pipeline:" + containerFileName);
-
-            Process copyProcess = copyPb.start();
-            int copyExitCode = copyProcess.waitFor();
-
-            if (copyExitCode != 0) {
-                String copyError = readStream(copyProcess.getErrorStream());
-                throw new RuntimeException("Failed to copy file to ml-pipeline container: " + copyError);
+            // 2. UTF-8 conversion only applies to CSV files
+            if (isParquet) {
+                utf8File = tempFile;
+                log.info("Parquet file — skipping UTF-8 conversion");
+            } else {
+                Path converted = convertToUtf8(tempFile);
+                utf8File = (converted != null) ? converted : tempFile;
+                log.info(converted != null ? "File converted to UTF-8: {}" : "File already UTF-8: {}", utf8File);
             }
 
-            // 4. Lancer l'analyse dans le conteneur ml-pipeline
+            // 3. Prepare container directory
+            execDockerCommand("mkdir", "-p", "/app/data");
+
+            // 4. Copy file into container
+            containerFileName = "/app/data/" + utf8File.getFileName().toString();
+            execDockerCopy(utf8File, containerFileName);
+            log.info("File copied to container: {}", containerFileName);
+
+            // 5. Run analysis — Python already handles both CSV and Parquet
             ProcessBuilder pb = new ProcessBuilder(
                     "docker", "exec", "fraud-ml-pipeline",
                     "python", "-m", "ml_pipeline.cli.main",
@@ -77,20 +92,20 @@ public class DatasetAnalysisPythonService {
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            // 5. Lire toute la sortie
             StringBuilder fullOutput = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     fullOutput.append(line).append("\n");
+                    log.debug("[Python] {}", line);
                 }
             }
 
-            // 6. Attendre la fin du processus
-            boolean finished = process.waitFor(5, TimeUnit.MINUTES);
+            boolean finished = process.waitFor(ANALYSIS_TIMEOUT_MINUTES, TimeUnit.MINUTES);
             if (!finished) {
                 process.destroyForcibly();
-                throw new RuntimeException("Python process timed out after 5 minutes");
+                throw new RuntimeException("Python process timed out after " + ANALYSIS_TIMEOUT_MINUTES + " minutes");
             }
 
             int exitCode = process.exitValue();
@@ -101,37 +116,27 @@ public class DatasetAnalysisPythonService {
                 throw new RuntimeException("Python analysis failed with code " + exitCode);
             }
 
-            if (output.isEmpty()) {
-                throw new RuntimeException("No output from Python process");
-            }
-
-            // 7. Extraire le JSON de la sortie
             JsonNode root = extractJsonFromOutput(output);
-
             if (root == null) {
                 throw new RuntimeException("No valid JSON found in Python output: " + output);
             }
-
             if (root.has("error")) {
                 throw new RuntimeException("Python error: " + root.get("error").asText());
             }
 
-            // 8. Convertir en DatasetAnalysisResponse
             DatasetAnalysisResponse response = parseAnalysisResponse(root, dataset);
 
-            // 9. Sauvegarder les résultats dans le dataset
+            // Persist analysis results
             Map<String, Object> featureCols = new HashMap<>();
             featureCols.put("columns", response.getColumns());
             featureCols.put("suggestedFeatures", response.getSuggestedFeatures());
             featureCols.put("suggestedTarget", response.getSuggestedTarget());
-            
-            // Ajouter aussi les nullRatios pour chaque colonne (utile pour le nettoyage)
+
             Map<String, Double> nullRatios = new HashMap<>();
-            response.getColumns().forEach(col -> 
-                nullRatios.put(col.getName(), col.getNullRatio())
-            );
+            response.getColumns().forEach(col -> nullRatios.put(col.getName(), col.getNullRatio()));
             featureCols.put("nullRatios", nullRatios);
-            
+            featureCols.put("analyzedAt", LocalDateTime.now().toString());
+
             dataset.setFeatureColumns(featureCols);
             dataset.setStatistics(response.getStatistics());
             datasetRepository.save(dataset);
@@ -144,21 +149,39 @@ public class DatasetAnalysisPythonService {
             throw e;
         } finally {
             cleanup(tempFile, containerFileName);
+            if (utf8File != null && !utf8File.equals(tempFile)) {
+                try { Files.deleteIfExists(utf8File); } catch (Exception e) {
+                    log.warn("Nettoyage utf8 file failed: {}", e.getMessage());
+                }
+            }
         }
     }
 
-    // ==================== NETTOYAGE INTELLIGENT AVEC RÉSULTATS D'ANALYSE ====================
+    // ==================== NETTOYAGE ====================
+
+    @Transactional
+    public DatasetCleanResponse cleanDataset(UUID datasetUuid) throws Exception {
+        log.info("Démarrage du nettoyage standard pour dataset: {}", datasetUuid);
+        return cleanDatasetOptimized(datasetUuid);
+    }
 
     @Transactional
     public DatasetCleanResponse cleanDatasetOptimized(UUID datasetUuid) throws Exception {
         Dataset dataset = datasetRepository.findByDatasetUuid(datasetUuid)
                 .orElseThrow(() -> new IllegalArgumentException("Dataset not found: " + datasetUuid));
 
-        // Récupérer les résultats d'analyse existants
         Map<String, Object> analysisResults = dataset.getFeatureColumns();
         String jobId = UUID.randomUUID().toString();
 
+        // Detect format
+        String storedPath = dataset.getFilePath();
+        boolean isParquet = storedPath != null && storedPath.toLowerCase().endsWith(".parquet");
+        String extension = isParquet ? ".parquet" : ".csv";
+
+        log.info("Cleaning dataset={} format={}", datasetUuid, isParquet ? "parquet" : "csv");
+
         Path tempFile = null;
+        Path utf8File = null;
         Path analysisFile = null;
         Path cleanedFile = null;
         String containerFileName = null;
@@ -166,38 +189,43 @@ public class DatasetAnalysisPythonService {
         String containerOutputFile = null;
 
         try {
-            log.info("Début du nettoyage optimisé pour le dataset: {}", datasetUuid);
-            
-            // 1. Télécharger le CSV depuis MinIO
-            tempFile = Files.createTempFile("dataset_clean_", ".csv");
-            try (InputStream in = storageService.download(dataset.getFilePath());
+            // 1. Download with correct extension
+            tempFile = Files.createTempFile("dataset_clean_", extension);
+            try (InputStream in = storageService.download(storedPath);
                  OutputStream out = Files.newOutputStream(tempFile)) {
                 in.transferTo(out);
             }
-            log.info("Fichier CSV téléchargé: {}", tempFile);
+            log.info("Fichier téléchargé: {}", tempFile);
 
-            // 2. Créer un fichier temporaire avec les résultats d'analyse
+            // 2. UTF-8 conversion only for CSV
+            if (isParquet) {
+                utf8File = tempFile;
+                log.info("Parquet file — skipping UTF-8 conversion");
+            } else {
+                Path converted = convertToUtf8(tempFile);
+                utf8File = (converted != null) ? converted : tempFile;
+                log.info(converted != null ? "Fichier converti en UTF-8: {}" : "Fichier déjà UTF-8: {}", utf8File);
+            }
+
+            // 3. Write analysis JSON if available
             if (analysisResults != null && !analysisResults.isEmpty()) {
                 analysisFile = Files.createTempFile("analysis_", ".json");
                 objectMapper.writeValue(analysisFile.toFile(), analysisResults);
                 log.info("Fichier d'analyse créé: {}", analysisFile);
-            } else {
-                log.warn("Aucun résultat d'analyse trouvé pour le dataset {}", datasetUuid);
             }
 
-            // 3. Préparer le conteneur
             execDockerCommand("mkdir", "-p", "/app/data");
             execDockerCommand("mkdir", "-p", "/app/output");
 
-            // 4. Copier les fichiers dans le conteneur
-            containerFileName = "/app/data/" + tempFile.getFileName().toString();
-            execDockerCopy(tempFile, containerFileName);
-            log.info("Fichier CSV copié dans le conteneur: {}", containerFileName);
+            // 4. Copy data file into container
+            containerFileName = "/app/data/" + utf8File.getFileName().toString();
+            execDockerCopy(utf8File, containerFileName);
+            log.info("Fichier copié dans le conteneur: {}", containerFileName);
 
-            // 5. Préparer la commande Python
+            // 5. Build Python command
             List<String> pythonArgs = new ArrayList<>();
             pythonArgs.add("python");
-            pythonArgs.add("/app/scripts/csv_to_parquet_ingest.py");  // Votre script existant
+            pythonArgs.add("/app/scripts/csv_to_parquet_ingest.py");
             pythonArgs.add("--input");
             pythonArgs.add(containerFileName);
             pythonArgs.add("--dataset-id");
@@ -205,7 +233,6 @@ public class DatasetAnalysisPythonService {
             pythonArgs.add("--job-id");
             pythonArgs.add(jobId);
 
-            // Ajouter les résultats d'analyse si disponibles
             if (analysisFile != null) {
                 containerAnalysisFile = "/app/data/" + analysisFile.getFileName().toString();
                 execDockerCopy(analysisFile, containerAnalysisFile);
@@ -214,49 +241,44 @@ public class DatasetAnalysisPythonService {
                 log.info("Fichier d'analyse copié dans le conteneur: {}", containerAnalysisFile);
             }
 
-            // 6. Lancer le script Python
-            ProcessBuilder pb = new ProcessBuilder(
-                    "docker", "exec", "fraud-ml-pipeline");
+            ProcessBuilder pb = new ProcessBuilder("docker", "exec", "fraud-ml-pipeline");
             pb.command().addAll(pythonArgs);
             pb.redirectErrorStream(true);
 
             log.info("Exécution de la commande: {}", String.join(" ", pb.command()));
             Process process = pb.start();
 
-            // Lire la sortie en temps réel pour le logging
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            StringBuilder outputBuilder = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
+                    outputBuilder.append(line).append("\n");
                     log.debug("[Python] {}", line);
                 }
             }
 
-            boolean finished = process.waitFor(10, TimeUnit.MINUTES);
+            boolean finished = process.waitFor(CLEANING_TIMEOUT_MINUTES, TimeUnit.MINUTES);
             if (!finished) {
                 process.destroyForcibly();
-                throw new RuntimeException("Python cleaning timed out after 10 minutes");
+                throw new RuntimeException("Python cleaning timed out after " + CLEANING_TIMEOUT_MINUTES + " minutes");
             }
 
             int exitCode = process.exitValue();
-            String result = output.toString().trim();
+            String result = outputBuilder.toString().trim();
 
             if (exitCode != 0) {
                 log.error("Python process failed with code {}: {}", exitCode, result);
                 throw new RuntimeException("Python cleaning failed with code " + exitCode);
             }
 
-            // 7. Parser le résultat JSON
             JsonNode root = extractJsonFromOutput(result);
-            if (root == null) {
-                throw new RuntimeException("No valid JSON output from Python script: " + result);
-            }
-            if (root.has("error")) {
-                throw new RuntimeException("Python cleaning error: " + root.get("error").asText());
+            if (root == null || root.has("error")) {
+                throw new RuntimeException("Python cleaning error: " +
+                        (root != null ? root.get("error").asText() : "No JSON output"));
             }
 
-            // 8. Récupérer le fichier Parquet nettoyé depuis le conteneur
+            // 6. Retrieve cleaned Parquet output from container
             String cleanedFilename = "cleaned_" + datasetUuid + ".parquet";
             containerOutputFile = "/app/output/" + cleanedFilename;
 
@@ -264,48 +286,24 @@ public class DatasetAnalysisPythonService {
             execDockerCopyFromContainer(containerOutputFile, cleanedFile);
             log.info("Fichier nettoyé récupéré: {}", cleanedFile);
 
-            // 9. Upload vers MinIO
+            // 7. Upload cleaned Parquet to MinIO
             String minioKey = "data/processed/transactions/" + datasetUuid + "/" + cleanedFilename;
             try (InputStream cleanedInputStream = Files.newInputStream(cleanedFile)) {
-                storageService.upload(
-                        minioKey,
-                        cleanedInputStream,
-                        Files.size(cleanedFile),
-                        "application/octet-stream");
+                storageService.upload(minioKey, cleanedInputStream, Files.size(cleanedFile), "application/octet-stream");
             }
-            log.info("Fichier uploadé vers MinIO: {}", minioKey);
+            log.info("Fichier nettoyé uploadé vers MinIO: {}", minioKey);
 
-            // 10. Mapper les statistiques de nettoyage
-            JsonNode statsNode = root.get("cleaning_stats");
-            DatasetCleanResponse.CleaningStats cleaningStats = DatasetCleanResponse.CleaningStats.builder()
-                    .originalRows(statsNode.path("original_rows").asLong())
-                    .cleanedRows(statsNode.path("cleaned_rows").asLong())
-                    .duplicatesRemoved(statsNode.path("duplicates_removed").asLong())
-                    .nullRowsRemoved(statsNode.path("null_rows_removed").asLong())
-                    .reductionPercent(statsNode.path("reduction_percent").asDouble())
-                    .fraudCount(statsNode.path("fraud_count_after").asLong())
-                    .fraudRate(statsNode.path("fraud_rate").asDouble())
-                    .build();
+            // 8. Parse stats and update dataset
+            DatasetCleanResponse.CleaningStats cleaningStats = parseCleaningStats(root);
+            List<String> columnsRemoved = parseColumnsRemoved(root);
 
-            // 11. Récupérer les colonnes supprimées si présentes
-            List<String> columnsRemoved = new ArrayList<>();
-            if (root.has("cleaning_stats") && root.get("cleaning_stats").has("columns_removed")) {
-                columnsRemoved = objectMapper.convertValue(
-                    root.get("cleaning_stats").get("columns_removed"),
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)
-                );
-            }
-
-            // 12. Mettre à jour le dataset
+            // Update filePath to the new Parquet file so future previews use it
             dataset.setFilePath(minioKey);
             dataset.setStatus(DatasetStatus.PROCESSED);
-            
-            // Ajouter les stats de nettoyage aux featureColumns
+
             Map<String, Object> featureCols = dataset.getFeatureColumns();
-            if (featureCols == null) {
-                featureCols = new HashMap<>();
-            }
-            
+            if (featureCols == null) featureCols = new HashMap<>();
+
             Map<String, Object> cleaningStatsMap = new HashMap<>();
             cleaningStatsMap.put("originalRows", cleaningStats.getOriginalRows());
             cleaningStatsMap.put("cleanedRows", cleaningStats.getCleanedRows());
@@ -317,19 +315,11 @@ public class DatasetAnalysisPythonService {
             cleaningStatsMap.put("columnsRemoved", columnsRemoved);
             cleaningStatsMap.put("jobId", jobId);
             cleaningStatsMap.put("cleanedAt", LocalDateTime.now().toString());
-            
+
             featureCols.put("cleaning_stats", cleaningStatsMap);
             dataset.setFeatureColumns(featureCols);
-            
             datasetRepository.save(dataset);
 
-            log.info("Nettoyage optimisé terminé avec succès - dataset: {}, lignes conservées: {}/{} ({}%)", 
-                datasetUuid, 
-                cleaningStats.getCleanedRows(), 
-                cleaningStats.getOriginalRows(),
-                String.format("%.2f", 100 - cleaningStats.getReductionPercent()));
-
-            // 13. Construire la réponse
             return DatasetCleanResponse.builder()
                     .datasetUuid(dataset.getDatasetUuid())
                     .datasetName(dataset.getDatasetName())
@@ -343,75 +333,78 @@ public class DatasetAnalysisPythonService {
             log.error("Erreur lors du nettoyage optimisé du dataset {}", datasetUuid, e);
             throw e;
         } finally {
-            // Nettoyage des fichiers temporaires
             cleanup(tempFile, containerFileName);
-            
-            if (analysisFile != null) {
-                try { 
-                    Files.deleteIfExists(analysisFile); 
-                    log.debug("Fichier d'analyse temporaire supprimé");
-                } catch (Exception e) { 
-                    log.warn("Suppression analysis file failed: {}", e.getMessage()); 
+            if (utf8File != null && !utf8File.equals(tempFile)) {
+                try { Files.deleteIfExists(utf8File); } catch (Exception e) {
+                    log.warn("Nettoyage utf8 file failed: {}", e.getMessage());
                 }
             }
-            
-            if (containerAnalysisFile != null) {
-                try { 
-                    execDockerCommand("rm", "-f", containerAnalysisFile);
-                    log.debug("Fichier d'analyse conteneur supprimé");
-                } catch (Exception e) { 
-                    log.warn("Nettoyage conteneur analysis file failed: {}", e.getMessage()); 
-                }
-            }
-            
-            if (containerOutputFile != null) {
-                try { 
-                    execDockerCommand("rm", "-f", containerOutputFile);
-                    log.debug("Fichier output conteneur supprimé");
-                } catch (Exception e) { 
-                    log.warn("Nettoyage conteneur output failed: {}", e.getMessage()); 
-                }
-            }
-            
-            if (cleanedFile != null) {
-                try { 
-                    Files.deleteIfExists(cleanedFile);
-                    log.debug("Fichier nettoyé temporaire supprimé");
-                } catch (Exception e) { 
-                    log.warn("Suppression cleaned file failed: {}", e.getMessage()); 
-                }
-            }
+            if (analysisFile != null) try { Files.deleteIfExists(analysisFile); } catch (Exception ignored) {}
+            if (containerAnalysisFile != null) try { execDockerCommand("rm", "-f", containerAnalysisFile); } catch (Exception ignored) {}
+            if (containerOutputFile != null) try { execDockerCommand("rm", "-f", containerOutputFile); } catch (Exception ignored) {}
+            if (cleanedFile != null) try { Files.deleteIfExists(cleanedFile); } catch (Exception ignored) {}
         }
     }
 
-    // ==================== MÉTHODE DE NETTOYAGE STANDARD (BACKWARD COMPATIBILITY) ====================
+    // ==================== UTF-8 CONVERSION (CSV only) ====================
 
-    @Transactional
-    public DatasetCleanResponse cleanDataset(UUID datasetUuid) throws Exception {
-        // Par défaut, utiliser la version optimisée
-        return cleanDatasetOptimized(datasetUuid);
+    private Path convertToUtf8(Path inputFile) throws IOException {
+        byte[] bytes = Files.readAllBytes(inputFile);
+
+        try {
+            String test = new String(bytes, StandardCharsets.UTF_8);
+            byte[] reencoded = test.getBytes(StandardCharsets.UTF_8);
+            if (Arrays.equals(reencoded, bytes)) {
+                return null; // Already UTF-8
+            }
+        } catch (Exception e) {
+            // Fall through to conversion
+        }
+
+        Charset[] charsets = {
+                StandardCharsets.ISO_8859_1,
+                Charset.forName("windows-1252"),
+                Charset.forName("CP850"),
+                Charset.forName("IBM437")
+        };
+
+        for (Charset charset : charsets) {
+            try {
+                String content = new String(bytes, charset);
+                if (!content.isEmpty()) {
+                    Path outputFile = Files.createTempFile("dataset_utf8_", ".csv");
+                    try (BufferedWriter writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)) {
+                        writer.write(content);
+                    }
+                    log.info("Converti de {} vers UTF-8", charset.displayName());
+                    return outputFile;
+                }
+            } catch (Exception e) {
+                // Try next charset
+            }
+        }
+
+        // Last resort: force ISO-8859-1
+        String content = new String(bytes, StandardCharsets.ISO_8859_1);
+        Path outputFile = Files.createTempFile("dataset_utf8_", ".csv");
+        try (BufferedWriter writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)) {
+            writer.write(content);
+        }
+        log.info("Conversion forcée de ISO-8859-1 vers UTF-8");
+        return outputFile;
     }
 
-    // ==================== MÉTHODES PRIVÉES ====================
+    // ==================== DOCKER HELPERS ====================
 
     private String execDockerCommand(String... commands) throws Exception {
-        List<String> cmd = new ArrayList<>();
-        cmd.add("docker");
-        cmd.add("exec");
-        cmd.add("fraud-ml-pipeline");
+        List<String> cmd = new ArrayList<>(List.of("docker", "exec", "fraud-ml-pipeline"));
         cmd.addAll(Arrays.asList(commands));
-
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process process = pb.start();
-
         String output = readStream(process.getInputStream());
         int exitCode = process.waitFor();
-
-        if (exitCode != 0) {
-            throw new RuntimeException("Docker command failed: " + output);
-        }
-
+        if (exitCode != 0) throw new RuntimeException("Docker command failed: " + output);
         return output;
     }
 
@@ -419,66 +412,70 @@ public class DatasetAnalysisPythonService {
         ProcessBuilder pb = new ProcessBuilder(
                 "docker", "cp", source.toAbsolutePath().toString(),
                 "fraud-ml-pipeline:" + destination);
-
         pb.redirectErrorStream(true);
         Process process = pb.start();
-
         String output = readStream(process.getInputStream());
         int exitCode = process.waitFor();
-
-        if (exitCode != 0) {
-            throw new RuntimeException("Docker copy failed: " + output);
-        }
+        if (exitCode != 0) throw new RuntimeException("Docker copy failed: " + output);
     }
 
     private void execDockerCopyFromContainer(String containerPath, Path localPath) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
-                "docker", "cp",
-                "fraud-ml-pipeline:" + containerPath,
+                "docker", "cp", "fraud-ml-pipeline:" + containerPath,
                 localPath.toAbsolutePath().toString());
-
         pb.redirectErrorStream(true);
         Process process = pb.start();
-
         String output = readStream(process.getInputStream());
         int exitCode = process.waitFor();
+        if (exitCode != 0) throw new RuntimeException("Docker copy from container failed: " + output);
+    }
 
-        if (exitCode != 0) {
-            throw new RuntimeException("Docker copy from container failed: " + output);
+    // ==================== PARSING HELPERS ====================
+
+    private DatasetCleanResponse.CleaningStats parseCleaningStats(JsonNode root) {
+        JsonNode statsNode = root.get("cleaning_stats");
+        if (statsNode == null) return DatasetCleanResponse.CleaningStats.builder().build();
+        return DatasetCleanResponse.CleaningStats.builder()
+                .originalRows(statsNode.path("original_rows").asLong(0))
+                .cleanedRows(statsNode.path("cleaned_rows").asLong(0))
+                .duplicatesRemoved(statsNode.path("duplicates_removed").asLong(0))
+                .nullRowsRemoved(statsNode.path("null_rows_removed").asLong(0))
+                .reductionPercent(statsNode.path("reduction_percent").asDouble(0.0))
+                .fraudCount(statsNode.path("fraud_count_after").asLong(0))
+                .fraudRate(statsNode.path("fraud_rate").asDouble(0.0))
+                .build();
+    }
+
+    private List<String> parseColumnsRemoved(JsonNode root) {
+        List<String> columnsRemoved = new ArrayList<>();
+        if (root.has("cleaning_stats") && root.get("cleaning_stats").has("columns_removed")) {
+            try {
+                columnsRemoved = objectMapper.convertValue(
+                        root.get("cleaning_stats").get("columns_removed"),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+            } catch (Exception e) {
+                log.warn("Erreur parsing colonnes supprimées: {}", e.getMessage());
+            }
         }
+        return columnsRemoved;
     }
 
     private JsonNode extractJsonFromOutput(String output) {
-        // Essayer de parser directement
-        try {
-            return objectMapper.readTree(output);
-        } catch (Exception e) {
-            log.debug("Sortie non-JSON directe, tentative d'extraction...");
-        }
-
-        // Chercher le premier objet JSON valide
+        try { return objectMapper.readTree(output); } catch (Exception e) { /* fall through */ }
         int jsonStart = output.indexOf('{');
         int jsonEnd = output.lastIndexOf('}');
-
         if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            try {
-                String jsonStr = output.substring(jsonStart, jsonEnd + 1);
-                return objectMapper.readTree(jsonStr);
-            } catch (Exception e2) {
-                log.debug("Extraction JSON échouée: {}", e2.getMessage());
-            }
+            try { return objectMapper.readTree(output.substring(jsonStart, jsonEnd + 1)); } catch (Exception ignored) {}
         }
-
         return null;
     }
 
     private String readStream(InputStream stream) throws IOException {
         StringBuilder sb = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream))) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append("\n");
-            }
+            while ((line = reader.readLine()) != null) sb.append(line).append("\n");
         }
         return sb.toString();
     }
@@ -488,68 +485,42 @@ public class DatasetAnalysisPythonService {
         JsonNode colsNode = root.get("columns");
         if (colsNode != null && colsNode.isArray()) {
             for (JsonNode colNode : colsNode) {
-                DatasetAnalysisResponse.ColumnInfo colInfo = DatasetAnalysisResponse.ColumnInfo.builder()
+                columns.add(DatasetAnalysisResponse.ColumnInfo.builder()
                         .name(colNode.get("name").asText())
                         .type(colNode.get("type").asText())
                         .uniqueCount(colNode.get("uniqueCount").asInt())
                         .nullRatio(colNode.get("nullRatio").asDouble())
                         .stats(objectMapper.convertValue(colNode.get("stats"), Map.class))
                         .isTarget(false)
-                        .build();
-                columns.add(colInfo);
+                        .build());
             }
         }
-
-        JsonNode statsNode = root.get("statistics");
-        Map<String, Object> statistics = statsNode != null
-                ? objectMapper.convertValue(statsNode, Map.class)
-                : Map.of();
-
-        List<String> suggestedFeatures = objectMapper.convertValue(root.get("suggestedFeatures"),
-                objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
-
-        String suggestedTarget = root.has("suggestedTarget") ? root.get("suggestedTarget").asText() : null;
-
-        if (suggestedTarget != null) {
-            columns.stream()
-                    .filter(c -> c.getName().equals(suggestedTarget))
-                    .findFirst()
-                    .ifPresent(c -> c.setIsTarget(true));
-        }
-
-        List<Map<String, Object>> preview = objectMapper.convertValue(root.get("preview"),
-                objectMapper.getTypeFactory().constructCollectionType(List.class, Map.class));
-
-        int sampleRows = root.has("sampleRows") ? root.get("sampleRows").asInt() : 0;
-
         return DatasetAnalysisResponse.builder()
                 .datasetUuid(dataset.getDatasetUuid())
                 .datasetName(dataset.getDatasetName())
                 .status(dataset.getStatus().toString())
                 .columns(columns)
-                .statistics(statistics)
-                .suggestedFeatures(suggestedFeatures)
-                .suggestedTarget(suggestedTarget)
-                .sampleRows(sampleRows)
-                .preview(preview)
+                .statistics(objectMapper.convertValue(root.get("statistics"), Map.class))
+                .suggestedFeatures(objectMapper.convertValue(root.get("suggestedFeatures"),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)))
+                .suggestedTarget(root.has("suggestedTarget") ? root.get("suggestedTarget").asText() : null)
+                .sampleRows(root.has("sampleRows") ? root.get("sampleRows").asInt() : 0)
+                .preview(objectMapper.convertValue(root.get("preview"),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, Map.class)))
                 .build();
     }
 
+    // ==================== CLEANUP ====================
+
     private void cleanup(Path tempFile, String containerFileName) {
         if (containerFileName != null) {
-            try { 
-                execDockerCommand("rm", "-f", containerFileName);
-                log.debug("Fichier conteneur supprimé: {}", containerFileName);
-            } catch (Exception e) { 
-                log.warn("Nettoyage conteneur échoué: {}", e.getMessage()); 
+            try { execDockerCommand("rm", "-f", containerFileName); } catch (Exception e) {
+                log.warn("Nettoyage conteneur échoué: {}", e.getMessage());
             }
         }
         if (tempFile != null) {
-            try { 
-                Files.deleteIfExists(tempFile);
-                log.debug("Fichier temporaire supprimé: {}", tempFile);
-            } catch (Exception e) { 
-                log.warn("Suppression fichier temporaire échouée: {}", e.getMessage()); 
+            try { Files.deleteIfExists(tempFile); } catch (Exception e) {
+                log.warn("Suppression fichier temporaire échouée: {}", e.getMessage());
             }
         }
     }

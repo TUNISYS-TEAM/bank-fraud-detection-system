@@ -66,7 +66,8 @@ export class AuthService {
       { id: 15, name: 'RUN_SIMULATION', description: 'Run Simulation', action: '/dashboard/simulation/run' },
       { id: 16, name: 'MANAGE_LOGS', description: 'Manage Logs', action: '/dashboard/administration/logs' },
       { id: 17, name: 'MANAGE_SETTINGS', description: 'Manage Settings', action: '/dashboard/administration/settings' },
-      { id: 18, name: 'MANAGE_DATASETS', description: 'Manage Datasets', action: '/dashboard/administration/datasets' }
+      { id: 18, name: 'MANAGE_DATASETS', description: 'Manage Datasets', action: '/dashboard/administration/datasets' },
+      { id: 19, name: 'MANAGE_CLIENTS_ACCOUNTS', description: 'Gérer les clients et leurs comptes (consultation, détails)', action: '/dashboard/administration/clients-accounts' }
     ],
     'MANAGER': [
       { id: 1, name: 'ACCESS_OVERVIEW', description: 'Access Dashboard', action: '/dashboard/overview' },

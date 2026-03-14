@@ -1,5 +1,6 @@
 """
 Script de nettoyage - Suppression des lignes avec valeurs manquantes
+Supporte les fichiers CSV et Parquet en entrée.
 """
 
 import pandas as pd
@@ -22,14 +23,33 @@ def validate_path(input_path: str) -> Path:
     return file_path
 
 
+def read_dataframe(file_path: Path) -> pd.DataFrame:
+    """Lit un fichier CSV ou Parquet et retourne un DataFrame."""
+    suffix = file_path.suffix.lower()
+    if suffix == ".parquet":
+        return pd.read_parquet(file_path)
+    else:
+        return pd.read_csv(file_path, sep=None, engine="python", low_memory=False, on_bad_lines="warn")
+
+
+def read_dataframe_sample(file_path: Path, nrows: int = 1) -> pd.DataFrame:
+    """Lit les premières lignes pour obtenir les colonnes."""
+    suffix = file_path.suffix.lower()
+    if suffix == ".parquet":
+        # Parquet doesn't support nrows directly — read full then slice
+        return pd.read_parquet(file_path).head(nrows)
+    else:
+        return pd.read_csv(file_path, nrows=nrows)
+
+
 def clean_with_immediate_null_removal(
-    input_path: str, 
-    dataset_id: str, 
+    input_path: str,
+    dataset_id: str,
     job_id: str,
     analysis_results: dict = None
 ) -> dict:
     """
-    Nettoie un fichier CSV en supprimant IMMÉDIATEMENT les lignes
+    Nettoie un fichier CSV ou Parquet en supprimant IMMÉDIATEMENT les lignes
     dès qu'une colonne a des valeurs manquantes (null ratio > 0).
     """
     start_time = datetime.now()
@@ -44,69 +64,73 @@ def clean_with_immediate_null_removal(
     try:
         # 1. Validation du chemin
         file_path = validate_path(input_path)
+        is_parquet = file_path.suffix.lower() == ".parquet"
 
-        # 2. Lecture du CSV (en chunks pour les gros fichiers)
-        df_sample = pd.read_csv(file_path, nrows=1)
+        # 2. Obtenir la liste des colonnes
+        df_sample = read_dataframe_sample(file_path, nrows=1)
         all_columns = list(df_sample.columns)
 
         # 3. Récupérer les null ratios depuis l'analyse
         null_thresholds = {}
-        important_columns = set()
-        
+
         if analysis_results:
-            # Extraire les nullRatios
             if 'nullRatios' in analysis_results:
                 null_thresholds = analysis_results.get('nullRatios', {})
             elif 'columns' in analysis_results:
                 for col_info in analysis_results.get('columns', []):
                     if 'name' in col_info and 'nullRatio' in col_info:
                         null_thresholds[col_info['name']] = col_info['nullRatio']
-            
-            # Colonnes importantes (features + target)
+
             suggested_features = analysis_results.get('suggestedFeatures', [])
             suggested_target = analysis_results.get('suggestedTarget')
-            
             important_columns = set(suggested_features or [])
             if suggested_target:
                 important_columns.add(suggested_target)
         else:
-            # Si pas d'analyse, on doit calculer les null ratios nous-mêmes
-            df_temp = pd.read_csv(file_path, low_memory=False)
-            null_ratios_calc = df_temp.isna().mean().to_dict()
-            for col, ratio in null_ratios_calc.items():
-                if ratio > 0:
-                    null_thresholds[col] = ratio
+            # Compute null ratios ourselves
+            df_temp = read_dataframe(file_path)
+            null_thresholds = {
+                col: ratio
+                for col, ratio in df_temp.isna().mean().to_dict().items()
+                if ratio > 0
+            }
 
-        # 4. Filtrer les colonnes qui nous intéressent (celles avec null ratio > 0)
+        # 4. Columns that actually have nulls
         columns_with_nulls = [
-            col for col in null_thresholds.keys()
+            col for col in null_thresholds
             if col in all_columns and null_thresholds[col] > 0
         ]
 
-        # 5. Lecture et nettoyage PROGRESSIF du fichier
+        # 5. Read and clean
         original_rows = 0
         chunks = []
-        chunk_size = 10000
 
-        # Lire le fichier par chunks pour optimiser la mémoire
-        for chunk in pd.read_csv(file_path, chunksize=chunk_size, low_memory=False):
-            chunk_rows = len(chunk)
-            original_rows += chunk_rows
-            
-            # Étape 1: Supprimer les doublons dans ce chunk
-            chunk = chunk.drop_duplicates()
-            
-            # Étape 2: Pour CHAQUE colonne avec des nulls, supprimer IMMÉDIATEMENT les lignes
+        if is_parquet:
+            # Parquet: read fully, then clean (chunked reading not natively supported)
+            df_full = pd.read_parquet(file_path)
+            original_rows = len(df_full)
+
+            df_full = df_full.drop_duplicates()
+
             for col in columns_with_nulls:
-                if col in chunk.columns:
-                    # Supprimer les lignes avec null dans cette colonne
-                    chunk = chunk[chunk[col].notna()]
-            
-            # Garder le chunk nettoyé s'il n'est pas vide
-            if len(chunk) > 0:
-                chunks.append(chunk)
+                if col in df_full.columns:
+                    df_full = df_full[df_full[col].notna()]
 
-        # 6. Combiner tous les chunks nettoyés
+            if len(df_full) > 0:
+                chunks = [df_full]
+        else:
+            # CSV: chunked reading for memory efficiency
+            chunk_size = 10000
+            for chunk in pd.read_csv(file_path, chunksize=chunk_size, low_memory=False):
+                original_rows += len(chunk)
+                chunk = chunk.drop_duplicates()
+                for col in columns_with_nulls:
+                    if col in chunk.columns:
+                        chunk = chunk[chunk[col].notna()]
+                if len(chunk) > 0:
+                    chunks.append(chunk)
+
+        # 6. Combine cleaned chunks
         if chunks:
             df_cleaned = pd.concat(chunks, ignore_index=True)
             cleaned_rows = len(df_cleaned)
@@ -114,32 +138,33 @@ def clean_with_immediate_null_removal(
             df_cleaned = pd.DataFrame()
             cleaned_rows = 0
 
-        # 7. Statistiques finales
+        # 7. Compute stats
         null_rows_removed = original_rows - cleaned_rows
-        
-        # Compter la fraude si la colonne existe
+
         fraud_count_after = 0
-        fraud_rate = 0
+        fraud_rate = 0.0
         if 'fraud' in df_cleaned.columns and cleaned_rows > 0:
             fraud_count_after = int(df_cleaned['fraud'].sum())
-            fraud_rate = (fraud_count_after / cleaned_rows * 100)
-        
-        reduction_percent = ((original_rows - cleaned_rows) / original_rows * 100) if original_rows > 0 else 0
+            fraud_rate = fraud_count_after / cleaned_rows * 100
 
-        # 8. Sauvegarde en Parquet
+        reduction_percent = (
+            (original_rows - cleaned_rows) / original_rows * 100
+            if original_rows > 0 else 0
+        )
+
+        # 8. Save output as Parquet
         output_dir = Path('/app/output')
         output_dir.mkdir(parents=True, exist_ok=True)
 
         output_filename = f"cleaned_{dataset_id}.parquet"
         output_path = output_dir / output_filename
-        
+
         if cleaned_rows > 0:
             df_cleaned.to_parquet(output_path, index=False, compression='snappy')
         else:
-            # Créer un fichier vide avec les bonnes colonnes
             pd.DataFrame(columns=all_columns).to_parquet(output_path, index=False)
 
-        # 9. Statistiques détaillées
+        # 9. Build result
         cleaning_stats = {
             'original_rows': original_rows,
             'original_columns': len(all_columns),
@@ -152,7 +177,8 @@ def clean_with_immediate_null_removal(
             'reduction_percent': round(reduction_percent, 2),
             'fraud_count_after': fraud_count_after,
             'fraud_rate': round(fraud_rate, 4),
-            'processing_chunks': len(chunks)
+            'processing_chunks': len(chunks),
+            'input_format': 'parquet' if is_parquet else 'csv',
         }
 
         result.update({
@@ -174,15 +200,14 @@ def clean_with_immediate_null_removal(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Clean CSV with immediate null removal')
-    parser.add_argument('--input', required=True, help='Input CSV file path')
+    parser = argparse.ArgumentParser(description='Clean CSV/Parquet with immediate null removal')
+    parser.add_argument('--input', required=True, help='Input file path (CSV or Parquet)')
     parser.add_argument('--dataset-id', required=True, help='Dataset UUID')
     parser.add_argument('--job-id', required=True, help='Job ID')
     parser.add_argument('--analysis-json', help='Analysis results JSON file path (optional)')
 
     args = parser.parse_args()
 
-    # Charger les résultats d'analyse si fournis
     analysis_results = None
     if args.analysis_json:
         try:
@@ -190,17 +215,16 @@ def main():
             with open(analysis_path, 'r') as f:
                 analysis_results = json.load(f)
         except Exception:
-            # Silently ignore - will proceed without analysis
-            pass
+            pass  # Proceed without analysis
 
     result = clean_with_immediate_null_removal(
-        args.input, 
-        args.dataset_id, 
+        args.input,
+        args.dataset_id,
         args.job_id,
         analysis_results
     )
-    
-    # SEULEMENT le JSON final sur stdout
+
+    # Only JSON on stdout
     print(json.dumps(result))
 
 

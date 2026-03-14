@@ -1,10 +1,6 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { DatasetService, Dataset, DatasetStatus, ApiResponse } from '../../../../../../core/services/dataset.service';
+import { DatasetService, Dataset, ApiResponse, DatasetType } from '../../../../../../core/services/dataset.service';
 import { AuthStore } from '../../../../../../core/store/auth.store';
-import { DatasetCreateModalComponent } from '../../../../../../shared/modals/admin-sections/datasets/dataset-create-modal/dataset-create-modal.component';
-import { DatasetViewModalComponent } from '../../../../../../shared/modals/admin-sections/datasets/dataset-view-modal/dataset-view-modal.component';
-import { DatasetUpdateModalComponent } from '../../../../../../shared/modals/admin-sections/datasets/dataset-update-modal/dataset-update-modal.component';
-import { DatasetDeleteModalComponent } from '../../../../../../shared/modals/admin-sections/datasets/dataset-delete-modal/dataset-delete-modal.component';
 
 @Component({
   selector: 'app-datasets',
@@ -23,6 +19,16 @@ export class DatasetsComponent implements OnInit {
   totalElements = signal(0);
   totalPages = signal(0);
   searchQuery = signal('');
+  selectedType = signal<DatasetType | null>(null);
+  datasetTypes = computed(() => {
+    if (this.authStore.isAdmin()) {
+      return [DatasetType.CLIENTS, DatasetType.ACCOUNTS, DatasetType.TRANSACTIONS_VAL];
+    }
+    if (this.authStore.isManager()) {
+      return [DatasetType.TRANSACTIONS_TRAIN];
+    }
+    return Object.values(DatasetType);
+  });
 
   // Modals state
   showCreateModal = signal(false);
@@ -49,11 +55,16 @@ export class DatasetsComponent implements OnInit {
     this.loading.set(true);
     this.datasetService.list({
       q: this.searchQuery(),
+      type: this.selectedType() || undefined,
       page: this.currentPage(),
       size: this.pageSize
     }).subscribe({
       next: (response: ApiResponse<Dataset>) => {
-        this.datasets.set(response.content);
+        let content = response.content;
+        if (this.authStore.isAdmin()) {
+          content = content.filter(d => d.type !== DatasetType.TRANSACTIONS_TRAIN);
+        }
+        this.datasets.set(content);
         this.totalElements.set(response.totalElements);
         this.totalPages.set(response.totalPages);
         this.loading.set(false);
@@ -68,6 +79,13 @@ export class DatasetsComponent implements OnInit {
   onSearch(event: any): void {
     const value = event.target.value;
     this.searchQuery.set(value);
+    this.currentPage.set(0);
+    this.loadDatasets();
+  }
+
+  onTypeChange(event: any): void {
+    const value = event.target.value;
+    this.selectedType.set(value === 'ALL' ? null : value as DatasetType);
     this.currentPage.set(0);
     this.loadDatasets();
   }

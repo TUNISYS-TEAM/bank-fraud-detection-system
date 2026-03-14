@@ -98,7 +98,7 @@ export class ImportDataComponent implements OnInit {
   searchQuery = signal('');
 
   // Computed pour filtrer les datasets ACTIVE et PROCESSED
-  datasets = computed(() => 
+  datasets = computed(() =>
     this.allDatasets().filter(d => d.status === 'ACTIVE' || d.status === 'PROCESSED')
   );
 
@@ -127,7 +127,7 @@ export class ImportDataComponent implements OnInit {
   cleaningError = signal<string | null>(null);
   cleanedFilePath = signal<string | null>(null);
   cleaningStats = signal<any | null>(null);
-  
+
   // Progression et chrono pour le nettoyage
   cleaningProgress = signal<number>(0);
   cleaningElapsedTime = signal<string>('0:00');
@@ -141,7 +141,7 @@ export class ImportDataComponent implements OnInit {
   });
 
   // Computed pour vérifier si le dataset est traité
-  isProcessed = computed(() => 
+  isProcessed = computed(() =>
     this.selectedDataset()?.status === 'PROCESSED'
   );
 
@@ -210,7 +210,9 @@ export class ImportDataComponent implements OnInit {
 
   loadDatasets(): void {
     this.loading.set(true);
-    let url = `${environment.apiUrl}/datasets?page=${this.currentPage()}&size=${this.pageSize}`;
+
+    // Use the training endpoint to get only TRANSACTIONS_TRAIN datasets
+    let url = `${environment.apiUrl}/datasets/training?page=${this.currentPage()}&size=${this.pageSize}`;
 
     if (this.searchQuery()) {
       url += `&q=${encodeURIComponent(this.searchQuery())}`;
@@ -224,7 +226,7 @@ export class ImportDataComponent implements OnInit {
         this.loading.set(false);
       },
       error: (error) => {
-        console.error('Error loading datasets:', error);
+        console.error('Error loading training datasets:', error);
         this.loading.set(false);
       }
     });
@@ -246,29 +248,29 @@ export class ImportDataComponent implements OnInit {
 
   startCleaning(datasetUuid: string): void {
     if (!datasetUuid) return;
-    
+
     this.cleaning.set(true);
     this.cleaningSuccess.set(false);
     this.cleaningError.set(null);
     this.cleanedFilePath.set(null);
     this.cleaningStats.set(null);
-    
+
     // Démarrer la progression simulée pour le nettoyage
     this.startCleaningProgressSimulation();
-    
+
     this.http.post<CleanResponse>(`${environment.apiUrl}/datasets/${datasetUuid}/clean`, {}).subscribe({
       next: (response) => {
         // Arrêter la progression simulée
         this.stopCleaningProgress(true);
-        
+
         this.cleaning.set(false);
         this.cleaningSuccess.set(true);
         this.cleanedFilePath.set(response.processedFilePath || null);
         this.cleaningStats.set(response.stats || null);
-        
+
         // Recharger le dataset pour mettre à jour le statut
         this.loadDatasets();
-        
+
         // Si c'est le dataset sélectionné, mettre à jour son statut
         if (this.selectedDataset()?.datasetUuid === datasetUuid) {
           this.selectedDataset.update(ds => {
@@ -278,11 +280,11 @@ export class ImportDataComponent implements OnInit {
             }
             return ds;
           });
-          
+
           // Recharger l'aperçu après mise à jour du statut
           this.loadPreview(datasetUuid);
         }
-        
+
         console.log('Nettoyage terminé avec succès');
       },
       error: (err) => {
@@ -476,7 +478,7 @@ export class ImportDataComponent implements OnInit {
   private loadPreview(datasetUuid: string): void {
     this.previewLoading.set(true);
     this.previewData.set(null); // Réinitialiser les données précédentes
-    
+
     this.http.get<PreviewResponse>(`${environment.apiUrl}/datasets/${datasetUuid}/preview?limit=5`).subscribe({
       next: (preview) => {
         console.log('Preview data received:', preview);
@@ -662,7 +664,7 @@ export class ImportDataComponent implements OnInit {
   }
 
   getStatusClass(status: string): string {
-    switch(status) {
+    switch (status) {
       case 'ACTIVE':
         return 'bg-green-50 text-green-600 border-green-100';
       case 'PROCESSED':
@@ -675,7 +677,7 @@ export class ImportDataComponent implements OnInit {
   }
 
   getStatusText(status: string): string {
-    switch(status) {
+    switch (status) {
       case 'ACTIVE':
         return 'ACTIF';
       case 'PROCESSED':

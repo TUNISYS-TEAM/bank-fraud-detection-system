@@ -1,13 +1,14 @@
 package com.fraud.backend.data.entity.accessmanagement;
 
-import com.fraud.backend.data.enums.Archive.ArchiveFormat;
-import com.fraud.backend.data.enums.Archive.ArchiveStatus;
-import com.fraud.backend.data.enums.Archive.ArchiveType;
-
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+
+import com.fraud.backend.data.enums.archive.ArchiveFormat;
+import com.fraud.backend.data.enums.archive.ArchiveStatus;
+import com.fraud.backend.data.enums.archive.ArchiveType;
+
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 

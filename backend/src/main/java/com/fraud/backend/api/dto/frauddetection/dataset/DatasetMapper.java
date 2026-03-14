@@ -17,6 +17,7 @@ public class DatasetMapper {
                 .fileSizeMb(d.getFileSizeMb())
                 .rowCount(d.getRowCount())
                 .status(d.getStatus())
+                .type(d.getType())
                 .importedAt(d.getImportedAt())
                 .build();
     }

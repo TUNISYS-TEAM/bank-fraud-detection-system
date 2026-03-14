@@ -2,9 +2,9 @@ package com.fraud.backend.data.service.accessmanagement.archive;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fraud.backend.data.entity.accessmanagement.ArchiveObject;
-import com.fraud.backend.data.enums.Archive.ArchiveFormat;
-import com.fraud.backend.data.enums.Archive.ArchiveStatus;
-import com.fraud.backend.data.enums.Archive.ArchiveType;
+import com.fraud.backend.data.enums.archive.ArchiveFormat;
+import com.fraud.backend.data.enums.archive.ArchiveStatus;
+import com.fraud.backend.data.enums.archive.ArchiveType;
 import com.fraud.backend.data.repository.accessmanagement.ArchiveObjectRepository;
 import com.fraud.backend.data.service.storage.StorageService;
 import lombok.RequiredArgsConstructor;

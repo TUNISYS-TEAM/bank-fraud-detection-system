@@ -48,6 +48,25 @@
                         placeholder="Ex: Transactions Février 2026">
                 </div>
 
+                <!-- Type du dataset -->
+                <div class="space-y-2">
+                    <label class="flex items-center text-sm font-semibold text-gray-700">
+                        <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                        Type de Dataset
+                    </label>
+                    <select formControlName="type"
+                        class="w-full px-4 py-3 bg-blue-50/40 border border-blue-100 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-gray-900 appearance-none">
+                        @for (type of datasetTypes(); track type) {
+                            <option [value]="type">
+                                {{ type === 'TRANSACTIONS_VAL' ? 'Transactions à traiter' : 
+                                   type === 'TRANSACTIONS_TRAIN' ? 'Transactions d\'entrainement' : type }}
+                            </option>
+                        }
+                    </select>
+                </div>
+
                 <!-- Zone d'upload avec Drag & Drop -->
                 <div class="space-y-2">
                     <label class="flex items-center text-sm font-semibold text-gray-700">
@@ -144,6 +163,35 @@
                 }
 
                 <div class="flex items-center space-x-4 pt-4">
+                    @if (showOverwriteWarning()) {
+                    <div class="w-full p-5 bg-red-50 border border-red-200 rounded-2xl animate-in zoom-in duration-300 shadow-sm">
+                        <div class="flex items-start space-x-3">
+                            <div class="p-2 bg-red-100 rounded-xl">
+                                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="text-sm font-bold text-red-900">Attention : Écrasement des données</h4>
+                                <p class="text-xs text-red-700 mt-1 leading-relaxed">
+                                    Un dataset de ce type existe déjà. Son importation écrasera les données actuelles
+                                    des clients/comptes.
+                                </p>
+                                <div class="flex items-center space-x-3 mt-4">
+                                    <button type="button" (click)="confirmOverwrite()"
+                                        class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors shadow-lg shadow-red-600/20">
+                                        Continuer l'importation
+                                    </button>
+                                    <button type="button" (click)="cancelOverwrite()"
+                                        class="px-4 py-2 bg-white border border-red-200 text-red-700 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors">
+                                        Annuler
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    } @else {
                     <button type="button" (click)="closeModal()"
                         class="flex-1 px-6 py-3 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-all text-sm shadow-sm">
                         Annuler
@@ -162,6 +210,7 @@
                         <span>Importer</span>
                         }
                     </button>
+                    }
                 </div>
             </form>
         </div>

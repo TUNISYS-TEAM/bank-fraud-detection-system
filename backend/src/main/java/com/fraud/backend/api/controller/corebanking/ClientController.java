@@ -25,10 +25,10 @@ public class ClientController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by("id").ascending());
+        Pageable pageable = PageRequest.of(page, size, Sort.by("clientId").ascending());
         return ResponseEntity.ok(
                 clientService.getAll(pageable).map(client -> clientMapper.toSummaryResponse(client,
-                        clientService.getAccountCount(client.getId()))));
+                        clientService.getAccountCount(client.getClientId()))));
     }
 
     @GetMapping("/{id}")
@@ -42,9 +42,9 @@ public class ClientController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by("id").ascending());
+        Pageable pageable = PageRequest.of(page, size, Sort.by("clientId").ascending());
         return ResponseEntity.ok(
                 clientService.searchByName(search, pageable).map(client -> clientMapper.toSummaryResponse(client,
-                        clientService.getAccountCount(client.getId()))));
+                        clientService.getAccountCount(client.getClientId()))));
     }
 }

@@ -1,12 +1,12 @@
 package com.fraud.backend.api.dto.accessmanagement.archive.response;
 
-import com.fraud.backend.data.enums.Archive.ArchiveFormat;
-import com.fraud.backend.data.enums.Archive.ArchiveStatus;
-import com.fraud.backend.data.enums.Archive.ArchiveType;
-
 import lombok.*;
 
 import java.time.LocalDateTime;
+
+import com.fraud.backend.data.enums.archive.ArchiveFormat;
+import com.fraud.backend.data.enums.archive.ArchiveStatus;
+import com.fraud.backend.data.enums.archive.ArchiveType;
 
 @Getter
 @Setter

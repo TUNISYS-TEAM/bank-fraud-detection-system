@@ -1,8 +1,10 @@
-import { Component, EventEmitter, Output, inject, signal } from '@angular/core';
+import { Component, EventEmitter, Output, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { DatasetService } from '../../../../../core/services/dataset.service';
+import { DatasetService, DatasetType } from '../../../../../core/services/dataset.service';
+import { AuthStore } from '../../../../../core/store/auth.store';
 import { FeatherModule } from 'angular-feather';
+import { switchMap, of, take } from 'rxjs';
 
 @Component({
   selector: 'app-dataset-create-modal',
@@ -21,11 +23,23 @@ export class DatasetCreateModalComponent {
   isVisible = signal(true);
   isLoading = signal(false);
   errorMessage = signal('');
+  showOverwriteWarning = signal(false);
   isDragging = signal(false);
   selectedFile = signal<File | null>(null);
+  private authStore = inject(AuthStore);
+  datasetTypes = computed(() => {
+    if (this.authStore.isAdmin()) {
+      return [DatasetType.CLIENTS, DatasetType.ACCOUNTS, DatasetType.TRANSACTIONS_VAL];
+    }
+    if (this.authStore.isManager()) {
+      return [DatasetType.TRANSACTIONS_TRAIN];
+    }
+    return Object.values(DatasetType);
+  });
 
   datasetForm: FormGroup = this.fb.group({
-    datasetName: ['', [Validators.required, Validators.minLength(3)]]
+    datasetName: ['', [Validators.required, Validators.minLength(3)]],
+    type: [this.authStore.isAdmin() ? DatasetType.TRANSACTIONS_VAL : DatasetType.TRANSACTIONS_TRAIN, [Validators.required]]
   });
 
   onFileSelected(event: any): void {
@@ -89,19 +103,56 @@ export class DatasetCreateModalComponent {
     this.errorMessage.set('');
 
     const name = this.datasetForm.get('datasetName')?.value;
+    const type = this.datasetForm.get('type')?.value;
     const file = this.selectedFile()!;
 
-    this.datasetService.upload(file, name).subscribe({
-      next: () => {
-        this.isLoading.set(false);
-        this.datasetUploaded.emit();
-        this.closeModal();
-      },
-      error: (err: any) => {
-        this.isLoading.set(false);
-        this.errorMessage.set(err.error?.message || 'Erreur lors de l\'importation du dataset');
-        console.error('Error uploading dataset:', err);
-      }
+    // Si c'est CLIENTS ou ACCOUNTS, vérifier si un dataset existe déjà
+    if ((type === DatasetType.CLIENTS || type === DatasetType.ACCOUNTS) && !this.showOverwriteWarning()) {
+      this.datasetService.list({ type, page: 0, size: 1 }).pipe(
+        take(1)
+      ).subscribe({
+        next: (response) => {
+          if (response.totalElements > 0) {
+            this.showOverwriteWarning.set(true);
+            this.isLoading.set(false);
+          } else {
+            this.executeUpload(file, name, type);
+          }
+        },
+        error: (err) => this.handleError(err)
+      });
+    } else {
+      this.executeUpload(file, name, type);
+    }
+  }
+
+  confirmOverwrite(): void {
+    this.showOverwriteWarning.set(false);
+    this.onSubmit();
+  }
+
+  cancelOverwrite(): void {
+    this.showOverwriteWarning.set(false);
+    this.isLoading.set(false);
+  }
+
+  private executeUpload(file: File, name: string, type: DatasetType): void {
+    this.isLoading.set(true);
+    this.datasetService.upload(file, name, type).subscribe({
+      next: () => this.handleSuccess(),
+      error: (err) => this.handleError(err)
     });
+  }
+
+  private handleSuccess(): void {
+    this.isLoading.set(false);
+    this.datasetUploaded.emit();
+    this.closeModal();
+  }
+
+  private handleError(err: any): void {
+    this.isLoading.set(false);
+    this.errorMessage.set(err.error?.message || 'Erreur lors de l\'importation du dataset');
+    console.error('Error uploading dataset:', err);
   }
 }

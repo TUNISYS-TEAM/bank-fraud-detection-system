@@ -1,12 +1,14 @@
 package com.fraud.backend.data.entity.frauddetection;
 
-import com.fraud.backend.data.enums.DatasetStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
+
+import com.fraud.backend.data.enums.datasets.DatasetStatus;
+import com.fraud.backend.data.enums.datasets.DatasetType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -45,6 +47,10 @@ public class Dataset {
     @Column(name = "status", nullable = false, length = 20)
     private DatasetStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "dataset_type", nullable = false, length = 20)
+    private DatasetType type;
+
     @Column(name = "imported_at")
     private LocalDateTime importedAt;
 
@@ -81,6 +87,9 @@ public class Dataset {
         }
         if (status == null) {
             status = DatasetStatus.INACTIVE;
+        }
+        if (type == null) {
+            type = DatasetType.TRANSACTIONS_TRAIN;
         }
     }
 

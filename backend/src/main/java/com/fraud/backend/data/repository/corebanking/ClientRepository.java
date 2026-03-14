@@ -14,8 +14,8 @@ import java.util.Optional;
 @Repository
 public interface ClientRepository extends JpaRepository<Client, Long> {
 
-    @Query("SELECT c FROM Client c LEFT JOIN FETCH c.accounts WHERE c.id = :id")
-    Optional<Client> findWithAccountsById(@Param("id") Long id);
+    @Query("SELECT c FROM Client c LEFT JOIN FETCH c.accounts WHERE c.clientId = :clientId")
+    Optional<Client> findWithAccountsByClientId(@Param("clientId") Long clientId);
 
     @Query("""
             SELECT c FROM Client c

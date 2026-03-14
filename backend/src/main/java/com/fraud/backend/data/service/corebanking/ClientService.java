@@ -25,7 +25,7 @@ public class ClientService {
     }
 
     public Client getById(Long id) {
-        return clientRepository.findWithAccountsById(id)
+        return clientRepository.findWithAccountsByClientId(id)
                 .orElseThrow(() -> new EntityNotFoundException("Client non trouvé: " + id));
     }
 

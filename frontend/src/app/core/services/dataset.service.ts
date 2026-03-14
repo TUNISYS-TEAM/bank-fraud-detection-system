@@ -5,8 +5,14 @@ import { environment } from '../../../environments/environment';
 
 export enum DatasetStatus {
     ACTIVE = 'ACTIVE',
-    PROCESSED = 'PROCESSED', 
     INACTIVE = 'INACTIVE'
+}
+
+export enum DatasetType {
+    TRANSACTIONS_TRAIN = 'TRANSACTIONS_TRAIN',
+    TRANSACTIONS_VAL = 'TRANSACTIONS_VAL',
+    CLIENTS = 'CLIENTS',
+    ACCOUNTS = 'ACCOUNTS'
 }
 
 export interface Dataset {
@@ -17,6 +23,7 @@ export interface Dataset {
     rowCount: number;
     columnCount: number;
     status: DatasetStatus;
+    type: DatasetType;
     importedAt: string;
 }
 
@@ -44,10 +51,11 @@ export class DatasetService {
     private http = inject(HttpClient);
     private readonly apiUrl = `${environment.apiUrl}/datasets`;
 
-    list(params: { q?: string; status?: DatasetStatus; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
+    list(params: { q?: string; status?: DatasetStatus; type?: DatasetType; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
         let httpParams = new HttpParams();
         if (params.q) httpParams = httpParams.set('q', params.q);
         if (params.status) httpParams = httpParams.set('status', params.status);
+        if (params.type) httpParams = httpParams.set('type', params.type);
         if (params.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
         if (params.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
 
@@ -64,10 +72,11 @@ export class DatasetService {
         });
     }
 
-    upload(file: File, datasetName: string): Observable<Dataset> {
+    upload(file: File, datasetName: string, type: DatasetType): Observable<Dataset> {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('datasetName', datasetName);
+        formData.append('type', type);
         return this.http.post<Dataset>(this.apiUrl, formData);
     }
 
@@ -81,27 +90,5 @@ export class DatasetService {
 
     download(uuid: string): Observable<Blob> {
         return this.http.get(`${this.apiUrl}/${uuid}/download`, { responseType: 'blob' });
-    }
-
-    // Méthodes spécifiques pour la gestion des statuts
-    activateDataset(uuid: string): Observable<Dataset> {
-        return this.update(uuid, { status: DatasetStatus.ACTIVE });
-    }
-
-    deactivateDataset(uuid: string): Observable<Dataset> {
-        return this.update(uuid, { status: DatasetStatus.PROCESSED }); // Désactiver = retour à PROCESSED
-    }
-
-    markAsProcessed(uuid: string): Observable<Dataset> {
-        return this.update(uuid, { status: DatasetStatus.PROCESSED });
-    }
-
-    // Méthode pour nettoyer un dataset (appel au backend Python)
-    cleanDataset(uuid: string): Observable<any> {
-        return this.http.post(`${this.apiUrl}/${uuid}/clean`, {});
-    }
-
-    getCleaningStatus(uuid: string): Observable<any> {
-        return this.http.get(`${this.apiUrl}/${uuid}/clean/status`);
     }
 }

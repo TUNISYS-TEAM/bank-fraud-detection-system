@@ -1,46 +1,45 @@
 <div class="space-y-6 animate-fadeIn p-4">
-    <!-- Header Section -->
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-            <h1 class="text-3xl font-bold text-gray-800">Administration</h1>
-            <p class="mt-1 text-lg text-gray-500">
-                Gestion des utilisateurs, données et paramètres système
-            </p>
-        </div>
+  <!-- Header Section -->
+  <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-800">Administration</h1>
+      <p class="mt-1 text-lg text-gray-500">
+        Gestion des utilisateurs, données et paramètres système
+      </p>
     </div>
+  </div>
 
-    <!-- Cartes KPI Section -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
-        @for (cardData of kpiCards(); track cardData.label) {
-        <app-cards [data]="cardData" class="animate-fadeIn"></app-cards>
-        }
-    </div>
-
-    <!-- Sub-navigation Tabs - Dynamiques depuis le store -->
-    @if (tabs().length > 0) {
-    <div class="flex items-center p-1 bg-gray-100/50 rounded-2xl w-fit border border-gray-100">
-        @for (tab of tabs(); track tab.route) {
-        <a [routerLink]="tab.route" routerLinkActive="bg-white text-indigo-600 shadow-sm"
-            class="flex items-center space-x-2 px-6 py-2.5 rounded-xl text-base font-medium text-gray-500 hover:text-gray-700 transition-all">
-
-            <!-- Icône Font Awesome -->
-            <i-feather [name]="tab.icon" class="w-4 h-4"></i-feather>
-
-            <span>{{ tab.label }}</span>
-        </a>
-        }
-    </div>
+  <!-- Cartes KPI Section -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+    @for (cardData of kpiCards(); track cardData.label) {
+    <app-cards [data]="cardData" class="animate-fadeIn"></app-cards>
     }
+  </div>
 
-    <!-- Message si aucun onglet n'est disponible -->
-    @if (tabs().length === 0) {
-    <div class="text-center py-8 text-gray-500">
-        Aucune section d'administration disponible avec vos permissions.
-    </div>
+  <!-- Tabs dynamiques-->
+  @if (tabs().length > 0) {
+  <div class="flex items-center p-1 bg-gray-100/50 rounded-2xl w-fit border border-gray-100">
+    @for (tab of tabs(); track tab.route) {
+    <a [routerLink]="tab.route" routerLinkActive="bg-white text-indigo-600 shadow-sm"
+      class="flex items-center space-x-2 px-6 py-2.5 rounded-xl text-base font-medium text-gray-500 hover:text-gray-700 transition-all">
+      <!-- Icône Feather -->
+      <i-feather [name]="tab.icon" class="w-4 h-4"></i-feather>
+
+      <span>{{ tab.label }}</span>
+    </a>
     }
+  </div>
+  }
 
-    <!-- Content Area (Child Routes) -->
-    <div class="mt-8 transition-all duration-300">
-        <router-outlet></router-outlet>
-    </div>
+  <!-- Message si aucun onglet n'est disponible -->
+  @if (tabs().length === 0) {
+  <div class="text-center py-8 text-gray-500">
+    Aucune section d'administration disponible avec vos permissions.
+  </div>
+  }
+
+  <!-- Content Area (Child Routes) -->
+  <div class="mt-8 transition-all duration-300">
+    <router-outlet></router-outlet>
+  </div>
 </div>

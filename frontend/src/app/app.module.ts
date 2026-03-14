@@ -15,14 +15,22 @@ import {
   CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, Info, Clock, List, Loader,
   AlertOctagon, Sliders, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight,
   Power, RefreshCw, Copy, Chrome, Search, Tag, Calendar, AlertCircle,
+  GitMerge,
+  Zap,
+  Layers,
+  CheckSquare,
+  Square,
+  ChevronUp,
+  CreditCard,
+  ChevronDown,
 } from 'angular-feather/icons';
-
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
   ExternalLink, Settings, LogOut, Bell, X, Mail, Lock, Tag, Calendar, Target, Hash, HardDrive, List,
-  Eye, EyeOff, Users, Database, FileText, Plus, Download, Search, AlertCircle, HelpCircle, TrendingUp, Play,
-  CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader,
-  AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight 
+  Eye, EyeOff, Users, Database, FileText, Plus, Download, Search, AlertCircle, HelpCircle, TrendingUp, Play, 
+  CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader, GitMerge, Zap,
+  AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight ,Layers,
+  CheckSquare, Square, ChevronUp, CreditCard, ChevronDown
 };
 
 @NgModule({

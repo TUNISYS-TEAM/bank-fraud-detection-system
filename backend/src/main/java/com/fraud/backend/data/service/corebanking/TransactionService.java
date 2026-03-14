@@ -1,8 +1,8 @@
 package com.fraud.backend.data.service.corebanking;
 
 import com.fraud.backend.data.entity.corebanking.Transaction;
-import com.fraud.backend.data.enums.TransactionChannel;
-import com.fraud.backend.data.enums.TransactionStatus;
+import com.fraud.backend.data.enums.transactions.TransactionChannel;
+import com.fraud.backend.data.enums.transactions.TransactionStatus;
 import com.fraud.backend.data.repository.corebanking.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;

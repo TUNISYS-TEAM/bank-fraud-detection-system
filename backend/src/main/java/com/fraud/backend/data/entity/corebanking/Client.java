@@ -22,8 +22,8 @@ import java.util.List;
 public class Client {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "client_id")
+    private Long clientId;
 
     @Column(name = "first_name")
     private String firstName;
@@ -33,6 +33,9 @@ public class Client {
 
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
+
+    @Column(name = "national_id")
+    private String nationalId;
 
     // Relations
     @OneToMany(mappedBy = "client", cascade = CascadeType.ALL, fetch = FetchType.LAZY)

@@ -1,8 +1,8 @@
 package com.fraud.backend.data.repository.accessmanagement;
 
 import com.fraud.backend.data.entity.accessmanagement.ArchiveObject;
-import com.fraud.backend.data.enums.Archive.ArchiveStatus;
-import com.fraud.backend.data.enums.Archive.ArchiveType;
+import com.fraud.backend.data.enums.archive.ArchiveStatus;
+import com.fraud.backend.data.enums.archive.ArchiveType;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

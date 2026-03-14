@@ -5,8 +5,8 @@ import com.fraud.backend.api.dto.accessmanagement.archive.request.ArchiveObjectC
 import com.fraud.backend.api.dto.accessmanagement.archive.request.ArchiveObjectStatusUpdateDto;
 import com.fraud.backend.api.dto.accessmanagement.archive.response.ArchiveObjectResponseDto;
 import com.fraud.backend.data.entity.accessmanagement.ArchiveObject;
-import com.fraud.backend.data.enums.Archive.ArchiveStatus;
-import com.fraud.backend.data.enums.Archive.ArchiveType;
+import com.fraud.backend.data.enums.archive.ArchiveStatus;
+import com.fraud.backend.data.enums.archive.ArchiveType;
 import com.fraud.backend.data.service.accessmanagement.archive.ArchiveJobService;
 import com.fraud.backend.data.service.accessmanagement.archive.ArchiveObjectService;
 

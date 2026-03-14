@@ -1,11 +1,13 @@
 package com.fraud.backend.api.dto.frauddetection.dataset.response;
 
-import com.fraud.backend.data.enums.DatasetStatus;
 import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
+
+import com.fraud.backend.data.enums.datasets.DatasetStatus;
+import com.fraud.backend.data.enums.datasets.DatasetType;
 
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor
@@ -19,5 +21,6 @@ public class DatasetResponse {
     private Long rowCount;
 
     private DatasetStatus status;
+    private DatasetType type;
     private LocalDateTime importedAt;
 }

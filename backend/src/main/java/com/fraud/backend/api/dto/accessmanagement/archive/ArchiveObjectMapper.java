@@ -3,8 +3,8 @@ package com.fraud.backend.api.dto.accessmanagement.archive;
 import com.fraud.backend.api.dto.accessmanagement.archive.request.ArchiveObjectCreateRequestDto;
 import com.fraud.backend.api.dto.accessmanagement.archive.response.ArchiveObjectResponseDto;
 import com.fraud.backend.data.entity.accessmanagement.ArchiveObject;
-import com.fraud.backend.data.enums.Archive.ArchiveFormat;
-import com.fraud.backend.data.enums.Archive.ArchiveStatus;
+import com.fraud.backend.data.enums.archive.ArchiveFormat;
+import com.fraud.backend.data.enums.archive.ArchiveStatus;
 
 public final class ArchiveObjectMapper {
 

@@ -1,4 +1,4 @@
-package com.fraud.backend.data.enums;
+package com.fraud.backend.data.enums.datasets;
 
 public enum DatasetStatus {
     ACTIVE,

@@ -27,6 +27,9 @@ import { DatasetViewModalComponent } from '../../../../shared/modals/admin-secti
 import { ModalDeleteComponent } from '../../../../shared/modals/admin-sections/settings/settings-delete-modal/settings-delete-modal.component';
 import { ModalViewRollbackComponent } from '../../../../shared/modals/admin-sections/settings/settings-rollback-modal/settings-rollback-modal.component';
 import { CardsComponent } from '../../../../shared/cards/cards.component';
+import { ClientsAccountsComponent } from './admin-sections/clients-accounts/clients-accounts.component';
+import { ClientsViewModalComponent } from '../../../../shared/modals/admin-sections/clients-accounts/clients-view-modal/clients-view-modal.component';
+
 
 @NgModule({
   declarations: [
@@ -36,7 +39,8 @@ import { CardsComponent } from '../../../../shared/cards/cards.component';
     LogsComponent,
     SettingsComponent,
     RolesComponent,   
-    SessionsComponent  
+    SessionsComponent, 
+    ClientsAccountsComponent  
   ],
   imports: [
     CommonModule,
@@ -63,6 +67,8 @@ import { CardsComponent } from '../../../../shared/cards/cards.component';
     ModalDeleteComponent,
     ModalViewRollbackComponent,
 
+    ClientsViewModalComponent,
+    
     CardsComponent
   ]
 })

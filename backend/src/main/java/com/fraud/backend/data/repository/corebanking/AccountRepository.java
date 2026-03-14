@@ -22,18 +22,21 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
 
     Optional<Account> findByAccountNumber(String accountNumber);
 
-    List<Account> findByClientId(Long clientId);
+    @Query("SELECT a FROM Account a WHERE a.client.clientId = :clientId")
+    List<Account> findByClientId(@Param("clientId") Long clientId);
 
     Page<Account> findByRiskLevel(String riskLevel, Pageable pageable);
 
     Page<Account> findByIsActiveTrue(Pageable pageable);
 
-    Page<Account> findByClientIdAndIsActiveTrue(Long clientId, Pageable pageable);
+    @Query("SELECT a FROM Account a WHERE a.client.clientId = :clientId AND a.isActive = true")
+    Page<Account> findByClientIdAndIsActiveTrue(@Param("clientId") Long clientId, Pageable pageable);
 
     @Query("SELECT COALESCE(SUM(a.balance), 0) FROM Account a " +
-            "WHERE a.client.id = :clientId AND a.isActive = true")
+            "WHERE a.client.clientId = :clientId AND a.isActive = true")
     BigDecimal sumActiveBalanceByClient(@Param("clientId") Long clientId);
 
-    long countByClientId(Long clientId);
+    @Query("SELECT COUNT(a) FROM Account a WHERE a.client.clientId = :clientId")
+    long countByClientId(@Param("clientId") Long clientId);
 
 }
