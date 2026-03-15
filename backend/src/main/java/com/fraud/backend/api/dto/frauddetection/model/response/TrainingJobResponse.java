@@ -31,7 +31,9 @@ public class TrainingJobResponse {
     private Integer testRows;
     private Double fraudRate;
     
-    private String modelPath; // Path to saved model in MinIO
+    private String modelPath;    // Path to saved model joblib in MinIO
+    private String pipelinePath; // Path to saved feature pipeline joblib in MinIO
+    private String onnxPath;     // Path to exported ONNX model in MinIO (null if export failed)
     
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;

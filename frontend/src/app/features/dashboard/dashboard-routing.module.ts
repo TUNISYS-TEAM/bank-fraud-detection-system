@@ -7,7 +7,7 @@ import { MlModelsComponent } from './pages/ml-models/ml-models.component';
 import { ImportDataComponent } from './pages/import-data/import-data.component';
 import { PerformanceComponent } from './pages/performance/performance.component';
 import { SimulationComponent } from './pages/simulation/simulation.component';
-import { MessagesComponent } from './pages/messaging/messaging.component';
+import { TrainDataComponent } from './pages/train-data/train-data.component';
 
 const routes: Routes = [
   {
@@ -21,7 +21,7 @@ const routes: Routes = [
       { path: 'import-data', component: ImportDataComponent },
       { path: 'performance', component: PerformanceComponent },
       { path: 'simulation', component: SimulationComponent },
-      { path: 'messages', component: MessagesComponent },
+      { path: 'training-data', component: TrainDataComponent },
       {
         path: 'administration',
         loadChildren: () => import('./pages/administration/administration.module').then(m => m.AdministrationModule)

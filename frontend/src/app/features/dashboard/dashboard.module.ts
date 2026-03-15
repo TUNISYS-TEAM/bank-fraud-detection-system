@@ -15,7 +15,13 @@ import { SimulationComponent } from './pages/simulation/simulation.component';
 import { MessagesComponent } from './pages/messaging/messaging.component';
 
 import { CardsComponent } from '../../shared/cards/cards.component';
+import { TrainDataComponent } from './pages/train-data/train-data.component';
 
+// Import modal components
+import { DatasetCreateModalComponent } from '../../shared/modals/admin-sections/datasets/dataset-create-modal/dataset-create-modal.component';
+import { DatasetViewModalComponent } from '../../shared/modals/admin-sections/datasets/dataset-view-modal/dataset-view-modal.component';
+import { DatasetUpdateModalComponent } from '../../shared/modals/admin-sections/datasets/dataset-update-modal/dataset-update-modal.component';
+import { DatasetDeleteModalComponent } from '../../shared/modals/admin-sections/datasets/dataset-delete-modal/dataset-delete-modal.component';
 
 @NgModule({
   declarations: [
@@ -25,7 +31,8 @@ import { CardsComponent } from '../../shared/cards/cards.component';
     ImportDataComponent,
     PerformanceComponent,
     SimulationComponent,
-    MessagesComponent, 
+    MessagesComponent,
+    TrainDataComponent, 
   ],
   imports: [
     CommonModule,
@@ -33,7 +40,11 @@ import { CardsComponent } from '../../shared/cards/cards.component';
     DashboardRoutingModule,
     LayoutModule,
     FeatherModule,
-    CardsComponent
+    CardsComponent,
+    DatasetCreateModalComponent,
+    DatasetViewModalComponent,
+    DatasetDeleteModalComponent,
+    DatasetUpdateModalComponent
   ]
 })
 export class DashboardModule { }

@@ -25,7 +25,8 @@ const PERMISSION_ICONS: Record<string, string> = {
   'MANAGE_LOGS': 'file-text',
   'MANAGE_SETTINGS': 'sliders',
   'MANAGE_DATASETS': 'database',
-  'MANAGE_CLIENTS_ACCOUNTS': 'users'
+  'MANAGE_CLIENTS_ACCOUNTS': 'users',
+  'ACCESS_TRAINING_DATA': 'database'
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -47,7 +48,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   'MANAGE_LOGS': 'Journaux',
   'MANAGE_SETTINGS': 'Paramètres',
   'MANAGE_DATASETS': 'Datasets',
-  'MANAGE_CLIENTS_ACCOUNTS': 'Clients & Comptes'
+  'MANAGE_CLIENTS_ACCOUNTS': 'Clients & Comptes',
+  'ACCESS_TRAINING_DATA': 'Données d\'Entraînement'
 };
 
 const PERMISSION_ORDER: Record<string, number> = {
@@ -57,6 +59,7 @@ const PERMISSION_ORDER: Record<string, number> = {
   'ACCESS_ALERTS': 30,
   'ACCESS_PERFORMANCE': 40,
   'ACCESS_SIMULATION': 50,
+  'ACCESS_TRAINING_DATA': 55,
   'ACCESS_MESSAGES': 60,
   'ACCESS_ADMINISTRATION': 70,
   'MANAGE_USERS': 71,

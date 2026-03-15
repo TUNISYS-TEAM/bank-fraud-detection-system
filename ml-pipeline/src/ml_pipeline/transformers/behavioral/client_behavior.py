@@ -2,17 +2,14 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 import threading
-from collections import Counter
-from typing import Optional
+from collections import Counter, deque
 
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
-# Dask imports
-import dask.dataframe as dd
-from dask.diagnostics import ProgressBar
 import dask
 
 from ml_pipeline.utils.postal_codes import get_resolver
@@ -42,29 +39,8 @@ def _add_region(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _welford_update(count: int, mean: float, m2: float, value: float):
-    count += 1
-    delta = value - mean
-    mean += delta / count
-    m2 += delta * (value - mean)
-    return count, mean, m2
-
-
-def _welford_std(count: int, m2: float) -> float:
-    if count < 2:
-        return 0.0
-    return float(np.sqrt(m2 / count))
-
-
-def _counter_mode_freq(counter: Counter) -> tuple[str, float]:
-    if not counter:
-        return "Unknown", 0.0
-    total = sum(counter.values())
-    mode, cnt = counter.most_common(1)[0]
-    return mode, cnt / total
-
-
-def _empty_state() -> dict:
+def _empty_state(max_time_diffs: int = _TIME_DIFFS_CAP) -> dict:
+    """Initialise un état vide pour un compte."""
     return {
         "wf_count": 0,
         "wf_mean": 0.0,
@@ -73,238 +49,357 @@ def _empty_state() -> dict:
         "cumsum": 0.0,
         "max_amount": 0.0,
         "min_amount": np.inf,
-        "last_time": None,
-        "first_time": None,
-        "time_diffs": [],
+        "last_time_ns": None,          # nanosecondes (int)
+        "first_time_ns": None,          # nanosecondes (int)
+        "gap_deque": deque(maxlen=max_time_diffs),   # stocke les gaps récents en secondes
+        "gap_sum": 0.0,                  # somme des gaps dans la deque
+        "gap_sum_sq": 0.0,                # somme des carrés des gaps
         "region_counter": Counter(),
         "channel_counter": Counter(),
         "category_counter": Counter(),
     }
 
 
-def _compute_risk(
-    abs_dev: float,
-    mx_ratio: float,
-    z_score: float,
-    is_new_max: int,
-    is_unusual_reg: int,
-    is_unusual_ch: int,
-    is_unusual_cat: int,
-    reg_freq: float,
-    ch_freq: float,
-    cat_freq: float,
-    hours_raw: float,
-    cnt: int,
-) -> float:
-    risk = (
-        abs_dev * 3.0
-        + (5.0 if mx_ratio > 2 else 0.0)
-        + (3.0 if abs(z_score) > 3 else (1.5 if abs(z_score) > 2 else 0.0))
-        + (3.0 if is_new_max else 0.0)
-        + (4.0 if is_unusual_reg else 0.0)
-        + (3.0 if is_unusual_ch else 0.0)
-        + (2.0 if is_unusual_cat else 0.0)
-        + (2.0 if reg_freq < 0.3 else 0.0)
-        + (2.0 if ch_freq < 0.3 else 0.0)
-        + (2.0 if cat_freq < 0.3 else 0.0)
-        + (3.0 if hours_raw < 1 else 0.0)
-        + (1.0 if hours_raw < 24 else 0.0)
-        + (5.0 if cnt == 0 else 0.0)
-    )
-    return float(risk)
+# ---------------------------------------------------------------------------
+# Vectorized per-account feature computation (optimisée)
+# ---------------------------------------------------------------------------
 
-
-def _init_result_arrays(n: int) -> dict:
-    return {
-        "TX_Time": np.empty(n, dtype=object),
-        "TX_Amount": np.zeros(n, dtype=np.float32),
-        "client_AVG_TX_Amount": np.zeros(n, dtype=np.float32),
-        "client_AVG_TX_PerDay": np.zeros(n, dtype=np.float32),
-        "client_amount_deviation": np.zeros(n, dtype=np.float32),
-        "client_abs_amount_deviation": np.zeros(n, dtype=np.float32),
-        "client_amount_max_ratio": np.zeros(n, dtype=np.float32),
-        "client_amount_z_score": np.zeros(n, dtype=np.float32),
-        "client_is_new_max": np.zeros(n, dtype=np.int8),
-        "client_is_new_min": np.zeros(n, dtype=np.int8),
-        "client_total_transactions": np.zeros(n, dtype=np.int32),
-        "client_time_since_last_tx": np.zeros(n, dtype=np.float32),
-        "client_hours_since_last_tx": np.zeros(n, dtype=np.float32),
-        "client_total_days_since_first": np.zeros(n, dtype=np.float32),
-        "client_usual_region": np.empty(n, dtype=object),
-        "client_is_unusual_region": np.zeros(n, dtype=np.int8),
-        "client_region_freq": np.zeros(n, dtype=np.float32),
-        "client_usual_channel": np.empty(n, dtype=object),
-        "client_is_unusual_channel": np.zeros(n, dtype=np.int8),
-        "client_channel_freq": np.zeros(n, dtype=np.float32),
-        "client_usual_category": np.empty(n, dtype=object),
-        "client_is_unusual_category": np.zeros(n, dtype=np.int8),
-        "client_category_freq": np.zeros(n, dtype=np.float32),
-        "client_risk_score": np.zeros(n, dtype=np.float32),
-    }
-
-
-def _process_account_partition(partition_df: pd.DataFrame, initial_state_dict: dict, transformer_params: dict) -> pd.DataFrame:
+def _compute_account_features_vectorized(
+    amounts: np.ndarray,       # float64, shape (N,)
+    times_ns: np.ndarray,      # int64 nanoseconds, shape (N,)
+    regions: np.ndarray,       # object, shape (N,)
+    channels: np.ndarray,      # object, shape (N,)
+    categories: np.ndarray,    # object, shape (N,)
+    init_state: dict,
+    smoothing_days: float,
+    default_gap_sec: float,
+    max_time_diffs: int,
+) -> dict:
     """
-    Process a single partition of accounts (multiple accounts per partition).
-    This function is called by Dask on each partition.
+    Calcule les features comportementales pour un compte.
+    Version optimisée avec deque pour les gaps, stockage des timestamps en ns,
+    et calcul inline des modes/fréquences.
     """
-    # Extract transformer parameters
-    smoothing_days = transformer_params.get('smoothing_days', 1)
-    default_gap_sec = transformer_params.get('default_gap_sec', 30 * 86_400)
-    max_time_diffs = transformer_params.get('max_time_diffs', 200)
-    
-    # Ensure required columns
-    required = {"Account_Id", "TX_Time", "TX_Amount", "region", "Channel", "category"}
-    missing = required - set(partition_df.columns)
-    if missing:
-        raise ValueError(f"Partition missing required columns: {missing}")
-    
-    # Sort by Account_Id and TX_Time within the partition
-    partition_df = partition_df.sort_values(["Account_Id", "TX_Time"]).reset_index(drop=True)
-    
-    # Initialize result arrays for this partition
-    res = _init_result_arrays(len(partition_df))
-    
-    # Process each account in the partition sequentially
-    current_account = None
-    state = None
-    start_idx = 0
-    
-    for idx, row in partition_df.iterrows():
-        account_id = row["Account_Id"]
-        
-        # New account encountered
-        if account_id != current_account:
-            # Save previous account's final state if needed
-            current_account = account_id
-            # Get initial state for this account from fitted history
-            if account_id in initial_state_dict:
-                state = copy.deepcopy(initial_state_dict[account_id])
-            else:
-                state = _empty_state()
-            start_idx = idx
-        
-        # Process current transaction
-        cur_time = row["TX_Time"]
-        cur_amount = float(row["TX_Amount"])
-        cur_region = row["region"]
-        cur_channel = row["Channel"]
-        cur_category = row["category"]
-        
-        cnt = state["cumcount"]
-        csum = state["cumsum"]
-        avg = csum / cnt if cnt > 0 else 0.0
-        mx = state["max_amount"]
-        mn = state["min_amount"] if state["min_amount"] != np.inf else cur_amount
-        
-        dev = (cur_amount - avg) / (avg + 1e-6) if cnt > 0 else 0.0
+    N = len(amounts)
+
+    # ---- Output arrays ----
+    out_avg            = np.zeros(N, dtype=np.float32)
+    out_avg_per_day    = np.zeros(N, dtype=np.float32)
+    out_dev            = np.zeros(N, dtype=np.float32)
+    out_abs_dev        = np.zeros(N, dtype=np.float32)
+    out_max_ratio      = np.zeros(N, dtype=np.float32)
+    out_z_score        = np.zeros(N, dtype=np.float32)
+    out_is_new_max     = np.zeros(N, dtype=np.int8)
+    out_is_new_min     = np.zeros(N, dtype=np.int8)
+    out_cnt            = np.zeros(N, dtype=np.int32)
+    out_raw_gap        = np.zeros(N, dtype=np.float32)
+    out_norm_gap       = np.zeros(N, dtype=np.float32)
+    out_total_days     = np.zeros(N, dtype=np.float32)
+    out_usual_reg      = np.empty(N, dtype=object)
+    out_is_unu_reg     = np.zeros(N, dtype=np.int8)
+    out_reg_freq       = np.zeros(N, dtype=np.float32)
+    out_usual_ch       = np.empty(N, dtype=object)
+    out_is_unu_ch      = np.zeros(N, dtype=np.int8)
+    out_ch_freq        = np.zeros(N, dtype=np.float32)
+    out_usual_cat      = np.empty(N, dtype=object)
+    out_is_unu_cat     = np.zeros(N, dtype=np.int8)
+    out_cat_freq       = np.zeros(N, dtype=np.float32)
+    out_risk           = np.zeros(N, dtype=np.float32)
+
+    # ---- Seed from initial state ----
+    cnt      = init_state["cumcount"]
+    cumsum   = init_state["cumsum"]
+    wf_n     = init_state["wf_count"]
+    wf_mean  = init_state["wf_mean"]
+    wf_M2    = init_state["wf_M2"]
+    cur_max  = init_state["max_amount"]
+    cur_min  = init_state["min_amount"]
+    last_ns  = init_state["last_time_ns"]   # déjà en ns ou None
+    first_ns = init_state["first_time_ns"]   # déjà en ns ou None
+
+    # Récupération de la deque et des sommes pour les gaps
+    gap_deque   = init_state["gap_deque"]         # deque de float (secondes)
+    gap_sum     = init_state["gap_sum"]
+    gap_sum_sq  = init_state["gap_sum_sq"]
+
+    # Compteurs pour les modes
+    reg_ctr  = init_state["region_counter"]
+    ch_ctr   = init_state["channel_counter"]
+    cat_ctr  = init_state["category_counter"]
+
+    NS_TO_SEC  = 1e-9
+    NS_TO_DAY  = 1e-9 / 86_400
+
+    for i in range(N):
+        a   = float(amounts[i])
+        t   = int(times_ns[i])
+        reg = regions[i]
+        ch  = channels[i]
+        cat = categories[i]
+
+        # ---- As-of stats (avant mise à jour de l'état) ----
+        avg = cumsum / cnt if cnt > 0 else 0.0
+
+        dev     = (a - avg) / (avg + 1e-6) if cnt > 0 else 0.0
         abs_dev = abs(dev)
-        mx_ratio = cur_amount / (mx + 1e-6) if mx > 0 else 1.0
-        is_new_max = int(cnt > 0 and cur_amount > mx)
-        is_new_min = int(cnt > 0 and cur_amount < mn)
-        
-        wf_std = _welford_std(state["wf_count"], state["wf_M2"])
-        z_score = (
-            (cur_amount - state["wf_mean"]) / (wf_std + 1e-6)
-            if state["wf_count"] > 0
-            else 0.0
-        )
-        
-        if state["last_time"] is not None:
-            raw_gap_sec = (cur_time - pd.Timestamp(state["last_time"])).total_seconds()
-            td = state["time_diffs"]
-            if td:
-                avg_td = float(np.mean(td))
-                std_td = float(np.std(td)) if len(td) > 1 else avg_td
-                norm_gap = float(np.clip((raw_gap_sec - avg_td) / (std_td + 1e-6), -3, 3))
+        mx_ratio = a / (cur_max + 1e-6) if cur_max > 0 else 1.0
+        is_new_max = int(cnt > 0 and a > cur_max)
+        mn = cur_min if cur_min != np.inf else a
+        is_new_min = int(cnt > 0 and a < mn)
+
+        # Welford z-score
+        wf_std = float(np.sqrt(wf_M2 / wf_n)) if wf_n >= 2 else 0.0
+        z = (a - wf_mean) / (wf_std + 1e-6) if wf_n > 0 else 0.0
+
+        # ---- Time gap (calcul optimisé avec deque) ----
+        if last_ns is not None:
+            raw_gap = (t - last_ns) * NS_TO_SEC
+            if gap_deque:
+                n = len(gap_deque)
+                mean_gap = gap_sum / n
+                # variance (population)
+                var_gap = (gap_sum_sq / n) - (mean_gap * mean_gap)
+                std_gap = np.sqrt(var_gap) if var_gap > 0 else mean_gap
+                norm_gap = (raw_gap - mean_gap) / (std_gap + 1e-6)
+                norm_gap = float(np.clip(norm_gap, -3, 3))
             else:
                 norm_gap = 0.0
         else:
-            raw_gap_sec = float(default_gap_sec)
+            raw_gap  = default_gap_sec
             norm_gap = 0.0
-        
-        hours_raw = raw_gap_sec / 3600.0
-        total_days = (
-            (cur_time - pd.Timestamp(state["first_time"])).total_seconds() / 86_400
-            if state["first_time"] is not None
-            else 0.0
-        )
-        avg_per_day = cnt / (total_days + smoothing_days)
-        
-        usual_reg, reg_freq = _counter_mode_freq(state["region_counter"])
-        usual_ch, ch_freq = _counter_mode_freq(state["channel_counter"])
-        usual_cat, cat_freq = _counter_mode_freq(state["category_counter"])
-        
-        is_unusual_reg = int(cnt > 0 and cur_region != usual_reg)
-        is_unusual_ch = int(cnt > 0 and cur_channel != usual_ch)
-        is_unusual_cat = int(cnt > 0 and cur_category != usual_cat)
-        
-        risk = _compute_risk(
-            abs_dev,
-            mx_ratio,
-            z_score,
-            is_new_max,
-            is_unusual_reg,
-            is_unusual_ch,
-            is_unusual_cat,
-            reg_freq,
-            ch_freq,
-            cat_freq,
-            hours_raw,
-            cnt,
-        )
-        
-        # Fill result arrays
-        res["TX_Time"][idx] = cur_time
-        res["TX_Amount"][idx] = cur_amount
-        res["client_AVG_TX_Amount"][idx] = avg
-        res["client_AVG_TX_PerDay"][idx] = avg_per_day
-        res["client_amount_deviation"][idx] = dev
-        res["client_abs_amount_deviation"][idx] = abs_dev
-        res["client_amount_max_ratio"][idx] = mx_ratio
-        res["client_amount_z_score"][idx] = z_score
-        res["client_is_new_max"][idx] = is_new_max
-        res["client_is_new_min"][idx] = is_new_min
-        res["client_total_transactions"][idx] = cnt
-        res["client_time_since_last_tx"][idx] = raw_gap_sec
-        res["client_hours_since_last_tx"][idx] = norm_gap
-        res["client_total_days_since_first"][idx] = total_days
-        res["client_usual_region"][idx] = usual_reg
-        res["client_is_unusual_region"][idx] = is_unusual_reg
-        res["client_region_freq"][idx] = reg_freq
-        res["client_usual_channel"][idx] = usual_ch
-        res["client_is_unusual_channel"][idx] = is_unusual_ch
-        res["client_channel_freq"][idx] = ch_freq
-        res["client_usual_category"][idx] = usual_cat
-        res["client_is_unusual_category"][idx] = is_unusual_cat
-        res["client_category_freq"][idx] = cat_freq
-        res["client_risk_score"][idx] = risk
-        
-        # Update state
-        if state["last_time"] is not None:
-            gap = (cur_time - pd.Timestamp(state["last_time"])).total_seconds()
-            state["time_diffs"].append(gap)
-            if len(state["time_diffs"]) > max_time_diffs:
-                state["time_diffs"] = state["time_diffs"][-max_time_diffs:]
-        
-        state["wf_count"], state["wf_mean"], state["wf_M2"] = _welford_update(
-            state["wf_count"], state["wf_mean"], state["wf_M2"], cur_amount
-        )
-        state["cumcount"] += 1
-        state["cumsum"] += cur_amount
-        state["max_amount"] = max(state["max_amount"], cur_amount)
-        if cur_amount < state["min_amount"]:
-            state["min_amount"] = cur_amount
-        state["last_time"] = cur_time
-        if state["first_time"] is None:
-            state["first_time"] = cur_time
-        
-        state["region_counter"][cur_region] += 1
-        state["channel_counter"][cur_channel] += 1
-        state["category_counter"][cur_category] += 1
-    
-    return pd.DataFrame(res)
 
+        hours_raw   = raw_gap / 3600.0
+        total_days  = (t - first_ns) * NS_TO_DAY if first_ns is not None else 0.0
+        avg_per_day = cnt / (total_days + smoothing_days)
+
+        # ---- Modes / fréquences (inline) ----
+        # Région
+        if reg_ctr:
+            mode_reg, count_reg = reg_ctr.most_common(1)[0]
+            total_reg = sum(reg_ctr.values())
+            usual_reg = mode_reg
+            reg_freq = count_reg / total_reg
+        else:
+            usual_reg = "Unknown"
+            reg_freq = 0.0
+        is_unu_reg = int(cnt > 0 and reg != usual_reg)
+
+        # Canal
+        if ch_ctr:
+            mode_ch, count_ch = ch_ctr.most_common(1)[0]
+            total_ch = sum(ch_ctr.values())
+            usual_ch = mode_ch
+            ch_freq = count_ch / total_ch
+        else:
+            usual_ch = "Unknown"
+            ch_freq = 0.0
+        is_unu_ch = int(cnt > 0 and ch != usual_ch)
+
+        # Catégorie
+        if cat_ctr:
+            mode_cat, count_cat = cat_ctr.most_common(1)[0]
+            total_cat = sum(cat_ctr.values())
+            usual_cat = mode_cat
+            cat_freq = count_cat / total_cat
+        else:
+            usual_cat = "Unknown"
+            cat_freq = 0.0
+        is_unu_cat = int(cnt > 0 and cat != usual_cat)
+
+        # Risque
+        risk = (
+            abs_dev * 3.0
+            + (5.0 if mx_ratio > 2 else 0.0)
+            + (3.0 if abs(z) > 3 else (1.5 if abs(z) > 2 else 0.0))
+            + (3.0 if is_new_max else 0.0)
+            + (4.0 if is_unu_reg else 0.0)
+            + (3.0 if is_unu_ch else 0.0)
+            + (2.0 if is_unu_cat else 0.0)
+            + (2.0 if reg_freq < 0.3 else 0.0)
+            + (2.0 if ch_freq < 0.3 else 0.0)
+            + (2.0 if cat_freq < 0.3 else 0.0)
+            + (3.0 if hours_raw < 1 else 0.0)
+            + (1.0 if hours_raw < 24 else 0.0)
+            + (5.0 if cnt == 0 else 0.0)
+        )
+
+        # ---- Écriture des résultats ----
+        out_avg[i]         = avg
+        out_avg_per_day[i] = avg_per_day
+        out_dev[i]         = dev
+        out_abs_dev[i]     = abs_dev
+        out_max_ratio[i]   = mx_ratio
+        out_z_score[i]     = z
+        out_is_new_max[i]  = is_new_max
+        out_is_new_min[i]  = is_new_min
+        out_cnt[i]         = cnt
+        out_raw_gap[i]     = raw_gap
+        out_norm_gap[i]    = norm_gap
+        out_total_days[i]  = total_days
+        out_usual_reg[i]   = usual_reg
+        out_is_unu_reg[i]  = is_unu_reg
+        out_reg_freq[i]    = reg_freq
+        out_usual_ch[i]    = usual_ch
+        out_is_unu_ch[i]   = is_unu_ch
+        out_ch_freq[i]     = ch_freq
+        out_usual_cat[i]   = usual_cat
+        out_is_unu_cat[i]  = is_unu_cat
+        out_cat_freq[i]    = cat_freq
+        out_risk[i]        = risk
+
+        # ---- Mise à jour de l'état (après la transaction) ----
+        if last_ns is not None:
+            # Ajout du gap dans la deque et mise à jour des sommes
+            if len(gap_deque) == gap_deque.maxlen:
+                oldest = gap_deque[0]
+                gap_sum -= oldest
+                gap_sum_sq -= oldest * oldest
+            gap_deque.append(raw_gap)
+            gap_sum += raw_gap
+            gap_sum_sq += raw_gap * raw_gap
+
+        # Welford update
+        wf_n   += 1
+        delta   = a - wf_mean
+        wf_mean += delta / wf_n
+        wf_M2  += delta * (a - wf_mean)
+
+        cnt     += 1
+        cumsum  += a
+        cur_max  = max(cur_max, a)
+        if a < cur_min:
+            cur_min = a
+        last_ns  = t
+        if first_ns is None:
+            first_ns = t
+
+        # Mise à jour des compteurs de catégories
+        reg_ctr[reg] += 1
+        ch_ctr[ch]   += 1
+        cat_ctr[cat] += 1
+
+    return {
+        "client_AVG_TX_Amount":      out_avg,
+        "client_AVG_TX_PerDay":      out_avg_per_day,
+        "client_amount_deviation":   out_dev,
+        "client_abs_amount_deviation": out_abs_dev,
+        "client_amount_max_ratio":   out_max_ratio,
+        "client_amount_z_score":     out_z_score,
+        "client_is_new_max":         out_is_new_max,
+        "client_is_new_min":         out_is_new_min,
+        "client_total_transactions": out_cnt,
+        "client_time_since_last_tx": out_raw_gap,
+        "client_hours_since_last_tx": out_norm_gap,
+        "client_total_days_since_first": out_total_days,
+        "client_usual_region":       out_usual_reg,
+        "client_is_unusual_region":  out_is_unu_reg,
+        "client_region_freq":        out_reg_freq,
+        "client_usual_channel":      out_usual_ch,
+        "client_is_unusual_channel": out_is_unu_ch,
+        "client_channel_freq":       out_ch_freq,
+        "client_usual_category":     out_usual_cat,
+        "client_is_unusual_category": out_is_unu_cat,
+        "client_category_freq":      out_cat_freq,
+        "client_risk_score":         out_risk,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Partition worker — called by Dask, processes a slice of accounts
+# ---------------------------------------------------------------------------
+
+def _process_partition(
+    part_df: pd.DataFrame,
+    partition_state: dict,      # only states for accounts in this partition
+    smoothing_days: float,
+    default_gap_sec: float,
+    max_time_diffs: int,
+) -> pd.DataFrame:
+    result_frames = []
+
+    for account_id, grp in part_df.groupby("Account_Id", sort=False):
+        grp = grp.sort_values("TX_Time")
+
+        amounts    = grp["TX_Amount"].to_numpy(dtype=np.float64)
+        # Les timestamps sont déjà des datetime, on les convertit en ns
+        times_ns   = grp["TX_Time"].astype(np.int64).to_numpy()
+        regions    = grp["region"].to_numpy(dtype=object)
+        channels   = grp["Channel"].to_numpy(dtype=object)
+        categories = grp["category"].to_numpy(dtype=object)
+
+        init_state = partition_state.get(account_id, _empty_state(max_time_diffs))
+
+        feats = _compute_account_features_vectorized(
+            amounts, times_ns, regions, channels, categories,
+            init_state, smoothing_days, default_gap_sec, max_time_diffs,
+        )
+
+        frame = pd.DataFrame(feats, index=grp.index)
+        frame.insert(0, "TX_Amount", amounts.astype(np.float32))
+        frame.insert(0, "TX_Time",   grp["TX_Time"].to_numpy())
+        result_frames.append(frame)
+
+    if not result_frames:
+        return pd.DataFrame()
+    return pd.concat(result_frames)
+
+
+# ---------------------------------------------------------------------------
+# Partition worker for fit – computes final state for a group of accounts
+# (adapté pour utiliser les nouvelles structures)
+# ---------------------------------------------------------------------------
+
+def _fit_partition(part_df: pd.DataFrame, max_time_diffs: int) -> dict:
+    """Process a partition of accounts and return their final state dictionaries."""
+    stats = {}
+    for account_id, grp in part_df.groupby("Account_Id", sort=False):
+        state = _empty_state(max_time_diffs)
+        for tx in grp.itertuples(index=False):
+            a = float(tx.TX_Amount)
+            t = tx.TX_Time
+            t_ns = t.value  # nanosecondes
+
+            if state["last_time_ns"] is not None:
+                gap = (t_ns - state["last_time_ns"]) * 1e-9  # secondes
+                # Mise à jour de la deque et des sommes
+                deque = state["gap_deque"]
+                if len(deque) == deque.maxlen:
+                    oldest = deque[0]
+                    state["gap_sum"] -= oldest
+                    state["gap_sum_sq"] -= oldest * oldest
+                deque.append(gap)
+                state["gap_sum"] += gap
+                state["gap_sum_sq"] += gap * gap
+
+            # Welford update
+            wf_n = state["wf_count"] + 1
+            delta = a - state["wf_mean"]
+            new_mean = state["wf_mean"] + delta / wf_n
+            state["wf_M2"] += delta * (a - new_mean)
+            state["wf_count"] = wf_n
+            state["wf_mean"] = new_mean
+
+            state["cumcount"] += 1
+            state["cumsum"] += a
+            if a > state["max_amount"]:
+                state["max_amount"] = a
+            if a < state["min_amount"]:
+                state["min_amount"] = a
+            state["last_time_ns"] = t_ns
+            if state["first_time_ns"] is None:
+                state["first_time_ns"] = t_ns
+
+            state["region_counter"][tx.region] += 1
+            state["channel_counter"][tx.Channel] += 1
+            state["category_counter"][tx.category] += 1
+
+        stats[account_id] = state
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Transformer (inchangé, sauf l'utilisation de max_time_diffs dans _empty_state)
+# ---------------------------------------------------------------------------
 
 class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
     def __init__(
@@ -313,7 +408,7 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
         default_time_gap_days: int = 30,
         strict_as_of: bool = True,
         max_time_diffs: int = _TIME_DIFFS_CAP,
-        n_partitions: int | None = None,  # Number of Dask partitions
+        n_partitions: int | None = None,
     ):
         self.smoothing_days = smoothing_days
         self.default_time_gap_days = default_time_gap_days
@@ -334,55 +429,48 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
             )
         if not pd.api.types.is_numeric_dtype(X["TX_Amount"]):
             raise TypeError(
-                f"ClientBehaviorTransformer.{context}: TX_Amount must be numeric, got {X['TX_Amount'].dtype}"
+                f"ClientBehaviorTransformer.{context}: TX_Amount must be numeric, "
+                f"got {X['TX_Amount'].dtype}"
             )
 
     def fit(self, X: pd.DataFrame, y=None) -> "ClientBehaviorTransformer":
         self._validate(X, "fit")
         logger.info("ClientBehaviorTransformer.fit — %d rows", len(X))
 
+        # Region enrichment happens here — once
         Xw = X.copy()
         Xw["TX_Time"] = pd.to_datetime(Xw["TX_Time"])
-        Xw = _add_region(Xw)
+        if "region" not in Xw.columns:
+            Xw = _add_region(Xw)
         Xw["Channel"] = Xw["Channel"].fillna("Unknown")
         Xw["category"] = Xw["category"].fillna("Unknown")
         Xw = Xw.sort_values(["Account_Id", "TX_Time"])
 
-        stats: dict = {}
+        n_clients = Xw["Account_Id"].nunique()
+        # Ajustement du nombre de partitions
+        n_partitions = self.n_partitions or max(
+            1, min(n_clients // 500, os.cpu_count() * 4)
+        )
+        logger.info("fit: using %d Dask partitions", n_partitions)
 
-        for account_id, grp in Xw.groupby("Account_Id", sort=False):
-            state = _empty_state()
+        # Deterministic account → partition assignment by hash
+        unique_accounts = Xw["Account_Id"].unique()
+        account_to_part = {acc: hash(acc) % n_partitions for acc in unique_accounts}
+        Xw["_partition"] = Xw["Account_Id"].map(account_to_part)
 
-            for _, tx in grp.iterrows():
-                cur_amount = float(tx["TX_Amount"])
-                cur_time = tx["TX_Time"]
-                cur_region = tx["region"]
-                cur_channel = tx["Channel"]
-                cur_category = tx["category"]
+        delayed_results = []
+        for _, part_df in Xw.groupby("_partition", sort=False):
+            part_df = part_df.drop(columns=["_partition"])
+            delayed_results.append(
+                dask.delayed(_fit_partition)(part_df, self.max_time_diffs)
+            )
 
-                if state["last_time"] is not None:
-                    gap = (cur_time - state["last_time"]).total_seconds()
-                    state["time_diffs"].append(gap)
-                    if len(state["time_diffs"]) > self.max_time_diffs:
-                        state["time_diffs"] = state["time_diffs"][-self.max_time_diffs:]
+        computed = dask.compute(*delayed_results, scheduler="processes")
 
-                state["wf_count"], state["wf_mean"], state["wf_M2"] = _welford_update(
-                    state["wf_count"], state["wf_mean"], state["wf_M2"], cur_amount
-                )
-                state["cumcount"] += 1
-                state["cumsum"] += cur_amount
-                state["max_amount"] = max(state["max_amount"], cur_amount)
-                if cur_amount < state["min_amount"]:
-                    state["min_amount"] = cur_amount
-                state["last_time"] = cur_time
-                if state["first_time"] is None:
-                    state["first_time"] = cur_time
-
-                state["region_counter"][cur_region] += 1
-                state["channel_counter"][cur_channel] += 1
-                state["category_counter"][cur_category] += 1
-
-            stats[account_id] = state
+        # Merge all stats
+        stats = {}
+        for part_stats in computed:
+            stats.update(part_stats)
 
         with self._fit_lock:
             self.client_stats_ = stats
@@ -403,7 +491,6 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
     ) -> pd.DataFrame:
         if use_fitted_history is None:
             use_fitted_history = not self.strict_as_of
-
         initial_state = copy.deepcopy(self.client_stats_) if use_fitted_history else {}
         return self._transform_core(X, initial_state=initial_state)
 
@@ -411,75 +498,50 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
         self._validate(X, "_transform_core")
         logger.info("ClientBehaviorTransformer._transform_core — %d rows", len(X))
 
-        # Prepare data
         Xw = X.copy()
         Xw["TX_Time"] = pd.to_datetime(Xw["TX_Time"])
-        Xw = _add_region(Xw)
+
+        if "region" not in Xw.columns:
+            Xw = _add_region(Xw)
+
         Xw["Channel"] = Xw["Channel"].fillna("Unknown")
         Xw["category"] = Xw["category"].fillna("Unknown")
-        
-        # Determine number of partitions
-        n_partitions = self.n_partitions
-        if n_partitions is None:
-            # Auto-determine based on data size and client count
-            n_clients = Xw["Account_Id"].nunique()
-            n_rows = len(Xw)
-            # Aim for ~1000 clients per partition, but at least 1 partition
-            n_partitions = max(1, min(n_clients // 1000, 100))
-            # Also cap by row count (max 100k rows per partition)
-            n_partitions = max(n_partitions, n_rows // 100000)
-            n_partitions = min(n_partitions, 200)  # Upper limit
-        
-        logger.info(f"Using {n_partitions} Dask partitions")
-        
-        # Convert to Dask DataFrame
-        ddf = dd.from_pandas(Xw, npartitions=n_partitions)
-        
-        # Prepare transformer parameters for worker functions
-        transformer_params = {
-            'smoothing_days': self.smoothing_days,
-            'default_gap_sec': self._default_gap_sec,
-            'max_time_diffs': self.max_time_diffs
-        }
-        
-        # Apply transformation in parallel
-        with ProgressBar():
-            # Map partitions to processing function
-            result_ddf = ddf.map_partitions(
-                _process_account_partition,
-                initial_state_dict=initial_state,
-                transformer_params=transformer_params,
-                meta={
-                    "TX_Time": "object",
-                    "TX_Amount": "float32",
-                    "client_AVG_TX_Amount": "float32",
-                    "client_AVG_TX_PerDay": "float32",
-                    "client_amount_deviation": "float32",
-                    "client_abs_amount_deviation": "float32",
-                    "client_amount_max_ratio": "float32",
-                    "client_amount_z_score": "float32",
-                    "client_is_new_max": "int8",
-                    "client_is_new_min": "int8",
-                    "client_total_transactions": "int32",
-                    "client_time_since_last_tx": "float32",
-                    "client_hours_since_last_tx": "float32",
-                    "client_total_days_since_first": "float32",
-                    "client_usual_region": "object",
-                    "client_is_unusual_region": "int8",
-                    "client_region_freq": "float32",
-                    "client_usual_channel": "object",
-                    "client_is_unusual_channel": "int8",
-                    "client_channel_freq": "float32",
-                    "client_usual_category": "object",
-                    "client_is_unusual_category": "int8",
-                    "client_category_freq": "float32",
-                    "client_risk_score": "float32",
-                }
+
+        n_clients = Xw["Account_Id"].nunique()
+        n_partitions = self.n_partitions or max(
+            1, min(n_clients // 500, os.cpu_count() * 4)
+        )
+        logger.info(
+            "transform: using %d Dask partitions across %d CPUs",
+            n_partitions, os.cpu_count()
+        )
+
+        unique_accounts = Xw["Account_Id"].unique()
+        account_to_part = {acc: hash(acc) % n_partitions for acc in unique_accounts}
+        Xw["_partition"] = Xw["Account_Id"].map(account_to_part)
+
+        delayed_results = []
+        for _, part_df in Xw.groupby("_partition", sort=False):
+            part_df = part_df.drop(columns=["_partition"])
+            part_accounts = set(part_df["Account_Id"].unique())
+            partition_state = {
+                acc: initial_state[acc]
+                for acc in part_accounts
+                if acc in initial_state
+            }
+            delayed_results.append(
+                dask.delayed(_process_partition)(
+                    part_df,
+                    partition_state,
+                    self.smoothing_days,
+                    self._default_gap_sec,
+                    self.max_time_diffs,
+                )
             )
-            
-            # Compute result
-            result_df = result_ddf.compute()
-        
+
+        computed = dask.compute(*delayed_results, scheduler="processes")
+
+        result_df = pd.concat(computed).sort_index()
         logger.info(
             "ClientBehaviorTransformer._transform_core — done, shape=%s",
             result_df.shape,

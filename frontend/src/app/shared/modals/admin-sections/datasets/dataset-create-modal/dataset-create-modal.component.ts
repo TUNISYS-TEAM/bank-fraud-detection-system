@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Output, inject, signal, computed } from '@angular/core';
+import { Component, EventEmitter, Output, Input, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { DatasetService, DatasetType } from '../../../../../core/services/dataset.service';
@@ -16,6 +16,7 @@ import { switchMap, of, take } from 'rxjs';
 export class DatasetCreateModalComponent {
   @Output() close = new EventEmitter<void>();
   @Output() datasetUploaded = new EventEmitter<void>();
+  @Input() allowedTypes?: DatasetType[];
 
   private fb = inject(FormBuilder);
   private datasetService = inject(DatasetService);
@@ -28,6 +29,9 @@ export class DatasetCreateModalComponent {
   selectedFile = signal<File | null>(null);
   private authStore = inject(AuthStore);
   datasetTypes = computed(() => {
+    if (this.allowedTypes && this.allowedTypes.length > 0) {
+      return this.allowedTypes;
+    }
     if (this.authStore.isAdmin()) {
       return [DatasetType.CLIENTS, DatasetType.ACCOUNTS, DatasetType.TRANSACTIONS_VAL];
     }
@@ -39,8 +43,21 @@ export class DatasetCreateModalComponent {
 
   datasetForm: FormGroup = this.fb.group({
     datasetName: ['', [Validators.required, Validators.minLength(3)]],
-    type: [this.authStore.isAdmin() ? DatasetType.TRANSACTIONS_VAL : DatasetType.TRANSACTIONS_TRAIN, [Validators.required]]
+    type: ['', [Validators.required]]
   });
+
+  constructor() {
+    // We update the type in ngOnInit or whenever inputs are available if using newer Angular
+    // But for now let's set a default and we will patch it if allowedTypes is provided
+  }
+
+  ngOnInit() {
+    const defaultType = (this.allowedTypes && this.allowedTypes.length > 0)
+      ? this.allowedTypes[0]
+      : (this.authStore.isAdmin() ? DatasetType.TRANSACTIONS_VAL : DatasetType.TRANSACTIONS_TRAIN);
+    
+    this.datasetForm.patchValue({ type: defaultType });
+  }
 
   onFileSelected(event: any): void {
     const file = event.target.files[0];

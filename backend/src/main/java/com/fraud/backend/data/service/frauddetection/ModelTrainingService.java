@@ -64,10 +64,10 @@ public class ModelTrainingService {
         if (request.getHyperparameters() != null) {
             hyperparameters.putAll(request.getHyperparameters());
         }
-        
+
         // Ensure random_state is set
         hyperparameters.put("random_state", request.getRandomSeed());
-        
+
         // Add training metadata
         Map<String, Object> trainingMetadata = new HashMap<>();
         trainingMetadata.put("datasetUuid", request.getDatasetUuid().toString());
@@ -75,7 +75,7 @@ public class ModelTrainingService {
         trainingMetadata.put("testSize", request.getTestSize());
         trainingMetadata.put("randomSeed", request.getRandomSeed());
         trainingMetadata.put("trainingDate", LocalDateTime.now().toString());
-        
+
         hyperparameters.put("_trainingMetadata", trainingMetadata);
 
         // 3. Create or get model
@@ -93,11 +93,6 @@ public class ModelTrainingService {
 
         // 5. Update model with results
         updateModelWithResults(model, response);
-
-        // 6. Export to ONNX if training was successful
-        if ("COMPLETED".equals(response.getStatus())) {
-            exportModelToOnnx(model, response.getJobUuid());
-        }
 
         return response;
     }
@@ -135,13 +130,15 @@ public class ModelTrainingService {
         Double testSize,
         Integer randomSeed
     ) throws Exception {
-        
+
         Path tempDataset = null;
         Path tempHyperparams = null;
         Path tempModel = null;
+        Path tempPipeline = null;
         String containerDatasetPath = null;
         String containerHyperparamsPath = null;
         String containerModelPath = null;
+        String containerPipelinePath = null;
 
         try {
             // 1. Download dataset from MinIO to temp file
@@ -177,18 +174,23 @@ public class ModelTrainingService {
 
             log.info("Executing command: {}", String.join(" ", command));
 
-            // 5. Run training
+            // 5. Run training.
+            // IMPORTANT: do NOT use redirectErrorStream(true).
+            // The Python script writes all logging to stderr and only the final JSON to stdout.
+            // Merging the streams causes log lines (which may contain '{' from dict reprs)
+            // to pollute stdout and break JSON parsing.
             ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
+            // stderr → Spring logs (INFO level); stdout kept separate for JSON
+            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process process = pb.start();
 
-            // Read output
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            // Read stdout only — this is where the Python script writes the JSON result
+            StringBuilder stdoutOutput = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
-                    log.debug("[Python] {}", line);
+                    stdoutOutput.append(line).append("\n");
                 }
             }
 
@@ -199,156 +201,113 @@ public class ModelTrainingService {
             }
 
             int exitCode = process.exitValue();
-            String result = output.toString().trim();
+            String result = stdoutOutput.toString().trim();
 
             if (exitCode != 0) {
-                log.error("Training failed with code {}: {}", exitCode, result);
-                throw new RuntimeException("Training failed: " + result);
+                log.error("Training script exited with code {}", exitCode);
+                // Try to parse an error JSON from stdout first; fall back to raw output
+                if (!result.isEmpty()) {
+                    log.error("Training stdout: {}", result);
+                }
+                throw new RuntimeException("Training failed with exit code " + exitCode);
             }
 
-            // 6. Parse JSON result
+            if (result.isEmpty()) {
+                throw new RuntimeException("Training script produced no stdout output");
+            }
+
+            log.debug("Training stdout (first 500 chars): {}",
+                result.length() > 500 ? result.substring(0, 500) : result);
+
+            // 6. Parse JSON result — stdout should contain exactly one JSON line
             JsonNode root = extractJsonFromOutput(result);
             if (root == null) {
+                log.error("Could not extract JSON from stdout: {}", result);
                 throw new RuntimeException("No valid JSON output from training script");
             }
 
             // 7. Build response
             TrainingJobResponse response = buildTrainingResponse(root, datasetId, modelId, jobUuid);
-            
-            // 8. Save the trained model file path
+
+            // 8. Upload trained model joblib to MinIO
             String modelFilename = "random_forest_" + jobUuid + ".joblib";
             String modelKey = "models/trained/" + datasetId + "/" + modelFilename;
-            
-            // Copy model from container to MinIO
             containerModelPath = "/app/output/models/" + modelFilename;
             tempModel = Files.createTempFile("trained_model_", ".joblib");
-            
+
             execDockerCopyFromContainer(containerModelPath, tempModel);
             try (var in = Files.newInputStream(tempModel)) {
                 storageService.upload(modelKey, in, Files.size(tempModel), "application/octet-stream");
             }
             response.setModelPath(modelKey);
+            log.info("Model uploaded to MinIO: {}", modelKey);
+
+            // 9. Upload pipeline joblib to MinIO
+            String pipelineFilename = "pipeline_" + jobUuid + ".joblib";
+            containerPipelinePath = "/app/output/pipelines/" + pipelineFilename;
+            String pipelineKey = "models/pipelines/" + datasetId + "/" + pipelineFilename;
+            tempPipeline = Files.createTempFile("pipeline_", ".joblib");
+            try {
+                execDockerCopyFromContainer(containerPipelinePath, tempPipeline);
+                try (var in = Files.newInputStream(tempPipeline)) {
+                    storageService.upload(pipelineKey, in, Files.size(tempPipeline), "application/octet-stream");
+                }
+                response.setPipelinePath(pipelineKey);
+                log.info("Pipeline uploaded to MinIO: {}", pipelineKey);
+            } catch (Exception e) {
+                log.warn("Could not upload pipeline: {}", e.getMessage());
+            }
+
+            // 10. Upload ONNX model to MinIO if the training script exported it.
+            //     The Python script runs to_onnx() inline and sets onnx_path in the JSON result.
+            JsonNode onnxPathNode = root.get("onnx_path");
+            if (onnxPathNode != null && !onnxPathNode.isNull()) {
+                String containerOnnxPath = onnxPathNode.asText();
+                Path tempOnnx = Files.createTempFile("model_", ".onnx");
+                try {
+                    execDockerCopyFromContainer(containerOnnxPath, tempOnnx);
+                    String onnxFilename = "random_forest_" + jobUuid + ".onnx";
+                    String onnxKey = "models/onnx/" + datasetId + "/" + onnxFilename;
+                    try (var in = Files.newInputStream(tempOnnx)) {
+                        storageService.upload(onnxKey, in, Files.size(tempOnnx), "application/octet-stream");
+                    }
+                    response.setOnnxPath(onnxKey);
+                    log.info("ONNX model uploaded to MinIO: {}", onnxKey);
+                    // cleanup container onnx file
+                    try { execDockerCommand("rm", "-f", containerOnnxPath); } catch (Exception e) { /* best effort */ }
+                } catch (Exception e) {
+                    log.warn("Could not upload ONNX model (non-fatal): {}", e.getMessage());
+                } finally {
+                    Files.deleteIfExists(tempOnnx);
+                }
+            } else {
+                log.info("No ONNX output from training script (to_onnx may not be implemented yet)");
+            }
 
             return response;
 
         } finally {
-            // Cleanup
+            // Cleanup temp files
             if (tempDataset != null) Files.deleteIfExists(tempDataset);
             if (tempHyperparams != null) Files.deleteIfExists(tempHyperparams);
             if (tempModel != null) Files.deleteIfExists(tempModel);
-            
+            if (tempPipeline != null) Files.deleteIfExists(tempPipeline);
+
             if (containerDatasetPath != null) {
-                try { execDockerCommand("rm", "-f", containerDatasetPath); } catch (Exception e) {}
+                try { execDockerCommand("rm", "-f", containerDatasetPath); } catch (Exception e) { /* best effort */ }
             }
             if (containerHyperparamsPath != null) {
-                try { execDockerCommand("rm", "-f", containerHyperparamsPath); } catch (Exception e) {}
+                try { execDockerCommand("rm", "-f", containerHyperparamsPath); } catch (Exception e) { /* best effort */ }
             }
             if (containerModelPath != null) {
-                try { execDockerCommand("rm", "-f", containerModelPath); } catch (Exception e) {}
+                try { execDockerCommand("rm", "-f", containerModelPath); } catch (Exception e) { /* best effort */ }
+            }
+            if (containerPipelinePath != null) {
+                try { execDockerCommand("rm", "-f", containerPipelinePath); } catch (Exception e) { /* best effort */ }
             }
         }
     }
 
-    private void exportModelToOnnx(ModelML model, UUID jobUuid) {
-        Path tempModel = null;
-        Path tempOnnx = null;
-        String containerModelPath = null;
-        String containerOnnxPath = null;
-        
-        try {
-            log.info("Exporting model to ONNX for model: {}", model.getModelUuid());
-            
-            // Get model path from hyperparameters
-            Map<String, Object> hyperparams = model.getHyperparameters();
-            if (hyperparams == null || !hyperparams.containsKey("_trainingResults")) {
-                log.warn("No training results found for model: {}", model.getModelUuid());
-                return;
-            }
-
-            Map<String, Object> trainingResults = (Map<String, Object>) hyperparams.get("_trainingResults");
-            String modelPath = (String) trainingResults.get("modelPath");
-            
-            if (modelPath == null) {
-                log.warn("No model path found in training results");
-                return;
-            }
-
-            // Download the model file
-            tempModel = Files.createTempFile("model_", ".joblib");
-            try (var in = storageService.download(modelPath);
-                 var out = Files.newOutputStream(tempModel)) {
-                in.transferTo(out);
-            }
-
-            // Copy to container
-            containerModelPath = "/app/data/" + tempModel.getFileName().toString();
-            execDockerCopy(tempModel, containerModelPath);
-
-            // Run ONNX export
-            List<String> command = new ArrayList<>(List.of(
-                "docker", "exec", "fraud-ml-pipeline",
-                "python", "/app/scripts/export_onnx.py",
-                "--model-type", "random_forest",
-                "--model-path", containerModelPath,
-                "--output-dir", "/app/output/onnx"
-            ));
-
-            ProcessBuilder pb = new ProcessBuilder(command);
-            Process process = pb.start();
-            
-            boolean finished = process.waitFor(5, TimeUnit.MINUTES);
-            
-            if (!finished) {
-                process.destroyForcibly();
-                log.error("ONNX export timed out after 5 minutes");
-                return;
-            }
-            
-            int exitCode = process.exitValue();
-            
-            if (exitCode == 0) {
-                // Copy ONNX file back from container
-                String onnxFilename = "random_forest_" + jobUuid + ".onnx";
-                containerOnnxPath = "/app/output/onnx/" + onnxFilename;
-                
-                tempOnnx = Files.createTempFile("model_", ".onnx");
-                execDockerCopyFromContainer(containerOnnxPath, tempOnnx);
-                
-                // Upload to MinIO
-                String onnxKey = "models/onnx/" + model.getModelUuid() + "/" + onnxFilename;
-                try (var in = Files.newInputStream(tempOnnx)) {
-                    storageService.upload(onnxKey, in, Files.size(tempOnnx), "application/octet-stream");
-                }
-                
-                // Store ONNX path in training results
-                trainingResults.put("onnxPath", onnxKey);
-                hyperparams.put("_trainingResults", trainingResults);
-                model.setHyperparameters(hyperparams);
-                modelMLRepository.save(model);
-                
-                log.info("ONNX model exported and saved: {}", onnxKey);
-            } else {
-                log.error("ONNX export failed with exit code: {}", exitCode);
-            }
-
-        } catch (Exception e) {
-            log.error("Failed to export model to ONNX: {}", e.getMessage(), e);
-        } finally {
-            // Cleanup
-            if (tempModel != null) {
-                try { Files.deleteIfExists(tempModel); } catch (Exception e) {}
-            }
-            if (tempOnnx != null) {
-                try { Files.deleteIfExists(tempOnnx); } catch (Exception e) {}
-            }
-            if (containerModelPath != null) {
-                try { execDockerCommand("rm", "-f", containerModelPath); } catch (Exception e) {}
-            }
-            if (containerOnnxPath != null) {
-                try { execDockerCommand("rm", "-f", containerOnnxPath); } catch (Exception e) {}
-            }
-        }
-    }
 
     private void execDockerCopyFromContainer(String containerPath, Path localPath) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
@@ -407,7 +366,7 @@ public class ModelTrainingService {
 
         // Extract metrics for easy access
         response.extractMetrics();
-        
+
         return response;
     }
 
@@ -418,7 +377,7 @@ public class ModelTrainingService {
             model.setPrecision(response.getPrecision());
             model.setRecall(response.getRecall());
             model.setF1Score(response.getF1Score());
-            
+
             if (response.getFeatureImportance() != null) {
                 model.setFeatureImportance(response.getFeatureImportance());
             }
@@ -429,7 +388,7 @@ public class ModelTrainingService {
         if (model.getHyperparameters() != null) {
             hyperparameters.putAll(model.getHyperparameters());
         }
-        
+
         Map<String, Object> trainingResults = new HashMap<>();
         trainingResults.put("jobUuid", response.getJobUuid().toString());
         trainingResults.put("completedAt", response.getCompletedAt().toString());
@@ -440,7 +399,9 @@ public class ModelTrainingService {
         trainingResults.put("testRows", response.getTestRows());
         trainingResults.put("fraudRate", response.getFraudRate());
         trainingResults.put("modelPath", response.getModelPath());
-        
+        trainingResults.put("pipelinePath", response.getPipelinePath());
+        trainingResults.put("onnxPath", response.getOnnxPath());
+
         hyperparameters.put("_trainingResults", trainingResults);
         model.setHyperparameters(hyperparameters);
 
@@ -455,7 +416,7 @@ public class ModelTrainingService {
         // Extract confusion matrix from hyperparameters
         Map<String, Long> confusionMatrix = new HashMap<>();
         String onnxPath = null;
-        
+
         if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingResults")) {
             Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters().get("_trainingResults");
             if (trainingResults.containsKey("confusionMatrix")) {
@@ -524,7 +485,7 @@ public class ModelTrainingService {
     private void execDockerCommand(String... commands) throws Exception {
         List<String> cmd = new ArrayList<>(List.of("docker", "exec", "fraud-ml-pipeline"));
         cmd.addAll(Arrays.asList(commands));
-        
+
         ProcessBuilder pb = new ProcessBuilder(cmd);
         Process process = pb.start();
         int exitCode = process.waitFor();
@@ -534,15 +495,26 @@ public class ModelTrainingService {
     }
 
     private JsonNode extractJsonFromOutput(String output) {
+        // The Python script writes exactly one JSON line to stdout.
+        // Try each line in order — the first valid JSON object wins.
+        for (String line : output.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("{")) {
+                try {
+                    return objectMapper.readTree(trimmed);
+                } catch (Exception e) {
+                    log.warn("Line looked like JSON but failed to parse: {}", e.getMessage());
+                }
+            }
+        }
+        // Fallback: try the whole output as a single blob
         int jsonStart = output.indexOf('{');
         int jsonEnd = output.lastIndexOf('}');
-        
         if (jsonStart >= 0 && jsonEnd > jsonStart) {
             try {
-                String jsonStr = output.substring(jsonStart, jsonEnd + 1);
-                return objectMapper.readTree(jsonStr);
+                return objectMapper.readTree(output.substring(jsonStart, jsonEnd + 1));
             } catch (Exception e) {
-                log.error("Failed to parse JSON: {}", e.getMessage());
+                log.error("Failed to parse JSON from output blob: {}", e.getMessage());
             }
         }
         return null;
