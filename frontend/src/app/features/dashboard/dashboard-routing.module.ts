@@ -8,6 +8,7 @@ import { ImportDataComponent } from './pages/import-data/import-data.component';
 import { PerformanceComponent } from './pages/performance/performance.component';
 import { SimulationComponent } from './pages/simulation/simulation.component';
 import { TrainDataComponent } from './pages/train-data/train-data.component';
+import { MessagesComponent } from './pages/messaging/messaging.component'; 
 
 const routes: Routes = [
   {
@@ -22,6 +23,7 @@ const routes: Routes = [
       { path: 'performance', component: PerformanceComponent },
       { path: 'simulation', component: SimulationComponent },
       { path: 'training-data', component: TrainDataComponent },
+      { path: 'messages', component: MessagesComponent },
       {
         path: 'administration',
         loadChildren: () => import('./pages/administration/administration.module').then(m => m.AdministrationModule)

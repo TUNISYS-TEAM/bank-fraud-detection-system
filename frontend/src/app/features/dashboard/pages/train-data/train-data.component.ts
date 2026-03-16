@@ -1,22 +1,98 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { forkJoin, of } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
+import { catchError } from 'rxjs/operators';
 import { environment } from '../../../../../environments/environment';
-import { DatasetService, Dataset, ApiResponse, DatasetType } from '../../../../core/services/dataset.service';
+import { DatasetService, Dataset, ApiResponse, DatasetType, DatasetStatus } from '../../../../core/services/dataset.service';
 import { AuthStore } from '../../../../core/store/auth.store';
 import { KpiCard } from '../../../../shared/cards/cards.component';
+
+// Extended Dataset interface with additional properties
+export interface ExtendedDataset extends Dataset {
+  statistics?: {
+    fraudRate?: number;
+    columnCount?: number;
+    [key: string]: any;
+  };
+}
+
+export interface AnalysisResult {
+  columns: ColumnInfo[] | null;
+  statistics: {
+    rowCount: number;
+    columnCount: number;
+    memoryUsageMb: number;
+    analyzedRows?: number;
+    isPartialAnalysis?: boolean;
+    fraudRate?: number;
+    duplicateCount?: number;
+    duplicateRate?: number;
+    totalMissingValues?: number;
+  } | null;
+  suggestedFeatures: string[] | null;
+  suggestedTarget: string | null;
+}
+
+export interface ColumnInfo {
+  name: string;
+  type: 'NUMERIC' | 'CATEGORICAL' | 'DATE' | 'BINARY' | 'TEXT';
+  uniqueCount: number;
+  nullRatio: number;
+  stats: any;
+  isTarget?: boolean;
+}
+
+export interface PreviewResponse {
+  datasetUuid: string;
+  datasetName: string;
+  columns: string[];
+  rows: Record<string, string>[];
+  returnedRows: number;
+  limit: number;
+  message?: string;
+}
+
+export interface CleanResponse {
+  datasetUuid: string;
+  datasetName: string;
+  status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS';
+  jobId: string;
+  processedFilePath?: string;
+  stats?: {
+    originalRows: number;
+    cleanedRows: number;
+    duplicatesRemoved: number;
+    nullRowsRemoved: number;
+    reductionPercent: number;
+    fraudCount: number;
+    fraudRate: number;
+  };
+}
+
+export interface ExtractBehaviorResponse {
+  datasetUuid: string;
+  datasetName: string;
+  status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS';
+  jobId: string;
+  outputPath?: string;
+  stats?: {
+    totalClients: number;
+    featuresGenerated: number;
+    processingTimeMs: number;
+  };
+}
 
 @Component({
   selector: 'app-train-data',
   templateUrl: './train-data.component.html',
   styleUrls: ['./train-data.component.css']
 })
-export class TrainDataComponent implements OnInit {
+export class TrainDataComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private datasetService = inject(DatasetService);
   authStore = inject(AuthStore);
   public datasetType = DatasetType;
+  public datasetStatus = DatasetStatus;
 
   // KPI Cards
   kpiCards = signal<KpiCard[]>([
@@ -26,8 +102,8 @@ export class TrainDataComponent implements OnInit {
     { label: 'Dernier Import', value: '...', icon: 'clock', color: '#f97316' }
   ]);
 
-  // Dataset table state
-  datasets = signal<Dataset[]>([]);
+  // Dataset table state - Use ExtendedDataset
+  datasets = signal<ExtendedDataset[]>([]);
   loading = signal(false);
   currentPage = signal(0);
   pageSize = 10;
@@ -35,12 +111,56 @@ export class TrainDataComponent implements OnInit {
   totalPages = signal(0);
   searchQuery = signal('');
 
+  // Expanded state for accordion
+  expandedDataset = signal<string | null>(null);
+
+  // Analysis states per dataset
+  analysisResults = signal<Map<string, AnalysisResult>>(new Map());
+  previewDataMap = signal<Map<string, PreviewResponse>>(new Map());
+  analyzingDatasetId = signal<string | null>(null);
+  analysisError = signal<string | null>(null);
+  previewLoading = signal(false);
+
+  // Cleaning states
+  cleaning = signal<boolean>(false);
+  cleaningSuccess = signal<boolean>(false);
+  cleaningError = signal<string | null>(null);
+  cleanedFilePath = signal<string | null>(null);
+  cleaningStats = signal<any | null>(null);
+  cleaningDatasetId = signal<string | null>(null);
+
+  // Extract Behavior states
+  extractingBehavior = signal<boolean>(false);
+  extractingSuccess = signal<boolean>(false);
+  extractingError = signal<string | null>(null);
+  extractingStats = signal<any | null>(null);
+  extractingDatasetId = signal<string | null>(null);
+  extractedFilePath = signal<string | null>(null);
+
+  // Progress and timing for analysis
+  analysisProgress = signal<number>(0);
+  analysisElapsedTime = signal<number>(0);
+  private analysisProgressInterval: any;
+  private analysisStartTime: number = 0;
+
+  // Progress and timing for cleaning
+  cleaningProgress = signal<number>(0);
+  cleaningElapsedTime = signal<string>('0:00');
+  private cleaningProgressInterval: any;
+  private cleaningStartTime: number = 0;
+
+  // Progress and timing for extract behavior
+  extractingProgress = signal<number>(0);
+  extractingElapsedTime = signal<string>('0:00');
+  private extractingProgressInterval: any;
+  private extractingStartTime: number = 0;
+
   // Modals
   showCreateModal = signal(false);
   showViewModal = signal(false);
   showUpdateModal = signal(false);
   showDeleteModal = signal(false);
-  selectedDataset = signal<Dataset | null>(null);
+  selectedDataset = signal<ExtendedDataset | null>(null);
 
   // Computed
   isLoading = computed(() => this.loading());
@@ -51,20 +171,32 @@ export class TrainDataComponent implements OnInit {
     return { start, end };
   });
 
+  // Formatage du temps écoulé pour l'analyse
+  formattedElapsedTime = computed(() => {
+    const seconds = Math.floor(this.analysisElapsedTime() / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  });
+
   ngOnInit(): void {
     this.loadStats();
     this.loadDatasets();
   }
 
+  ngOnDestroy(): void {
+    this.clearAnalysisProgressInterval();
+    this.clearCleaningProgressInterval();
+    this.clearExtractingProgressInterval();
+  }
+
   // ── KPIs ──────────────────────────────────────────────────────────────
   private loadStats(): void {
-    // Get count for TRANSACTIONS_TRAIN datasets
     const count$ = this.http.get<number>(
       `${environment.apiUrl}/datasets/count`,
       { params: { types: 'TRANSACTIONS_TRAIN' } }
     ).pipe(catchError(() => of(0)));
 
-    // Get total size for TRANSACTIONS_TRAIN datasets
     const size$ = this.http.get<number>(
       `${environment.apiUrl}/datasets/total-size`,
       { params: { types: 'TRANSACTIONS_TRAIN' } }
@@ -100,8 +232,7 @@ export class TrainDataComponent implements OnInit {
   // ── Datasets ──────────────────────────────────────────────────────────
   loadDatasets(): void {
     this.loading.set(true);
-    
-    // Call the list method with proper parameters
+
     this.datasetService.list({
       q: this.searchQuery() || undefined,
       type: DatasetType.TRANSACTIONS_TRAIN,
@@ -109,11 +240,22 @@ export class TrainDataComponent implements OnInit {
       size: this.pageSize
     }).subscribe({
       next: (response: ApiResponse<Dataset>) => {
-        this.datasets.set(response.content);
+        // Transform to ExtendedDataset
+        const extendedDatasets: ExtendedDataset[] = response.content.map(ds => ({
+          ...ds,
+          statistics: (ds as any).statistics || { columnCount: ds.columnCount }
+        }));
+
+        this.datasets.set(extendedDatasets);
         this.totalElements.set(response.totalElements);
         this.totalPages.set(response.totalPages);
         this.loading.set(false);
         this.updateExtraKpis();
+
+        // Load preview for each dataset
+        extendedDatasets.forEach(dataset => {
+          this.loadPreview(dataset.datasetUuid);
+        });
       },
       error: (error) => {
         console.error('Error loading datasets:', error);
@@ -133,12 +275,336 @@ export class TrainDataComponent implements OnInit {
     this.loadDatasets();
   }
 
+  // ── Accordion ─────────────────────────────────────────────────────────
+  toggleDataset(datasetUuid: string): void {
+    const newExpanded = this.expandedDataset() === datasetUuid ? null : datasetUuid;
+    this.expandedDataset.set(newExpanded);
+
+    // Load analysis if not already loaded
+    if (newExpanded === datasetUuid && !this.analysisResults().has(datasetUuid)) {
+      this.checkExistingAnalysis(datasetUuid);
+    }
+  }
+
+  // ── Analysis Methods ──────────────────────────────────────────────────
+  hasValidAnalysisForDataset(datasetUuid: string): boolean {
+    const result = this.analysisResults().get(datasetUuid);
+    return !!(result && result.columns && result.columns.length > 0);
+  }
+
+  getAnalysisForDataset(datasetUuid: string): AnalysisResult | undefined {
+    return this.analysisResults().get(datasetUuid);
+  }
+
+  previewDataForDataset(datasetUuid: string): PreviewResponse | undefined {
+    return this.previewDataMap().get(datasetUuid);
+  }
+
+  private checkExistingAnalysis(datasetUuid: string): void {
+    this.http.get<AnalysisResult>(`${environment.apiUrl}/datasets/${datasetUuid}/analysis`).subscribe({
+      next: (result) => {
+        const newMap = new Map(this.analysisResults());
+        newMap.set(datasetUuid, result);
+        this.analysisResults.set(newMap);
+      },
+      error: (error) => {
+        if (error.status !== 404) {
+          console.error('Error checking analysis:', error);
+        }
+      }
+    });
+  }
+
+  // ── Analysis Endpoint ─────────────────────────────────────────────────
+  startAnalysis(datasetUuid: string): void {
+    if (!datasetUuid) return;
+
+    this.analyzingDatasetId.set(datasetUuid);
+    this.analysisError.set(null);
+    this.analysisProgress.set(0);
+
+    this.startAnalysisProgressSimulation();
+
+    this.http.post(`${environment.apiUrl}/datasets/${datasetUuid}/analyze`, {}).subscribe({
+      next: () => {
+        this.updateAnalysisProgress(50);
+        this.pollAnalysis(datasetUuid);
+      },
+      error: (error) => {
+        console.error('Error starting analysis:', error);
+        this.stopAnalysisProgress(false);
+        this.analyzingDatasetId.set(null);
+        this.analysisError.set(error.error?.message || 'Erreur lors du lancement de l\'analyse');
+      }
+    });
+  }
+
+  pollAnalysis(datasetUuid: string): void {
+    let attempts = 0;
+    const maxAttempts = 60;
+
+    const checkAnalysis = () => {
+      this.http.get<AnalysisResult>(`${environment.apiUrl}/datasets/${datasetUuid}/analysis`).subscribe({
+        next: (result) => {
+          if (result && result.columns && result.columns.length > 0) {
+            this.stopAnalysisProgress(true);
+
+            const newMap = new Map(this.analysisResults());
+            newMap.set(datasetUuid, result);
+            this.analysisResults.set(newMap);
+
+            this.analyzingDatasetId.set(null);
+          } else {
+            attempts++;
+            const progress = Math.min(90, 50 + (attempts * 2));
+            this.updateAnalysisProgress(progress);
+
+            if (attempts >= maxAttempts) {
+              this.stopAnalysisProgress(false);
+              this.analyzingDatasetId.set(null);
+              this.analysisError.set('Délai d\'attente dépassé pour l\'analyse');
+            } else {
+              setTimeout(checkAnalysis, 2000);
+            }
+          }
+        },
+        error: (error) => {
+          attempts++;
+          const progress = Math.min(90, 50 + (attempts * 2));
+          this.updateAnalysisProgress(progress);
+
+          if (attempts >= maxAttempts) {
+            this.stopAnalysisProgress(false);
+            this.analyzingDatasetId.set(null);
+            this.analysisError.set('Délai d\'attente dépassé pour l\'analyse');
+          } else if (error.status === 404 || error.status === 204) {
+            setTimeout(checkAnalysis, 2000);
+          } else {
+            this.stopAnalysisProgress(false);
+            this.analyzingDatasetId.set(null);
+            this.analysisError.set('Erreur lors du chargement de l\'analyse');
+          }
+        }
+      });
+    };
+
+    setTimeout(checkAnalysis, 1000);
+  }
+
+  // ── Preview Methods ───────────────────────────────────────────────────
+  private loadPreview(datasetUuid: string): void {
+    this.previewLoading.set(true);
+
+    this.datasetService.preview(datasetUuid, 5).subscribe({
+      next: (preview) => {
+        const newMap = new Map(this.previewDataMap());
+        newMap.set(datasetUuid, preview);
+        this.previewDataMap.set(newMap);
+        this.previewLoading.set(false);
+      },
+      error: (error) => {
+        console.error('Error loading preview:', error);
+        this.previewLoading.set(false);
+      }
+    });
+  }
+
+  // ── Analysis Progress Methods ─────────────────────────────────────────
+  private startAnalysisProgressSimulation(): void {
+    this.analysisProgress.set(0);
+    this.analysisElapsedTime.set(0);
+    this.analysisStartTime = Date.now();
+
+    this.analysisProgressInterval = setInterval(() => {
+      this.analysisElapsedTime.set(Date.now() - this.analysisStartTime);
+
+      const currentProgress = this.analysisProgress();
+      if (currentProgress < 90) {
+        const increment = Math.max(0.5, (90 - currentProgress) / 20);
+        this.analysisProgress.update(p => Math.min(90, p + increment));
+      }
+    }, 200);
+  }
+
+  private updateAnalysisProgress(percent: number): void {
+    this.analysisProgress.set(percent);
+  }
+
+  private stopAnalysisProgress(completed: boolean = true): void {
+    if (completed) {
+      this.analysisProgress.set(100);
+      setTimeout(() => {
+        this.clearAnalysisProgressInterval();
+      }, 500);
+    } else {
+      this.clearAnalysisProgressInterval();
+    }
+  }
+
+  private clearAnalysisProgressInterval(): void {
+    if (this.analysisProgressInterval) {
+      clearInterval(this.analysisProgressInterval);
+      this.analysisProgressInterval = null;
+    }
+  }
+
+  // ── Clean Endpoint ────────────────────────────────────────────────────
+  // ── Clean Endpoint ────────────────────────────────────────────────────
+  startCleaning(datasetUuid: string): void {
+    if (!datasetUuid) return;
+
+    // Set cleaning state
+    this.cleaningDatasetId.set(datasetUuid);
+    this.cleaningError.set(null);
+    this.cleaningProgress.set(0);
+
+    this.startCleaningProgressSimulation();
+
+    this.http.post<CleanResponse>(`${environment.apiUrl}/datasets/${datasetUuid}/clean`, {}).subscribe({
+      next: (response) => {
+        this.stopCleaningProgress(true);
+
+        // Update dataset status
+        this.datasets.update(datasets => {
+          return datasets.map(d => {
+            if (d.datasetUuid === datasetUuid) {
+              return {
+                ...d,
+                status: DatasetStatus.PROCESSED,
+                processedFilePath: response.processedFilePath
+              } as ExtendedDataset;
+            }
+            return d;
+          });
+        });
+
+        // Reload preview to show updated data
+        this.loadPreview(datasetUuid);
+
+        // Reset cleaning state immediately
+        this.cleaningDatasetId.set(null);
+        this.cleaningProgress.set(0);
+
+        console.log('Nettoyage terminé avec succès');
+      },
+      error: (err) => {
+        this.stopCleaningProgress(false);
+        this.cleaningError.set(err.error?.message || 'Erreur lors du nettoyage');
+        this.cleaningDatasetId.set(null);
+        this.cleaningProgress.set(0);
+        console.error('Error cleaning dataset:', err);
+      }
+    });
+  }
+
+  private startCleaningProgressSimulation(): void {
+    this.cleaningProgress.set(0);
+    this.cleaningStartTime = Date.now();
+
+    this.cleaningProgressInterval = setInterval(() => {
+      const currentProgress = this.cleaningProgress();
+      if (currentProgress < 90) {
+        const increment = Math.max(0.5, (90 - currentProgress) / 20);
+        this.cleaningProgress.update(p => Math.min(90, p + increment));
+      }
+    }, 200);
+  }
+
+  private stopCleaningProgress(completed: boolean = true): void {
+    if (completed) {
+      this.cleaningProgress.set(100);
+      setTimeout(() => {
+        this.clearCleaningProgressInterval();
+      }, 500);
+    } else {
+      this.clearCleaningProgressInterval();
+    }
+  }
+
+  private clearCleaningProgressInterval(): void {
+    if (this.cleaningProgressInterval) {
+      clearInterval(this.cleaningProgressInterval);
+      this.cleaningProgressInterval = null;
+    }
+  }
+
+  // ── Extract Behavior Endpoint ─────────────────────────────────────────
+  startExtractBehavior(datasetUuid: string): void {
+    if (!datasetUuid) return;
+
+    this.extractingBehavior.set(true);
+    this.extractingSuccess.set(false);
+    this.extractingError.set(null);
+    this.extractingStats.set(null);
+    this.extractedFilePath.set(null);
+    this.extractingDatasetId.set(datasetUuid);
+    this.extractingProgress.set(0);
+
+    this.startExtractingProgressSimulation();
+
+    this.http.post<ExtractBehaviorResponse>(`${environment.apiUrl}/datasets/${datasetUuid}/extract-behavior`, {}).subscribe({
+      next: (response) => {
+        this.stopExtractingProgress(true);
+
+        this.extractingBehavior.set(false);
+        this.extractingSuccess.set(true);
+        this.extractedFilePath.set(response.outputPath || null);
+        this.extractingStats.set(response.stats || null);
+
+        console.log('Extraction du comportement client terminée avec succès');
+      },
+      error: (err) => {
+        this.stopExtractingProgress(false);
+        this.extractingBehavior.set(false);
+        this.extractingError.set(err.error?.message || 'Erreur lors de l\'extraction du comportement client');
+        console.error('Error extracting behavior:', err);
+      }
+    });
+  }
+
+  private startExtractingProgressSimulation(): void {
+    this.extractingProgress.set(0);
+    this.extractingElapsedTime.set('0:00');
+    this.extractingStartTime = Date.now();
+
+    this.extractingProgressInterval = setInterval(() => {
+      const elapsedSeconds = Math.floor((Date.now() - this.extractingStartTime) / 1000);
+      const minutes = Math.floor(elapsedSeconds / 60);
+      const seconds = elapsedSeconds % 60;
+      this.extractingElapsedTime.set(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+
+      const currentProgress = this.extractingProgress();
+      if (currentProgress < 95) {
+        const increment = Math.max(0.2, (95 - currentProgress) / 30);
+        this.extractingProgress.update(p => Math.min(95, p + increment));
+      }
+    }, 300);
+  }
+
+  private stopExtractingProgress(completed: boolean = true): void {
+    if (completed) {
+      this.extractingProgress.set(100);
+      setTimeout(() => {
+        this.clearExtractingProgressInterval();
+      }, 500);
+    } else {
+      this.clearExtractingProgressInterval();
+    }
+  }
+
+  private clearExtractingProgressInterval(): void {
+    if (this.extractingProgressInterval) {
+      clearInterval(this.extractingProgressInterval);
+      this.extractingProgressInterval = null;
+    }
+  }
+
   // ── Formatters ────────────────────────────────────────────────────────
   formatDate(date: string): string {
     if (!date) return 'N/A';
     return new Date(date).toLocaleDateString('fr-FR', {
-      day: '2-digit', 
-      month: '2-digit', 
+      day: '2-digit',
+      month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -156,60 +622,77 @@ export class TrainDataComponent implements OnInit {
     return new Intl.NumberFormat('fr-FR').format(n);
   }
 
+  getColumnTypeClass(type: string): string {
+    const classes: Record<string, string> = {
+      'NUMERIC': 'bg-blue-50 text-blue-700 border-blue-200',
+      'CATEGORICAL': 'bg-purple-50 text-purple-700 border-purple-200',
+      'DATE': 'bg-green-50 text-green-700 border-green-200',
+      'BINARY': 'bg-gray-50 text-gray-700 border-gray-200',
+      'TEXT': 'bg-amber-50 text-amber-700 border-amber-200'
+    };
+    return classes[type] || 'bg-gray-50 text-gray-700 border-gray-200';
+  }
+
+  getNullRatioClass(ratio: number): string {
+    if (ratio === 0) return 'text-green-600';
+    if (ratio < 0.05) return 'text-amber-600';
+    return 'text-red-600';
+  }
+
   // ── Modals ────────────────────────────────────────────────────────────
-  openCreateModal(): void { 
-    this.showCreateModal.set(true); 
-  }
-  
-  closeCreateModal(): void { 
-    this.showCreateModal.set(false); 
-  }
-  
-  onDatasetUploaded(): void { 
-    this.loadStats(); 
-    this.loadDatasets(); 
-    this.closeCreateModal(); 
+  openCreateModal(): void {
+    this.showCreateModal.set(true);
   }
 
-  openViewModal(ds: Dataset): void { 
-    this.selectedDataset.set(ds); 
-    this.showViewModal.set(true); 
-  }
-  
-  closeViewModal(): void { 
-    this.showViewModal.set(false); 
-    setTimeout(() => this.selectedDataset.set(null), 300); 
+  closeCreateModal(): void {
+    this.showCreateModal.set(false);
   }
 
-  openDeleteModal(ds: Dataset): void { 
-    this.selectedDataset.set(ds); 
-    this.showDeleteModal.set(true); 
-  }
-  
-  closeDeleteModal(): void { 
-    this.showDeleteModal.set(false); 
-    setTimeout(() => this.selectedDataset.set(null), 300); 
-  }
-  
-  onDatasetDeleted(): void { 
-    this.loadStats(); 
-    this.loadDatasets(); 
-    this.closeDeleteModal(); 
+  onDatasetUploaded(): void {
+    this.loadStats();
+    this.loadDatasets();
+    this.closeCreateModal();
   }
 
-  openUpdateModal(ds: Dataset): void { 
-    this.selectedDataset.set(ds); 
-    this.showUpdateModal.set(true); 
+  openViewModal(ds: ExtendedDataset): void {
+    this.selectedDataset.set(ds);
+    this.showViewModal.set(true);
   }
-  
-  closeUpdateModal(): void { 
-    this.showUpdateModal.set(false); 
-    setTimeout(() => this.selectedDataset.set(null), 300); 
+
+  closeViewModal(): void {
+    this.showViewModal.set(false);
+    setTimeout(() => this.selectedDataset.set(null), 300);
   }
-  
-  onDatasetUpdated(): void { 
-    this.loadDatasets(); 
-    this.closeUpdateModal(); 
+
+  openDeleteModal(ds: ExtendedDataset): void {
+    this.selectedDataset.set(ds);
+    this.showDeleteModal.set(true);
+  }
+
+  closeDeleteModal(): void {
+    this.showDeleteModal.set(false);
+    setTimeout(() => this.selectedDataset.set(null), 300);
+  }
+
+  onDatasetDeleted(): void {
+    this.loadStats();
+    this.loadDatasets();
+    this.closeDeleteModal();
+  }
+
+  openUpdateModal(ds: ExtendedDataset): void {
+    this.selectedDataset.set(ds);
+    this.showUpdateModal.set(true);
+  }
+
+  closeUpdateModal(): void {
+    this.showUpdateModal.set(false);
+    setTimeout(() => this.selectedDataset.set(null), 300);
+  }
+
+  onDatasetUpdated(): void {
+    this.loadDatasets();
+    this.closeUpdateModal();
   }
 
   // ── Pagination ────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import com.fraud.backend.data.repository.frauddetection.DatasetRepository;
 import com.fraud.backend.data.repository.corebanking.ClientRepository;
 import com.fraud.backend.data.repository.corebanking.AccountRepository;
 import com.fraud.backend.data.service.storage.StorageService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,6 +43,7 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -768,19 +771,29 @@ public class DatasetService {
     }
 
     private void importTransactionsValFromCsv(MultipartFile file) throws IOException {
+        boolean triggerDisabled = false;
         try {
+            // Disable trigger for performance during bulk insert
+            jdbcTemplate.execute("ALTER TABLE transaction DISABLE TRIGGER after_transaction_insert;");
+            triggerDisabled = true;
+
             Map<String, String> columnMapping = getColumnMapping(file, DatasetType.TRANSACTIONS_VAL);
             char delimiter = getDelimiterForFile(file);
             log.info("Début import TRANSACTIONS_VAL. Colonnes trouvées: {}. Délimiteur: {}", columnMapping, delimiter);
 
+            // Get account mappings - account table uses 'id' as primary key
+            // The CSV has Account_Id which maps to account.account_number, then we need the
+            // account.id
             Map<String, Long> accountNumberToId = jdbcTemplate.query(
                     "SELECT account_number, id FROM account",
                     (rs, rowNum) -> Map.entry(rs.getString("account_number"), rs.getLong("id"))).stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            log.info("{} comptes chargés depuis la base.", accountNumberToId.size());
+            log.info("{} comptes chargés depuis la base (account_number -> id)", accountNumberToId.size());
 
-            String sql = "INSERT INTO transaction (transaction_uuid, account_id, amount, currency, transaction_date, merchant_category, channel, status, postal_code_merchant, postal_code_client, device_id, ip_address, created_at, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            String sql = "INSERT INTO transaction (transaction_uuid, account_id, amount, currency, transaction_date, " +
+                    "merchant_category, channel, status, postal_code_merchant, postal_code_client, device_id, " +
+                    "ip_address, created_at, updated_at) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
             try (BufferedReader br = new BufferedReader(
                     new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
@@ -800,19 +813,30 @@ public class DatasetService {
 
                 for (CSVRecord record : parser) {
                     try {
+                        // Get the mapped column name for Account_Id from the CSV
                         String accountNumberHeader = columnMapping.get("Account_Id");
                         if (accountNumberHeader == null) {
                             log.error("Colonne Account_Id manquante dans le mapping!");
                             break;
                         }
-                        String rawAccountNumber = record.get(accountNumberHeader);
-                        String accountNumber = cleanStringSafe(rawAccountNumber);
-                        Long accountId = accountNumberToId.get(accountNumber);
 
+                        String rawAccountNumber = record.get(accountNumberHeader);
+                        if (rawAccountNumber == null || rawAccountNumber.isBlank()) {
+                            skipped++;
+                            continue;
+                        }
+
+                        // Clean the account number to match the format in the database
+                        String accountNumber = cleanStringSafe(rawAccountNumber);
+
+                        // Get the account.id from the account_number
+                        Long accountId = accountNumberToId.get(accountNumber);
                         if (accountId == null) {
-                            if (skipped < 5)
-                                log.warn("Compte non trouvé pour: '{}' (Nettoyé: '{}').", rawAccountNumber,
-                                        accountNumber);
+                            if (skipped < 5) {
+                                log.warn("Compte non trouvé pour account_number: '{}' (nettoyé: '{}'). " +
+                                        "Vérifiez que ce compte existe dans la table account",
+                                        rawAccountNumber, accountNumber);
+                            }
                             skipped++;
                             continue;
                         }
@@ -833,20 +857,20 @@ public class DatasetService {
                             cur = "TND";
 
                         batch.add(new Object[] {
-                                UUID.randomUUID(),
-                                accountId,
-                                amount,
-                                cur,
-                                txTime != null ? Timestamp.valueOf(txTime) : now,
-                                category,
-                                channel,
-                                "COMPLETED",
-                                mPostal,
-                                cPostal,
-                                deviceId,
-                                ipAddress,
-                                now,
-                                now
+                                UUID.randomUUID(), // transaction_uuid
+                                accountId, // account_id (foreign key to account.id)
+                                amount, // amount
+                                cur, // currency
+                                txTime != null ? Timestamp.valueOf(txTime) : now, // transaction_date
+                                category, // merchant_category
+                                channel, // channel
+                                "COMPLETED", // status
+                                mPostal, // postal_code_merchant
+                                cPostal, // postal_code_client
+                                deviceId, // device_id
+                                ipAddress, // ip_address
+                                now, // created_at
+                                now // updated_at
                         });
 
                         if (batch.size() >= BATCH_SIZE) {
@@ -856,8 +880,10 @@ public class DatasetService {
                         count++;
                     } catch (Exception e) {
                         log.error("Erreur ligne {}: {}", record.getRecordNumber(), e.getMessage());
+                        skipped++;
                     }
                 }
+
                 if (!batch.isEmpty()) {
                     jdbcTemplate.batchUpdate(sql, batch);
                 }
@@ -866,6 +892,16 @@ public class DatasetService {
         } catch (Exception e) {
             log.error("Erreur fatale lors de l'import TRANSACTIONS_VAL: ", e);
             throw new IOException("Echec de l'importation: " + e.getMessage(), e);
+        } finally {
+            // Re-enable the trigger
+            if (triggerDisabled) {
+                try {
+                    jdbcTemplate.execute("ALTER TABLE transaction ENABLE TRIGGER after_transaction_insert;");
+                    log.info("Trigger after_transaction_insert réactivé");
+                } catch (Exception e) {
+                    log.warn("Erreur lors de la réactivation du trigger: {}", e.getMessage());
+                }
+            }
         }
     }
 
@@ -992,5 +1028,345 @@ public class DatasetService {
         }
         // Get all TRANSACTIONS_TRAIN datasets regardless of status
         return datasetRepository.findByType(DatasetType.TRANSACTIONS_TRAIN, pageable);
+    }
+
+    // ========================== EXTRACTION COMPORTEMENT CLIENT
+    // =============================
+
+    @Transactional
+    public DatasetCleanResponse extractBehavior(UUID datasetUuid) throws Exception {
+        Dataset sourceDataset = get(datasetUuid);
+        String jobId = UUID.randomUUID().toString();
+
+        // Vérifier que le dataset source est du bon type
+        if (sourceDataset.getType() != DatasetType.TRANSACTIONS_TRAIN &&
+                sourceDataset.getType() != DatasetType.TRANSACTIONS_VAL) {
+            throw new IllegalArgumentException("Seuls les datasets de transactions peuvent être enrichis");
+        }
+
+        // Détection du format
+        String storedPath = sourceDataset.getFilePath();
+        boolean isParquet = storedPath != null && storedPath.toLowerCase().endsWith(".parquet");
+        String extension = isParquet ? ".parquet" : ".csv";
+
+        log.info("Extraction des features comportementales - dataset source={} format={}",
+                datasetUuid, isParquet ? "parquet" : "csv");
+
+        Path tempFile = null;
+        Path utf8File = null;
+        Path outputFile = null;
+        String containerInput = null;
+        String containerOutput = null;
+        Dataset newDataset = null;
+
+        try {
+            // 1. Télécharger depuis MinIO
+            tempFile = Files.createTempFile("behavior_input_", extension);
+            try (InputStream in = storageService.download(storedPath);
+                    OutputStream out = Files.newOutputStream(tempFile)) {
+                in.transferTo(out);
+            }
+            log.info("Fichier téléchargé: {}", tempFile);
+
+            // 2. Conversion UTF-8 si CSV
+            if (isParquet) {
+                utf8File = tempFile;
+            } else {
+                utf8File = convertToUtf8(tempFile);
+                if (utf8File == null)
+                    utf8File = tempFile;
+            }
+
+            // 3. Copier dans le conteneur
+            execDockerCommand("mkdir", "-p", "/app/data");
+            containerInput = "/app/data/" + utf8File.getFileName().toString();
+            execDockerCopy(utf8File, containerInput);
+            log.info("Fichier copié dans le conteneur: {}", containerInput);
+
+            // 4. Construire la commande Python
+            List<String> cmd = new ArrayList<>();
+            cmd.addAll(List.of(
+                    "docker", "exec", "fraud-ml-pipeline",
+                    "python", "-m", "ml_pipeline.cli.main",
+                    "extract-behavior",
+                    "--input", containerInput,
+                    "--dataset-id", sourceDataset.getDatasetUuid().toString(),
+                    "--job-id", jobId));
+
+            log.info("Exécution de la commande: {}", String.join(" ", cmd));
+
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            StringBuilder outputBuilder = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    outputBuilder.append(line).append("\n");
+                    log.debug("[Python] {}", line);
+                }
+            }
+
+            boolean finished = process.waitFor(30, TimeUnit.MINUTES);
+            if (!finished) {
+                process.destroyForcibly();
+                throw new RuntimeException("Extraction timeout après 30 minutes");
+            }
+
+            int exitCode = process.exitValue();
+            String result = outputBuilder.toString().trim();
+            log.info("Processus terminé avec code: {}", exitCode);
+
+            if (exitCode != 0) {
+                log.error("Python failed: {}", result);
+                throw new RuntimeException("Extraction failed with code " + exitCode);
+            }
+
+            // 5. Extraire le JSON de sortie
+            JsonNode root = extractJsonFromOutput(result);
+            if (root == null) {
+                throw new RuntimeException("Aucun JSON valide trouvé dans la sortie");
+            }
+
+            if (root.has("status") && "error".equals(root.get("status").asText())) {
+                throw new RuntimeException("Erreur Python: " + root.get("error").asText());
+            }
+
+            // 6. Récupérer le chemin du fichier de sortie depuis le JSON
+            String outputFilename = "enriched_" + sourceDataset.getDatasetUuid() + "_" + jobId + ".parquet";
+            containerOutput = "/app/data/" + outputFilename;
+
+            // Télécharger le fichier depuis le conteneur
+            outputFile = Files.createTempFile("enriched_", ".parquet");
+            execDockerCopyFromContainer(containerOutput, outputFile);
+            log.info("Fichier enrichi récupéré: {}", outputFile);
+
+            // 7. CRÉER UN NOUVEAU DATASET (copie enrichie)
+            String newDatasetName = sourceDataset.getDatasetName() + " (enriched)";
+            String newDatasetCode = generateCode();
+
+            newDataset = Dataset.builder()
+                    .datasetName(newDatasetName)
+                    .datasetCode(newDatasetCode)
+                    .status(DatasetStatus.ACTIVE)
+                    .type(sourceDataset.getType())
+                    .build();
+
+            newDataset = datasetRepository.save(newDataset);
+
+            // 8. Upload du fichier enrichi vers MinIO pour le NOUVEAU dataset
+            String minioKey = "data/enriched/transactions/" + newDataset.getDatasetUuid() + "/" + outputFilename;
+            try (InputStream is = Files.newInputStream(outputFile)) {
+                storageService.upload(minioKey, is, Files.size(outputFile), "application/octet-stream");
+            }
+            log.info("Fichier enrichi uploadé vers MinIO: {}", minioKey);
+
+            // 9. Mettre à jour les stats du nouveau dataset
+            long rowCount = root.path("original_rows").asLong(0);
+            BigDecimal fileSizeMb = bytesToMb(Files.size(outputFile));
+            newDataset.updateFileStats(minioKey, fileSizeMb, rowCount);
+
+            // 10. Ajouter les métadonnées d'enrichissement
+            Map<String, Object> featureCols = newDataset.getFeatureColumns();
+            if (featureCols == null) {
+                featureCols = new HashMap<>();
+            }
+
+            Map<String, Object> enrichmentMetadata = new HashMap<>();
+            enrichmentMetadata.put("sourceDatasetId", sourceDataset.getDatasetUuid().toString());
+            enrichmentMetadata.put("sourceDatasetName", sourceDataset.getDatasetName());
+            enrichmentMetadata.put("jobId", jobId);
+            enrichmentMetadata.put("extractedAt", LocalDateTime.now().toString());
+
+            JsonNode columnsAddedNode = root.get("columns_added");
+            if (columnsAddedNode != null && columnsAddedNode.isArray()) {
+                List<String> columnsAdded = new ArrayList<>();
+                for (JsonNode col : columnsAddedNode) {
+                    columnsAdded.add(col.asText());
+                }
+                enrichmentMetadata.put("columnsAdded", columnsAdded);
+            }
+
+            featureCols.put("enrichment", enrichmentMetadata);
+            newDataset.setFeatureColumns(featureCols);
+
+            datasetRepository.save(newDataset);
+
+            // 11. Construire la réponse
+            DatasetCleanResponse.CleaningStats stats = DatasetCleanResponse.CleaningStats.builder()
+                    .originalRows(root.path("original_rows").asLong(0))
+                    .cleanedRows(root.path("original_rows").asLong(0))
+                    .build();
+
+            return DatasetCleanResponse.builder()
+                    .datasetUuid(newDataset.getDatasetUuid())
+                    .datasetName(newDataset.getDatasetName())
+                    .status(DatasetCleanResponse.CleaningStatus.COMPLETED)
+                    .jobId(jobId)
+                    .processedFilePath(minioKey)
+                    .stats(stats)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'extraction des features pour le dataset {}", datasetUuid, e);
+            throw e;
+        } finally {
+            // Nettoyage
+            cleanup(tempFile, containerInput);
+            if (utf8File != null && !utf8File.equals(tempFile)) {
+                try {
+                    Files.deleteIfExists(utf8File);
+                } catch (Exception e) {
+                    log.warn("Nettoyage utf8 file failed: {}", e.getMessage());
+                }
+            }
+            if (outputFile != null) {
+                try {
+                    Files.deleteIfExists(outputFile);
+                } catch (Exception e) {
+                    log.warn("Nettoyage output file failed: {}", e.getMessage());
+                }
+            }
+            if (containerOutput != null) {
+                try {
+                    execDockerCommand("rm", "-f", containerOutput);
+                } catch (Exception e) {
+                    log.warn("Nettoyage conteneur échoué: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    // Docker Utils
+
+    private String execDockerCommand(String... commands) throws Exception {
+        List<String> cmd = new ArrayList<>(List.of("docker", "exec", "fraud-ml-pipeline"));
+        cmd.addAll(Arrays.asList(commands));
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        String output = readStream(process.getInputStream());
+        int exitCode = process.waitFor();
+        if (exitCode != 0)
+            throw new RuntimeException("Docker command failed: " + output);
+        return output;
+    }
+
+    private void execDockerCopy(Path source, String destination) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(
+                "docker", "cp", source.toAbsolutePath().toString(),
+                "fraud-ml-pipeline:" + destination);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        String output = readStream(process.getInputStream());
+        int exitCode = process.waitFor();
+        if (exitCode != 0)
+            throw new RuntimeException("Docker copy failed: " + output);
+    }
+
+    private void execDockerCopyFromContainer(String containerPath, Path localPath) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(
+                "docker", "cp", "fraud-ml-pipeline:" + containerPath,
+                localPath.toAbsolutePath().toString());
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        String output = readStream(process.getInputStream());
+        int exitCode = process.waitFor();
+        if (exitCode != 0)
+            throw new RuntimeException("Docker copy from container failed: " + output);
+    }
+
+    private void cleanup(Path tempFile, String containerFileName) {
+        if (containerFileName != null) {
+            try {
+                execDockerCommand("rm", "-f", containerFileName);
+            } catch (Exception e) {
+                log.warn("Nettoyage conteneur échoué: {}", e.getMessage());
+            }
+        }
+        if (tempFile != null) {
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (Exception e) {
+                log.warn("Suppression fichier temporaire échouée: {}", e.getMessage());
+            }
+        }
+    }
+
+    private String readStream(InputStream stream) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private JsonNode extractJsonFromOutput(String output) {
+        try {
+            return objectMapper.readTree(output);
+        } catch (Exception e) {
+            // fall through
+        }
+        int jsonStart = output.indexOf('{');
+        int jsonEnd = output.lastIndexOf('}');
+        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            try {
+                return objectMapper.readTree(output.substring(jsonStart, jsonEnd + 1));
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    private Path convertToUtf8(Path inputFile) throws IOException {
+        byte[] bytes = Files.readAllBytes(inputFile);
+
+        try {
+            String test = new String(bytes, StandardCharsets.UTF_8);
+            byte[] reencoded = test.getBytes(StandardCharsets.UTF_8);
+            if (Arrays.equals(reencoded, bytes)) {
+                return null; // Already UTF-8
+            }
+        } catch (Exception e) {
+            // Fall through to conversion
+        }
+
+        Charset[] charsets = {
+                StandardCharsets.ISO_8859_1,
+                Charset.forName("windows-1252"),
+                Charset.forName("CP850"),
+                Charset.forName("IBM437")
+        };
+
+        for (Charset charset : charsets) {
+            try {
+                String content = new String(bytes, charset);
+                if (!content.isEmpty()) {
+                    Path outputFile = Files.createTempFile("dataset_utf8_", ".csv");
+                    try (BufferedWriter writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)) {
+                        writer.write(content);
+                    }
+                    log.info("Converti de {} vers UTF-8", charset.displayName());
+                    return outputFile;
+                }
+            } catch (Exception e) {
+                // Try next charset
+            }
+        }
+
+        // Last resort: force ISO-8859-1
+        String content = new String(bytes, StandardCharsets.ISO_8859_1);
+        Path outputFile = Files.createTempFile("dataset_utf8_", ".csv");
+        try (BufferedWriter writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)) {
+            writer.write(content);
+        }
+        log.info("Conversion forcée de ISO-8859-1 vers UTF-8");
+        return outputFile;
     }
 }

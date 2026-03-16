@@ -22,6 +22,9 @@ import { DatasetCreateModalComponent } from '../../shared/modals/admin-sections/
 import { DatasetViewModalComponent } from '../../shared/modals/admin-sections/datasets/dataset-view-modal/dataset-view-modal.component';
 import { DatasetUpdateModalComponent } from '../../shared/modals/admin-sections/datasets/dataset-update-modal/dataset-update-modal.component';
 import { DatasetDeleteModalComponent } from '../../shared/modals/admin-sections/datasets/dataset-delete-modal/dataset-delete-modal.component';
+import { UpdateHistoryModalComponent } from '../../shared/modals/models-ml/history-update-modal/history-update-modal.component';
+import { DeleteHistoryModalComponent } from '../../shared/modals/models-ml/history-delete-modal/history-delete-modal.component';
+
 
 @NgModule({
   declarations: [
@@ -44,7 +47,9 @@ import { DatasetDeleteModalComponent } from '../../shared/modals/admin-sections/
     DatasetCreateModalComponent,
     DatasetViewModalComponent,
     DatasetDeleteModalComponent,
-    DatasetUpdateModalComponent
+    DatasetUpdateModalComponent,
+    UpdateHistoryModalComponent,
+    DeleteHistoryModalComponent
   ]
 })
 export class DashboardModule { }

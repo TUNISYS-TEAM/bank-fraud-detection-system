@@ -43,4 +43,8 @@ public interface ModelMLRepository extends JpaRepository<ModelML, Long> {
 
     // Top modèles par F1 score
     Page<ModelML> findAllByOrderByF1ScoreDesc(Pageable pageable);
+
+    List<ModelML> findAllByOrderByCreatedAtDesc();
+
+    Page<ModelML> findAllByOrderByCreatedAtDesc(Pageable pageable);
 }

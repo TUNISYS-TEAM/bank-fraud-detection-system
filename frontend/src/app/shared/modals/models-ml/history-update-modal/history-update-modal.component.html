@@ -1,0 +1,75 @@
+<div class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] transition-all duration-300"
+    [class.opacity-0]="!isVisible()" [class.opacity-100]="isVisible()" (click)="closeModal()">
+
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transition-all duration-300 transform border border-gray-100"
+        [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()" (click)="$event.stopPropagation()">
+
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-blue-100 rounded-full">
+                    <i-feather name="edit-2" class="w-6 h-6 text-blue-600"></i-feather>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold text-gray-900">Modifier le nom</h3>
+                    <p class="text-sm text-gray-500 mt-0.5">Renommer cette version du modèle</p>
+                </div>
+            </div>
+            <button (click)="closeModal()" class="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors">
+                <i-feather name="x" class="w-5 h-5"></i-feather>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="px-6 py-6 bg-white">
+            <div class="space-y-4">
+                <div>
+                    <label for="modelName" class="block text-sm font-bold text-gray-700 mb-2">
+                        Nom de la version
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i-feather name="tag" class="w-4 h-4 text-gray-400"></i-feather>
+                        </div>
+                        <input type="text" id="modelName" [(ngModel)]="newName"
+                            class="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50/50 font-medium sm:text-sm"
+                            placeholder="Entrez le nouveau nom...">
+                    </div>
+                </div>
+
+                <div class="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i-feather name="info" class="w-4 h-4 text-blue-500"></i-feather>
+                        <span class="text-xs font-black text-gray-400 uppercase tracking-wider">Détails actuels</span>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <p class="text-xs text-gray-500 font-bold">Version originelle : <span class="text-gray-900">{{ model.modelName }}</span></p>
+                        <p class="text-xs text-gray-500 font-bold">Version : <span class="text-gray-900">v{{ model.version }}</span></p>
+                    </div>
+                </div>
+
+                <!-- Error Message -->
+                <div *ngIf="errorMessage()" class="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-3">
+                    <i-feather name="alert-circle" class="w-5 h-5 text-red-600"></i-feather>
+                    <p class="text-sm text-red-700 font-medium">{{ errorMessage() }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-end space-x-3 bg-gray-50/80">
+            <button (click)="closeModal()"
+                class="px-5 py-2.5 text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all font-medium text-sm shadow-sm">
+                Annuler
+            </button>
+            <button (click)="confirmUpdate()" [disabled]="isLoading() || !newName.trim()"
+                class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl transition-all font-medium text-sm shadow-lg shadow-blue-600/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center space-x-2">
+                <span *ngIf="isLoading()" class="flex items-center gap-2">
+                    <i-feather name="loader" class="animate-spin w-4 h-4"></i-feather>
+                    <span>Mise à jour...</span>
+                </span>
+                <span *ngIf="!isLoading()">Enregistrer les modifications</span>
+            </button>
+        </div>
+    </div>
+</div>

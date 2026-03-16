@@ -5,7 +5,8 @@ import { environment } from '../../../environments/environment';
 
 export enum DatasetStatus {
     ACTIVE = 'ACTIVE',
-    INACTIVE = 'INACTIVE'
+    INACTIVE = 'INACTIVE',
+    PROCESSED = 'PROCESSED'
 }
 
 export enum DatasetType {

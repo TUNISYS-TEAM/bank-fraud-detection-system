@@ -1,0 +1,72 @@
+<div class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] transition-all duration-300"
+    [class.opacity-0]="!isVisible()" [class.opacity-100]="isVisible()" (click)="closeModal()">
+
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transition-all duration-300 transform border border-gray-100"
+        [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()" (click)="$event.stopPropagation()">
+
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-red-50 to-orange-50">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-red-100 rounded-full">
+                    <i-feather name="alert-triangle" class="w-6 h-6 text-red-600"></i-feather>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold text-gray-900">Confirmer la suppression</h3>
+                    <p class="text-sm text-gray-500 mt-0.5">Cette action est irréversible</p>
+                </div>
+            </div>
+            <button (click)="closeModal()" class="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors">
+                <i-feather name="x" class="w-5 h-5"></i-feather>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="px-6 py-6 bg-white">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                    <i-feather name="trash-2" class="h-6 w-6 text-red-600"></i-feather>
+                </div>
+
+                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">
+                    Supprimer la version
+                </h3>
+
+                <div class="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <p class="text-sm text-gray-600 mb-2">
+                        Êtes-vous sûr de vouloir supprimer cette version du modèle ?
+                    </p>
+                    <p class="text-base font-semibold text-gray-900">
+                        {{ model.modelName }}
+                    </p>
+                    <p class="text-sm text-gray-500 mt-1">
+                        Version {{ model.version }}
+                    </p>
+                </div>
+
+                <!-- Error Message -->
+                <div *ngIf="errorMessage()" class="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-3 text-left">
+                    <div class="p-2 bg-red-100 rounded-lg flex-shrink-0">
+                        <i-feather name="alert-circle" class="w-5 h-5 text-red-600"></i-feather>
+                    </div>
+                    <p class="text-sm text-red-700">{{ errorMessage() }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-end space-x-3 bg-gray-50/80">
+            <button (click)="closeModal()"
+                class="px-5 py-2.5 text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all font-medium text-sm shadow-sm">
+                Annuler
+            </button>
+            <button (click)="confirmDelete()" [disabled]="isLoading()"
+                class="px-5 py-2.5 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-xl transition-all font-medium text-sm shadow-lg shadow-red-600/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center space-x-2">
+                <span *ngIf="isLoading()" class="flex items-center gap-2">
+                    <i-feather name="loader" class="animate-spin w-4 h-4"></i-feather>
+                    <span>Suppression...</span>
+                </span>
+                <span *ngIf="!isLoading()">Confirmer la suppression</span>
+            </button>
+        </div>
+    </div>
+</div>

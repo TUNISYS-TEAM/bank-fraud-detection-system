@@ -9,6 +9,8 @@ from pathlib import Path
 from ml_pipeline.pipeline.onnx_exporter import main as export_main
 from ml_pipeline.training.train_models import main as train_main
 from ml_pipeline.training.analyze_dataset import analyze_dataset_file
+from ml_pipeline.transformers.behavioral.client_behavior import ClientBehaviorTransformer  # NOUVEAU
+import pandas as pd  # NOUVEAU
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -75,11 +77,162 @@ def build_parser() -> argparse.ArgumentParser:
         help="Nombre maximum de lignes à analyser pour les statistiques (0 = toutes, défaut: 10000)"
     )
 
+    # ---- extract-behavior - NOUVELLE COMMANDE ----
+    extract_parser = subparsers.add_parser(
+        "extract-behavior",
+        help="Extrait les features comportementales client pour un dataset de transactions"
+    )
+    extract_parser.add_argument(
+        "--input",
+        required=True,
+        help="Chemin du fichier d'entrée (CSV ou Parquet)"
+    )
+    extract_parser.add_argument(
+        "--output",
+        help="Chemin du fichier de sortie (Parquet recommandé)"
+    )
+    extract_parser.add_argument(
+        "--dataset-id",
+        required=True,
+        help="UUID du dataset (pour traçabilité)"
+    )
+    extract_parser.add_argument(
+        "--job-id",
+        required=True,
+        help="UUID du job (pour traçabilité)"
+    )
+    extract_parser.add_argument(
+        "--use-fitted-history",
+        action="store_true",
+        help="Utiliser l'historique client pré-entraîné (si disponible)"
+    )
+    extract_parser.add_argument(
+        "--history-path",
+        help="Chemin vers le fichier d'historique client (JSON) si --use-fitted-history est activé"
+    )
+
     # ---- validate ----
     validate_parser = subparsers.add_parser("validate", help="Exécute les vérifications de validation")
     validate_parser.add_argument("--data-dir", default="artifacts/exported_parquet")
 
     return parser
+
+
+def extract_behavior_command(args):
+    """Implémentation de la commande extract-behavior."""
+    try:
+        input_path = Path(args.input)
+        dataset_id = args.dataset_id
+        job_id = args.job_id
+        
+        logging.info("Extraction des features comportementales - dataset=%s job=%s", dataset_id, job_id)
+        logging.info("Fichier d'entrée: %s", input_path)
+
+        # 1. Charger les données
+        if input_path.suffix.lower() == '.parquet':
+            df = pd.read_parquet(input_path)
+        else:
+            # Pour CSV, essayer de parser TX_Time automatiquement
+            df = pd.read_csv(input_path)
+            if 'TX_Time' in df.columns:
+                df['TX_Time'] = pd.to_datetime(df['TX_Time'], errors='coerce')
+        
+        logging.info("Dataset chargé : %d lignes, %d colonnes", len(df), len(df.columns))
+
+        # 2. Vérifier les colonnes requises
+        required = {'Account_Id', 'TX_Time', 'TX_Amount', 'Customer_Postal_Code', 'Channel', 'category'}
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(f"Colonnes manquantes : {missing}")
+
+        # 3. Initialiser le transformer
+        transformer = ClientBehaviorTransformer()
+        
+        # 4. Charger l'historique si demandé
+        if args.use_fitted_history and args.history_path:
+            import json
+            from collections import Counter
+            history_path = Path(args.history_path)
+            if history_path.exists():
+                with open(history_path, 'r') as f:
+                    # Note: Le chargement complet de l'historique peut être lourd
+                    # À adapter selon le format de sérialisation
+                    client_stats = json.load(f)
+                    # Reconstruire les Counter objects
+                    for acc, state in client_stats.items():
+                        state['region_counter'] = Counter(state['region_counter'])
+                        state['channel_counter'] = Counter(state['channel_counter'])
+                        state['category_counter'] = Counter(state['category_counter'])
+                    transformer.client_stats_ = client_stats
+                logging.info("Historique client chargé depuis %s", args.history_path)
+            else:
+                logging.warning("Fichier d'historique non trouvé: %s", args.history_path)
+
+        # 5. Appliquer le transformer
+        if not args.use_fitted_history:
+            # Mode strict as-of : fit puis transform
+            logging.info("Mode strict as-of : fit sur les données fournies")
+            transformer.fit(df)
+            df_features = transformer.transform(df, use_fitted_history=False)
+        else:
+            # Mode avec historique : transform seulement
+            logging.info("Mode avec historique pré-entraîné")
+            df_features = transformer.transform(df, use_fitted_history=True)
+
+        logging.info("Features extraites : %d colonnes", len(df_features.columns))
+
+        # 6. Fusionner avec les données originales
+        # On ajoute les nouvelles colonnes, en évitant les collisions
+        for col in df_features.columns:
+            if col not in df.columns:
+                df[col] = df_features[col]
+            else:
+                logging.warning("Colonne %s déjà présente, ignorée", col)
+
+        # 7. Déterminer le chemin de sortie
+        if args.output:
+            output_path = Path(args.output)
+        else:
+            output_path = input_path.parent / f"enriched_{dataset_id}.parquet"
+        
+        # Créer le répertoire parent si nécessaire
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Sauvegarder au format Parquet (compact et rapide)
+        df.to_parquet(output_path, index=False)
+        logging.info("Fichier enrichi sauvegardé : %s (%d Mo)", 
+                    output_path, output_path.stat().st_size / (1024*1024))
+
+        # 8. Statistiques pour le retour JSON
+        stats = {
+            "status": "success",
+            "original_rows": len(df),
+            "accounts": int(df["Account_Id"].nunique()),
+            "columns_before": list(df_features.columns),  # seulement les nouvelles
+            "all_columns": list(df.columns),
+            "output_file": str(output_path),
+            "dataset_id": dataset_id,
+            "job_id": job_id,
+            "columns_added": list(df_features.columns)
+        }
+        
+        # Écrire le JSON sur stdout (pour Java)
+        print(json.dumps(stats, default=str))
+        
+        # Écrire les logs sur stderr
+        logging.info("Extraction terminée avec succès")
+
+    except Exception as e:
+        # En cas d'erreur, imprimer un JSON d'erreur sur stdout
+        error_result = {
+            "status": "error",
+            "error": str(e),
+            "dataset_id": args.dataset_id if hasattr(args, 'dataset_id') else None,
+            "job_id": args.job_id if hasattr(args, 'job_id') else None
+        }
+        print(json.dumps(error_result))
+        logging.exception("Erreur lors de l'extraction des features comportementales")
+        sys.exit(1)
 
 
 def main() -> None:
@@ -144,6 +297,10 @@ def main() -> None:
             # Le stack trace va sur stderr
             logging.exception("Erreur lors de l'analyse")
             sys.exit(1)
+
+    # NOUVEAU : Commande extract-behavior
+    elif args.command == "extract-behavior":
+        extract_behavior_command(args)
 
     elif args.command == "validate":
         print("Validation CLI not fully wired yet.", file=sys.stderr)

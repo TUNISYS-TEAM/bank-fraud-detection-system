@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../environments/environment';
 import { AuthStore } from '../../../../core/store/auth.store';
@@ -62,29 +62,12 @@ export interface ColumnInfo {
   isTarget?: boolean;
 }
 
-export interface CleanResponse {
-  datasetUuid: string;
-  datasetName: string;
-  status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS';
-  jobId: string;
-  processedFilePath?: string;
-  stats?: {
-    originalRows: number;
-    cleanedRows: number;
-    duplicatesRemoved: number;
-    nullRowsRemoved: number;
-    reductionPercent: number;
-    fraudCount: number;
-    fraudRate: number;
-  };
-}
-
 @Component({
   selector: 'app-import-data',
   templateUrl: './import-data.component.html',
   styleUrls: ['./import-data.component.css']
 })
-export class ImportDataComponent implements OnInit {
+export class ImportDataComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   authStore = inject(AuthStore);
 
@@ -97,9 +80,9 @@ export class ImportDataComponent implements OnInit {
   totalPages = signal(0);
   searchQuery = signal('');
 
-  // Computed pour filtrer les datasets ACTIVE et PROCESSED
+  // Computed pour filtrer les datasets PROCESSED uniquement
   datasets = computed(() =>
-    this.allDatasets().filter(d => d.status === 'ACTIVE' || d.status === 'PROCESSED')
+    this.allDatasets().filter(d => d.status === 'PROCESSED')
   );
 
   // États pour l'analyse
@@ -116,34 +99,20 @@ export class ImportDataComponent implements OnInit {
   private analysisProgressInterval: any;
   private analysisStartTime: number = 0;
 
-  // États pour l'entraînement (gardés pour compatibilité mais non utilisés)
-  training = signal<boolean>(false);
-  trainingSuccess = signal<boolean>(false);
-  modelName = signal<string>('');
-
-  // État pour le nettoyage
-  cleaning = signal<boolean>(false);
-  cleaningSuccess = signal<boolean>(false);
-  cleaningError = signal<string | null>(null);
-  cleanedFilePath = signal<string | null>(null);
-  cleaningStats = signal<any | null>(null);
-
-  // Progression et chrono pour le nettoyage
-  cleaningProgress = signal<number>(0);
-  cleaningElapsedTime = signal<string>('0:00');
-  private cleaningProgressInterval: any;
-  private cleaningStartTime: number = 0;
-
   // Computed pour vérifier si le dataset a une analyse valide
   hasValidAnalysis = computed(() => {
     const result = this.analysisResult();
-    return result && result.columns && result.columns.length > 0;
+    // Vérification plus stricte
+    return result !== null &&
+      result.columns !== null &&
+      Array.isArray(result.columns) &&
+      result.columns.length > 0;
   });
 
-  // Computed pour vérifier si le dataset est traité
-  isProcessed = computed(() =>
-    this.selectedDataset()?.status === 'PROCESSED'
-  );
+  // Computed pour savoir si l'analyse est en cours
+  isAnalyzing = computed(() => {
+    return this.analyzingDatasetId() === this.selectedDataset()?.datasetUuid;
+  });
 
   // Cartes KPI dynamiques
   kpiCards = signal<KpiCard[]>([
@@ -203,7 +172,6 @@ export class ImportDataComponent implements OnInit {
 
   ngOnDestroy(): void {
     this.clearAnalysisProgressInterval();
-    this.clearCleaningProgressInterval();
   }
 
   // ==================== DATASET METHODS ====================
@@ -242,99 +210,6 @@ export class ImportDataComponent implements OnInit {
   onPageChange(page: number): void {
     this.currentPage.set(page);
     this.loadDatasets();
-  }
-
-  // ==================== CLEANING METHODS ====================
-
-  startCleaning(datasetUuid: string): void {
-    if (!datasetUuid) return;
-
-    this.cleaning.set(true);
-    this.cleaningSuccess.set(false);
-    this.cleaningError.set(null);
-    this.cleanedFilePath.set(null);
-    this.cleaningStats.set(null);
-
-    // Démarrer la progression simulée pour le nettoyage
-    this.startCleaningProgressSimulation();
-
-    this.http.post<CleanResponse>(`${environment.apiUrl}/datasets/${datasetUuid}/clean`, {}).subscribe({
-      next: (response) => {
-        // Arrêter la progression simulée
-        this.stopCleaningProgress(true);
-
-        this.cleaning.set(false);
-        this.cleaningSuccess.set(true);
-        this.cleanedFilePath.set(response.processedFilePath || null);
-        this.cleaningStats.set(response.stats || null);
-
-        // Recharger le dataset pour mettre à jour le statut
-        this.loadDatasets();
-
-        // Si c'est le dataset sélectionné, mettre à jour son statut
-        if (this.selectedDataset()?.datasetUuid === datasetUuid) {
-          this.selectedDataset.update(ds => {
-            if (ds) {
-              ds.status = 'PROCESSED';
-              ds.processedFilePath = response.processedFilePath;
-            }
-            return ds;
-          });
-
-          // Recharger l'aperçu après mise à jour du statut
-          this.loadPreview(datasetUuid);
-        }
-
-        console.log('Nettoyage terminé avec succès');
-      },
-      error: (err) => {
-        this.stopCleaningProgress(false);
-        this.cleaning.set(false);
-        this.cleaningError.set(err.error?.message || 'Erreur lors du nettoyage');
-        console.error('Error cleaning dataset:', err);
-      }
-    });
-  }
-
-  // ==================== CLEANING PROGRESS METHODS ====================
-
-  private startCleaningProgressSimulation(): void {
-    this.cleaningProgress.set(0);
-    this.cleaningElapsedTime.set('0:00');
-    this.cleaningStartTime = Date.now();
-
-    this.cleaningProgressInterval = setInterval(() => {
-      // Mettre à jour le temps écoulé
-      const elapsedSeconds = Math.floor((Date.now() - this.cleaningStartTime) / 1000);
-      const minutes = Math.floor(elapsedSeconds / 60);
-      const seconds = elapsedSeconds % 60;
-      this.cleaningElapsedTime.set(`${minutes}:${seconds.toString().padStart(2, '0')}`);
-
-      // Simuler la progression (max 95% jusqu'à la réponse)
-      const currentProgress = this.cleaningProgress();
-      if (currentProgress < 95) {
-        const increment = Math.max(0.2, (95 - currentProgress) / 30);
-        this.cleaningProgress.update(p => Math.min(95, p + increment));
-      }
-    }, 300);
-  }
-
-  private stopCleaningProgress(completed: boolean = true): void {
-    if (completed) {
-      this.cleaningProgress.set(100);
-      setTimeout(() => {
-        this.clearCleaningProgressInterval();
-      }, 500);
-    } else {
-      this.clearCleaningProgressInterval();
-    }
-  }
-
-  private clearCleaningProgressInterval(): void {
-    if (this.cleaningProgressInterval) {
-      clearInterval(this.cleaningProgressInterval);
-      this.cleaningProgressInterval = null;
-    }
   }
 
   // ==================== ANALYSIS PROGRESS METHODS ====================
@@ -384,12 +259,7 @@ export class ImportDataComponent implements OnInit {
     this.analysisError.set(null);
     this.analysisResult.set(null);
     this.previewData.set(null);
-    this.cleaningSuccess.set(false);
-    this.cleaningError.set(null);
-    this.cleanedFilePath.set(dataset.processedFilePath || null);
-    this.cleaningStats.set(null);
-    this.modelName.set(`Model_${dataset.datasetName}_${new Date().getTime()}`);
-    this.trainingSuccess.set(false);
+    this.analyzingDatasetId.set(null); // Important: reset analyzing state
 
     // Mettre à jour les KPIs avec les données du dataset
     this.updateKpiCards(dataset);
@@ -404,17 +274,14 @@ export class ImportDataComponent implements OnInit {
   private checkExistingAnalysis(datasetUuid: string): void {
     this.http.get<AnalysisResult>(`${environment.apiUrl}/datasets/${datasetUuid}/analysis`).subscribe({
       next: (result) => {
+        console.log('Analysis result received:', result);
         this.analysisResult.set(result);
         this.updateKpiCardsFromAnalysis(result);
       },
       error: (error) => {
         if (error.status === 404) {
-          this.analysisResult.set({
-            columns: null,
-            statistics: null,
-            suggestedFeatures: null,
-            suggestedTarget: null
-          });
+          console.log('No analysis found for dataset');
+          this.analysisResult.set(null);
         } else {
           console.error('Error checking analysis:', error);
           this.analysisError.set('Erreur lors de la vérification de l\'analyse');
@@ -573,36 +440,13 @@ export class ImportDataComponent implements OnInit {
     setTimeout(checkAnalysis, 1000);
   }
 
-  // ==================== TRAINING METHODS (gardés pour compatibilité) ====================
-
-  startTraining(): void {
-    console.log('Training method kept for compatibility');
-  }
-
-  exportCsv(): void {
-    if (!this.selectedDataset()) return;
-    console.log('Export CSV');
-  }
-
-  showMore(): void {
-    if (!this.selectedDataset()) return;
-    this.loadPreview(this.selectedDataset()!.datasetUuid);
-  }
-
   backToList(): void {
     this.selectedDataset.set(null);
     this.analysisResult.set(null);
     this.previewData.set(null);
-    this.trainingSuccess.set(false);
     this.analysisError.set(null);
     this.analyzingDatasetId.set(null);
-    this.cleaningSuccess.set(false);
-    this.cleaningError.set(null);
-    this.cleanedFilePath.set(null);
-    this.cleaningStats.set(null);
-    this.modelName.set('');
     this.clearAnalysisProgressInterval();
-    this.clearCleaningProgressInterval();
 
     // Réinitialiser les KPIs
     this.kpiCards.set([

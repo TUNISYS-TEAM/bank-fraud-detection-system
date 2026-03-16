@@ -176,4 +176,11 @@ public class DatasetController {
         BigDecimal totalSize = datasetService.getTotalSize(types);
         return ResponseEntity.ok(totalSize);
     }
+
+    @PostMapping("/{uuid}/extract-behavior")
+    public ResponseEntity<DatasetCleanResponse> extractBehavior(@PathVariable UUID uuid) throws Exception {
+        log.info("Demande d'extraction des features comportementales pour dataset: {}", uuid);
+        DatasetCleanResponse response = datasetService.extractBehavior(uuid);
+        return ResponseEntity.ok(response);
+    }
 }

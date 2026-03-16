@@ -54,21 +54,27 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       name: 'Random Forest',
       description: 'Robuste et interprétable',
       icon: 'git-merge',
-      color: 'from-green-500 to-emerald-600'
+      color: 'blue',
+      recommended: true,
+      status: 'active'
     },
     {
       type: 'XGBOOST',
       name: 'XGBoost',
       description: 'Performances élevées',
       icon: 'trending-up',
-      color: 'from-orange-500 to-red-600'
+      color: 'orange',
+      recommended: false,
+      status: 'soon'
     },
     {
       type: 'LIGHTGBM',
       name: 'LightGBM',
       description: 'Rapide et efficace',
       icon: 'zap',
-      color: 'from-blue-500 to-cyan-600'
+      color: 'blue',
+      recommended: false,
+      status: 'soon'
     }
   ];
   selectedModelType: string = 'RANDOM_FOREST';
@@ -97,6 +103,11 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   isTraining: boolean = false;
   lastTrainingResult: TrainingJobResponse | null = null;
   trainingError: string | null = null;
+  trainingProgress: number = 0;
+  trainingElapsedTime: number = 0;
+  private trainingStartTime: number = 0;
+  private trainingProgressInterval: any = null;
+  private pollingInterval: any = null;
 
   // Statistics
   totalSelectedFeatures = 0;
@@ -104,8 +115,17 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   // Search
   searchQuery: string = '';
 
-  // Polling interval reference for cleanup
-  private pollingInterval: any = null;
+  // History
+  modelHistory: any[] = [];
+  historyCurrentPage = 0;
+  historyPageSize = 5;
+  historyTotalElements = 0;
+  historyTotalPages = 0;
+
+  // Modals
+  showDeleteModal = false;
+  showUpdateModal = false;
+  selectedModelForAction: any = null;
 
   constructor(
     private http: HttpClient,
@@ -114,6 +134,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadAllTrainingDatasets();
+    this.loadModelHistory();
   }
 
   ngOnDestroy(): void {
@@ -125,6 +146,37 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
+    this.stopTrainingProgress();
+  }
+
+  private startTrainingProgress(): void {
+    this.stopTrainingProgress();
+    this.trainingProgress = 0;
+    this.trainingStartTime = Date.now();
+    this.trainingElapsedTime = 0;
+
+    this.trainingProgressInterval = setInterval(() => {
+      this.trainingElapsedTime = Date.now() - this.trainingStartTime;
+      
+      // Simulate progress: faster at first, then slows down
+      if (this.trainingProgress < 90) {
+        this.trainingProgress += (90 - this.trainingProgress) * 0.05;
+      }
+    }, 1000);
+  }
+
+  private stopTrainingProgress(): void {
+    if (this.trainingProgressInterval) {
+      clearInterval(this.trainingProgressInterval);
+      this.trainingProgressInterval = null;
+    }
+  }
+
+  get formattedTrainingTime(): string {
+    const seconds = Math.floor(this.trainingElapsedTime / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   }
 
   loadAllTrainingDatasets(): void {
@@ -186,6 +238,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   loadDatasetFeatures(): void {
     this.http.get<any>(`${environment.apiUrl}/datasets/${this.selectedDatasetUuid}/analysis`).subscribe({
       next: (analysis) => {
+        // Mettre à jour les statistiques du dataset sélectionné pour éviter le "0%"
+        if (this.selectedDataset && analysis.statistics) {
+          this.selectedDataset.statistics = analysis.statistics;
+        }
         this.features = this.extractFeaturesFromAnalysis(analysis);
         this.updateSelectedCount();
         this.isLoadingFeatures = false;
@@ -309,9 +365,17 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     this.updateSelectedCount();
   }
 
+  isAllSelectedOverall(): boolean {
+    return this.features.length > 0 && this.features.every(f => f.enabled);
+  }
+
   deselectAllFeatures(): void {
     this.features.forEach(f => f.enabled = false);
     this.updateSelectedCount();
+  }
+
+  isNoneSelected(): boolean {
+    return this.features.length > 0 && this.features.every(f => !f.enabled);
   }
 
   getCategoryIcon(category: string): string {
@@ -332,6 +396,16 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       'categorical': 'text-amber-600 bg-amber-50'
     };
     return colors[category] || 'text-gray-600 bg-gray-50';
+  }
+
+  getCategoryHeaderBg(category: string): string {
+    const colors: Record<string, string> = {
+      'behavioral': 'bg-purple-50/50',
+      'temporal': 'bg-blue-50/50',
+      'transaction': 'bg-emerald-50/50',
+      'categorical': 'bg-amber-50/50'
+    };
+    return colors[category] || 'bg-gray-50/50';
   }
 
   testModel(): void {
@@ -378,6 +452,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     this.isTraining = true;
     this.trainingError = null;
+    this.startTrainingProgress();
 
     this.http.post<TrainingJobResponse>(
       `${environment.apiUrl}/v1/fraud-detection/models/training/random-forest`,
@@ -390,6 +465,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         if (response.status === 'PENDING' || response.status === 'TRAINING') {
           this.pollTrainingStatus(response.modelUuid);
         }
+        this.loadModelHistory();
       },
       error: (error) => {
         console.error('Training error:', error);
@@ -404,7 +480,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${modelUuid}/metrics`).subscribe({
         next: (metrics) => {
           if (metrics.status === 'Deployed' || metrics.status === 'Validated' || metrics.status === 'Archived') {
+            this.trainingProgress = 100;
             this.stopPolling();
+            this.stopTrainingProgress();
+            this.loadModelHistory();
 
             if (this.lastTrainingResult) {
               // Ensure we have all the metrics in the right format
@@ -487,4 +566,102 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   hasNextPage(): boolean {
     return this.currentPage < this.totalPages - 1;
   }
+
+  loadModelHistory(): void {
+    const url = `${environment.apiUrl}/v1/fraud-detection/models/training/history?page=${this.historyCurrentPage}&size=${this.historyPageSize}`;
+    this.http.get<any>(url).subscribe({
+      next: (response) => {
+        this.modelHistory = response.content;
+        this.historyTotalElements = response.totalElements;
+        this.historyTotalPages = response.totalPages;
+        this.historyCurrentPage = response.number;
+      },
+      error: (error) => {
+        console.error('Error loading history:', error);
+      }
+    });
+  }
+
+  onHistoryPageChange(page: number): void {
+    this.historyCurrentPage = page;
+    this.loadModelHistory();
+  }
+
+  hasPreviousHistoryPage(): boolean {
+    return this.historyCurrentPage > 0;
+  }
+
+  hasNextHistoryPage(): boolean {
+    return this.historyCurrentPage < this.historyTotalPages - 1;
+  }
+
+  getHistoryDisplayRange(): { start: number, end: number } {
+    const start = this.historyCurrentPage * this.historyPageSize + 1;
+    const end = Math.min((this.historyCurrentPage + 1) * this.historyPageSize, this.historyTotalElements);
+    return { start, end };
+  }
+
+  openDeleteModal(model: any): void {
+    this.selectedModelForAction = model;
+    this.showDeleteModal = true;
+  }
+
+  openUpdateModal(model: any): void {
+    this.selectedModelForAction = model;
+    this.showUpdateModal = true;
+  }
+
+  reactivateModel(model: any): void {
+    // 1. Restore Hyperparameters
+    if (model.hyperparameters) {
+      this.rfConfig.hyperparameters = { ...model.hyperparameters };
+      // Remove metadata but keep the actual params
+      delete (this.rfConfig.hyperparameters as any)._trainingMetadata;
+      delete (this.rfConfig.hyperparameters as any)._trainingResults;
+      
+      this.selectedModelType = model.modelType;
+      
+      // 2. Restore Dataset selection if available
+      const metadata = model.hyperparameters._trainingMetadata;
+      if (metadata && metadata.datasetUuid) {
+        this.selectedDatasetUuid = metadata.datasetUuid;
+        this.onDatasetSelect(); // Load features for this dataset
+      }
+
+      // 3. Restore Selected Features
+      const selectedFeatures = model.hyperparameters.selected_features;
+      if (selectedFeatures && Array.isArray(selectedFeatures)) {
+        // We need to wait for features to be loaded from onDatasetSelect()
+        setTimeout(() => {
+          this.features.forEach(f => {
+            f.enabled = selectedFeatures.includes(f.name);
+          });
+          this.updateSelectedCount();
+        }, 800); 
+      }
+
+      // 4. Restore Risk Threshold
+      if (model.hyperparameters.detection_threshold) {
+        this.detectionThreshold = model.hyperparameters.detection_threshold;
+      }
+    }
+
+    // 5. Restore Results Section (Green part)
+    const results = model.hyperparameters?._trainingResults;
+    if (results) {
+      this.lastTrainingResult = {
+        modelUuid: model.modelUuid,
+        status: 'COMPLETED',
+        metrics: results.metrics,
+        confusionMatrix: results.confusionMatrix,
+        fraudRate: results.fraudRate,
+        completedAt: results.completedAt,
+        durationSeconds: results.durationSeconds
+      } as any;
+    }
+
+    // Scroll to top to see results
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
 }

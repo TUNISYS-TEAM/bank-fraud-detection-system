@@ -14,9 +14,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
@@ -34,6 +36,30 @@ public class ModelTrainingService {
     private final ModelMLRepository modelMLRepository;
     private final StorageService storageService;
     private final ObjectMapper objectMapper;
+
+     public List<ModelML> getModelHistory() {
+        return modelMLRepository.findAllByOrderByCreatedAtDesc();
+    }
+
+    public Page<ModelML> getModelHistory(Pageable pageable) {
+        return modelMLRepository.findAllByOrderByCreatedAtDesc(pageable);
+    }
+
+    @Transactional
+    public void deleteModel(UUID modelUuid) {
+        ModelML model = modelMLRepository.findByModelUuid(modelUuid)
+            .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
+        modelMLRepository.delete(model);
+    }
+
+    @Transactional
+    public void updateModelName(UUID modelUuid, String newName) {
+        ModelML model = modelMLRepository.findByModelUuid(modelUuid)
+            .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
+        model.setModelName(newName);
+        model.setUpdatedAt(LocalDateTime.now());
+        modelMLRepository.save(model);
+    }
 
     private static final Map<String, Object> DEFAULT_RANDOM_FOREST_PARAMS = Map.of(
         "n_estimators", 100,

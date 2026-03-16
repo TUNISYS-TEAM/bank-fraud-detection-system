@@ -1,4 +1,12 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
+      enabled: true
+      file-size-threshold: 2KB
+      location: ${java.io.tmpdir}
+  
   datasource:
     url: jdbc:postgresql://localhost:5432/fraud_db?reWriteBatchedInserts=true
     username: postgres

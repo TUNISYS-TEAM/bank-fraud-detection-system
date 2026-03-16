@@ -20,7 +20,7 @@
   <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
     <!-- Table Header -->
     <div
-      class="px-8 py-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white">
+      class="px-8 py-6 border-b border-gray-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-gray-50 to-white">
       <div class="flex items-center space-x-4">
         <div>
           <h3 class="text-2xl font-bold text-gray-900 tracking-tight">Datasets d'Entraînement</h3>
@@ -29,10 +29,10 @@
       </div>
 
       <!-- Barre de Recherche -->
-      <div class="flex-1 max-w-md ml-auto mr-8">
+      <div class="w-full lg:w-96">
         <div class="relative">
-          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none"
-            stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor"
+            viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
@@ -44,7 +44,7 @@
       <!-- Bouton Nouveau -->
       <div class="flex items-center space-x-3">
         <button (click)="openCreateModal()"
-          class="flex items-center space-x-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-600/25">
+          class="flex items-center space-x-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-600/25 w-full lg:w-auto justify-center">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
@@ -68,135 +68,515 @@
     </div>
     }
 
-    <!-- Table -->
+    <!-- Table with Accordion -->
     @if (!isLoading()) {
     <div class="overflow-x-auto">
-      <table class="w-full">
-        <thead class="bg-gray-50/50">
-          <tr class="border-b border-gray-200">
-            <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-            <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
-            <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-            <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Taille</th>
-            <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lignes</th>
-            <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Import</th>
-            <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
-            <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="bg-white divide-y divide-gray-100">
-          @for (dataset of datasets(); track dataset.datasetUuid) {
-          <tr class="hover:bg-gray-50/80 transition-colors group">
-            <td class="px-8 py-4">
-              <span class="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">{{
-                dataset.datasetCode }}</span>
-            </td>
-            <td class="px-8 py-4">
-              <div class="flex items-center space-x-3">
+      <div class="min-w-[1100px] divide-y divide-gray-100">
+        @for (dataset of datasets(); track dataset.datasetUuid) {
+        <div class="hover:bg-gray-50/80 transition-colors group">
+          <!-- Dataset Header (Click to expand) -->
+          <div class="px-8 py-5 flex items-center justify-between cursor-pointer"
+            (click)="toggleDataset(dataset.datasetUuid)">
+            <div class="flex items-center space-x-4 flex-1">
+              <!-- Expand/Collapse Icon -->
+              <div
+                class="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg bg-gray-100 group-hover:bg-white transition-colors">
+                <svg class="w-4 h-4 text-gray-500 transition-transform duration-200"
+                  [class.rotate-90]="expandedDataset() === dataset.datasetUuid" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+
+              <!-- Dataset Info - 6 columns (type removed) -->
+              <div class="flex-1 grid grid-cols-6 gap-6 items-center">
+                <!-- Code column -->
+                <div class="col-span-1">
+                  <span class="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">{{ dataset.datasetCode
+                    }}</span>
+                </div>
+
+                <!-- Name column -->
+                <div class="col-span-1">
+                  <div class="flex items-center space-x-2">
+                    <div
+                      class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center flex-shrink-0">
+                      <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                    </div>
+                    <p class="text-sm font-semibold text-gray-900 truncate max-w-[150px]"
+                      title="{{ dataset.datasetName }}">{{ dataset.datasetName }}</p>
+                  </div>
+                </div>
+
+                <!-- Size column -->
+                <div class="col-span-1">
+                  <span class="text-sm text-gray-600 font-mono whitespace-nowrap">{{ formatSize(dataset.fileSizeMb)
+                    }}</span>
+                </div>
+
+                <!-- Rows column -->
+                <div class="col-span-1">
+                  <span class="text-sm text-gray-600 font-mono whitespace-nowrap">{{ formatNumber(dataset.rowCount) }}
+                    lignes</span>
+                </div>
+
+                <!-- Date column -->
+                <div class="col-span-1">
+                  <div class="flex items-center text-sm text-gray-600 whitespace-nowrap">
+                    <svg class="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor"
+                      viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>{{ formatDate(dataset.importedAt) }}</span>
+                  </div>
+                </div>
+
+                <!-- Status column -->
+                <div class="col-span-1">
+                  <span
+                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap"
+                    [ngClass]="{
+                          'bg-green-50 text-green-700 border-green-200': dataset.status === 'ACTIVE',
+                          'bg-blue-50 text-blue-700 border-blue-200': dataset.status === 'PROCESSED',
+                          'bg-gray-100 text-gray-600 border-gray-200': dataset.status === 'INACTIVE'
+                        }">
+                    <span class="w-1.5 h-1.5 rounded-full mr-1.5 flex-shrink-0"
+                      [class.bg-green-500]="dataset.status === 'ACTIVE'"
+                      [class.bg-blue-500]="dataset.status === 'PROCESSED'"
+                      [class.bg-gray-400]="dataset.status === 'INACTIVE'"></span>
+                    <span>
+                      @switch (dataset.status) {
+                      @case ('ACTIVE') { Actif }
+                      @case ('PROCESSED') { Traité }
+                      @case ('INACTIVE') { Inactif }
+                      }
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Actions principales (visibles au survol) -->
+            <div class="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+              <button (click)="$event.stopPropagation(); openViewModal(dataset)"
+                class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                title="Voir les données">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </button>
+              <button (click)="$event.stopPropagation(); openUpdateModal(dataset)"
+                class="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                title="Modifier">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button (click)="$event.stopPropagation(); openDeleteModal(dataset)"
+                class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Supprimer">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Expanded Panel -->
+          @if (expandedDataset() === dataset.datasetUuid) {
+          <div class="px-8 pb-6 pl-20 animate-fadeIn">
+            <!-- Analysis in Progress -->
+            @if (analyzingDatasetId() === dataset.datasetUuid) {
+            <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-4">
+              <div class="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200">
                 <div
-                  class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
-                  <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+                  <svg class="w-5 h-5 text-blue-600 animate-pulse" fill="none" stroke="currentColor"
+                    viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                 </div>
-                <p class="text-sm font-semibold text-gray-900">{{ dataset.datasetName }}</p>
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-900">{{ dataset.datasetName }}</h3>
+                  <p class="text-xs text-gray-500">Analyse en cours...</p>
+                </div>
               </div>
-            </td>
-            <td class="px-8 py-4">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
-                [ngClass]="{
-                  'bg-blue-50 text-blue-700 border-blue-100': dataset.type === 'ACCOUNTS',
-                  'bg-purple-50 text-purple-700 border-purple-100': dataset.type === 'CLIENTS',
-                  'bg-indigo-50 text-indigo-700 border-indigo-100': dataset.type === 'TRANSACTIONS_TRAIN',
-                  'bg-amber-50 text-amber-700 border-amber-100': dataset.type === 'TRANSACTIONS_VAL'
-                }">
-                <i-feather [name]="dataset.type === 'ACCOUNTS' ? 'credit-card' : 
-                                  dataset.type === 'CLIENTS' ? 'user' : 
-                                  dataset.type === 'TRANSACTIONS_TRAIN' ? 'database' : 'repeat'" 
-                          class="w-3 h-3 mr-1.5"></i-feather>
-                {{ dataset.type === 'TRANSACTIONS_TRAIN' ? "Transaction d'entrainement" : 
-                   dataset.type === 'TRANSACTIONS_VAL' ? 'Transactions à traiter' : dataset.type }}
-              </span>
-            </td>
-            <td class="px-8 py-4">
-              <span class="text-sm text-gray-600 font-mono">{{ formatSize(dataset.fileSizeMb) }}</span>
-            </td>
-            <td class="px-8 py-4">
-              <span class="text-sm text-gray-600 font-mono">{{ formatNumber(dataset.rowCount) }}</span>
-            </td>
-            <td class="px-8 py-4">
-              <div class="flex items-center text-sm text-gray-600">
-                <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                {{ formatDate(dataset.importedAt) }}
+
+              <div class="space-y-4">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-600">Progression</span>
+                  <span class="font-mono text-blue-600">{{ analysisProgress().toFixed(0) }}%</span>
+                </div>
+
+                <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-300 relative"
+                    [style.width.%]="analysisProgress()">
+                    @if (analysisProgress() > 30) {
+                    <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                    }
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+                  <div class="flex items-center gap-2">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Temps écoulé: {{ formattedElapsedTime() }}</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                    </svg>
+                    <span>{{ formatNumber(dataset.rowCount) }} lignes</span>
+                  </div>
+                </div>
               </div>
-            </td>
-            <td class="px-8 py-4">
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border"
-                [ngClass]="dataset.status === 'ACTIVE' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'">
-                <span class="w-1.5 h-1.5 rounded-full mr-1.5"
-                  [class.bg-green-500]="dataset.status === 'ACTIVE'"
-                  [class.bg-gray-400]="dataset.status !== 'ACTIVE'"></span>
-                {{ dataset.status === 'ACTIVE' ? 'Actif' : 'Inactif' }}
-              </span>
-            </td>
-            <td class="px-8 py-4">
-              <div class="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button (click)="openViewModal(dataset)"
-                  class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  title="Voir les données">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </button>
-                <button (click)="openUpdateModal(dataset)"
-                  class="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                  title="Modifier">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                </button>
-                <button (click)="openDeleteModal(dataset)"
-                  class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Supprimer">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            </div>
+            }
+
+            <!-- Cleaning in Progress -->
+            @if (cleaningDatasetId() === dataset.datasetUuid) {
+            <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-4">
+              <div class="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200">
+                <div
+                  class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
+                  <svg class="w-5 h-5 text-purple-600 animate-pulse" fill="none" stroke="currentColor"
+                    viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                       d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                </button>
+                </div>
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-900">Nettoyage des données</h3>
+                  <p class="text-xs text-gray-500">Suppression des doublons et valeurs aberrantes</p>
+                </div>
               </div>
-            </td>
-          </tr>
-          } @empty {
-          <tr>
-            <td colspan="7" class="px-8 py-16 text-center text-gray-500">
-              <div class="inline-flex p-3 bg-gray-100 rounded-2xl mb-4">
-                <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                    d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-                </svg>
+
+              <div class="space-y-4">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-600">Progression</span>
+                  <span class="font-mono text-purple-600">{{ cleaningProgress().toFixed(0) }}%</span>
+                </div>
+
+                <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300 relative"
+                    [style.width.%]="cleaningProgress()">
+                    @if (cleaningProgress() > 30) {
+                    <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                    }
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+                  <div class="flex items-center gap-2">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Temps écoulé: {{ cleaningElapsedTime() }}</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                    </svg>
+                    <span>{{ formatNumber(dataset.rowCount) }} lignes à traiter</span>
+                  </div>
+                </div>
               </div>
-              <h3 class="text-lg font-semibold text-gray-700 mb-2">Aucun dataset d'entraînement</h3>
-              <p class="text-sm text-gray-500">Importez votre premier fichier pour entraîner un modèle</p>
-              <button (click)="openCreateModal()"
-                class="mt-4 inline-flex items-center space-x-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </div>
+            }
+
+            <!-- Cleaning Error -->
+            @if (cleaningError() && cleaningDatasetId() === dataset.datasetUuid) {
+            <div class="bg-red-50 rounded-xl p-6 border border-red-200 mb-4">
+              <div class="flex items-center gap-3 text-red-700">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <span>Importer un dataset</span>
+                <div>
+                  <p class="text-sm font-medium">{{ cleaningError() }}</p>
+                  <button (click)="startCleaning(dataset.datasetUuid)"
+                    class="mt-2 text-xs text-red-600 hover:text-red-800 underline">
+                    Réessayer
+                  </button>
+                </div>
+              </div>
+            </div>
+            }
+
+            <!-- Analysis Error -->
+            @if (analysisError() && analyzingDatasetId() === dataset.datasetUuid) {
+            <div class="bg-red-50 rounded-xl p-6 border border-red-200 mb-4">
+              <div class="flex items-center gap-3 text-red-700">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p class="text-sm font-medium">{{ analysisError() }}</p>
+                  <button (click)="startAnalysis(dataset.datasetUuid)"
+                    class="mt-2 text-xs text-red-600 hover:text-red-800 underline">
+                    Réessayer
+                  </button>
+                </div>
+              </div>
+            </div>
+            }
+
+            <!-- Action Buttons - Two Column Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <!-- Analyze / Re-analyze Button -->
+              @if (hasValidAnalysisForDataset(dataset.datasetUuid)) {
+              <button (click)="$event.stopPropagation(); startAnalysis(dataset.datasetUuid)"
+                [disabled]="analyzingDatasetId() === dataset.datasetUuid"
+                class="flex items-center p-4 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 hover:border-amber-300 transition-all group disabled:opacity-50">
+                <div class="p-2 rounded-lg bg-amber-100 group-hover:bg-amber-200 transition-colors mr-3 flex-shrink-0">
+                  @if (analyzingDatasetId() !== dataset.datasetUuid) {
+                  <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  } @else {
+                  <svg class="w-5 h-5 text-amber-600 animate-spin" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                      fill="none" />
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  }
+                </div>
+                <div class="flex-1 text-left">
+                  <p class="font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">
+                    {{ analyzingDatasetId() === dataset.datasetUuid ? 'Réanalyse en cours...' : 'Réanalyser' }}
+                  </p>
+                  <p class="text-xs text-gray-500">Mettre à jour l'analyse</p>
+                </div>
               </button>
-            </td>
-          </tr>
+              } @else {
+              <button (click)="$event.stopPropagation(); startAnalysis(dataset.datasetUuid)"
+                [disabled]="analyzingDatasetId() === dataset.datasetUuid"
+                class="flex items-center p-4 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200 hover:border-indigo-300 transition-all group disabled:opacity-50">
+                <div
+                  class="p-2 rounded-lg bg-indigo-100 group-hover:bg-indigo-200 transition-colors mr-3 flex-shrink-0">
+                  @if (analyzingDatasetId() !== dataset.datasetUuid) {
+                  <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  } @else {
+                  <svg class="w-5 h-5 text-indigo-600 animate-spin" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                      fill="none" />
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  }
+                </div>
+                <div class="flex-1 text-left">
+                  <p class="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
+                    {{ analyzingDatasetId() === dataset.datasetUuid ? 'Analyse en cours...' : 'Analyser' }}
+                  </p>
+                  <p class="text-xs text-gray-500">Structure et anomalies</p>
+                </div>
+              </button>
+              }
+
+              <!-- Clean Button -->
+              <button (click)="$event.stopPropagation(); startCleaning(dataset.datasetUuid)"
+                [disabled]="cleaningDatasetId() === dataset.datasetUuid"
+                class="flex items-center p-4 bg-white rounded-xl border border-gray-200 hover:border-green-300 hover:shadow-md transition-all group disabled:opacity-50">
+                <div class="p-2 rounded-lg bg-green-50 group-hover:bg-green-100 transition-colors mr-3 flex-shrink-0">
+                  @if (cleaningDatasetId() !== dataset.datasetUuid) {
+                  <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  } @else {
+                  <svg class="w-5 h-5 text-green-600 animate-spin" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                      fill="none" />
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  }
+                </div>
+                <div class="flex-1 text-left">
+                  <p class="font-semibold text-gray-900 group-hover:text-green-600 transition-colors">
+                    {{ cleaningDatasetId() === dataset.datasetUuid ? 'Nettoyage...' : 'Nettoyer' }}
+                  </p>
+                  <p class="text-xs text-gray-500">Doublons et aberrations</p>
+                </div>
+              </button>
+            </div>
+
+            <!-- Analysis Results Preview - FULL DISPLAY -->
+            @if (hasValidAnalysisForDataset(dataset.datasetUuid) && analyzingDatasetId() !== dataset.datasetUuid) {
+            <div class="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50">
+                <div class="flex items-center space-x-3">
+                  <div class="p-2 bg-indigo-50 rounded-lg">
+                    <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 class="text-sm font-bold text-gray-900">Structure des colonnes</h4>
+                    <p class="text-xs text-gray-500">
+                      {{ getAnalysisForDataset(dataset.datasetUuid)?.columns?.length || 0 }} colonnes analysées
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead class="bg-gray-50">
+                    <tr class="border-b border-gray-200">
+                      <th class="px-6 py-3 text-xs font-medium text-gray-500">Nom</th>
+                      <th class="px-6 py-3 text-xs font-medium text-gray-500">Type</th>
+                      <th class="px-6 py-3 text-xs font-medium text-gray-500 text-right">Valeurs uniques</th>
+                      <th class="px-6 py-3 text-xs font-medium text-gray-500 text-right">Null ratio</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    @for (col of getAnalysisForDataset(dataset.datasetUuid)?.columns; track col.name) {
+                    <tr class="hover:bg-gray-50/50">
+                      <td class="px-6 py-3">
+                        <div class="flex items-center">
+                          @if (col.name === getAnalysisForDataset(dataset.datasetUuid)?.suggestedTarget) {
+                          <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 flex-shrink-0"></span>
+                          }
+                          <span class="text-sm font-medium text-gray-900">{{ col.name }}</span>
+                        </div>
+                      </td>
+                      <td class="px-6 py-3">
+                        <span
+                          class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border whitespace-nowrap"
+                          [ngClass]="getColumnTypeClass(col.type)">
+                          {{ col.type }}
+                        </span>
+                      </td>
+                      <td class="px-6 py-3 text-right font-mono text-sm text-gray-600 whitespace-nowrap">
+                        {{ formatNumber(col.uniqueCount) }}
+                      </td>
+                      <td class="px-6 py-3 text-right font-mono whitespace-nowrap">
+                        <span [ngClass]="getNullRatioClass(col.nullRatio)">
+                          {{ (col.nullRatio * 100).toFixed(1) }}%
+                        </span>
+                      </td>
+                    </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            }
+
+            <!-- Data Preview - FULL DISPLAY -->
+            @if (previewDataForDataset(dataset.datasetUuid); as preview) {
+            <div class="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50">
+                <div class="flex items-center space-x-3">
+                  <div class="p-2 bg-indigo-50 rounded-lg">
+                    <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 class="text-sm font-bold text-gray-900">Aperçu des données</h4>
+                    <p class="text-xs text-gray-500">
+                      {{ preview.rows.length }} premières lignes • {{ preview.columns.length }} colonnes
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead class="bg-gray-50">
+                    <tr class="border-b border-gray-200">
+                      @for (col of preview.columns; track col) {
+                      <th class="px-6 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">
+                        {{ col }}
+                      </th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    @for (row of preview.rows; track $index) {
+                    <tr class="hover:bg-gray-50/50">
+                      @for (col of preview.columns; track col) {
+                      <td class="px-6 py-3 text-sm text-gray-600 font-mono whitespace-nowrap">
+                        {{ row[col] || '—' }}
+                      </td>
+                      }
+                    </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="px-6 py-3 border-t border-gray-200 bg-gray-50/50 flex items-center">
+                <svg class="w-4 h-4 mr-1 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p class="text-xs text-gray-400">Seul un échantillon des données est affiché ({{ preview.rows.length }}
+                  lignes)</p>
+              </div>
+            </div>
+            }
+
+            <!-- Placeholder when no data -->
+            @if (!hasValidAnalysisForDataset(dataset.datasetUuid) && !previewDataForDataset(dataset.datasetUuid)) {
+            <div class="bg-white rounded-xl border border-gray-200 p-8 text-center">
+              <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p class="text-sm text-gray-500">Aucune donnée d'analyse disponible</p>
+              <p class="text-xs text-gray-400 mt-1">Utilisez le bouton "Analyser" pour commencer</p>
+            </div>
+            }
+          </div>
           }
-        </tbody>
-      </table>
+        </div>
+        } @empty {
+        <div class="px-8 py-16 text-center">
+          <div class="inline-flex p-3 bg-gray-100 rounded-2xl mb-4">
+            <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-gray-700 mb-2">Aucun dataset d'entraînement</h3>
+          <p class="text-sm text-gray-500 mb-6">Importez votre premier fichier pour entraîner un modèle</p>
+          <button (click)="openCreateModal()"
+            class="inline-flex items-center space-x-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Importer un dataset</span>
+          </button>
+        </div>
+        }
+      </div>
     </div>
-    }
 
     <!-- Pagination -->
     @if (totalPages() > 1) {
@@ -250,12 +630,14 @@
       </div>
     </div>
     }
+    }
   </div>
 </div>
 
 <!-- Modals -->
 @if (showCreateModal()) {
-<app-dataset-create-modal [allowedTypes]="[datasetType.TRANSACTIONS_TRAIN]" (close)="closeCreateModal()" (datasetUploaded)="onDatasetUploaded()">
+<app-dataset-create-modal [allowedTypes]="[datasetType.TRANSACTIONS_TRAIN]" (close)="closeCreateModal()"
+  (datasetUploaded)="onDatasetUploaded()">
 </app-dataset-create-modal>
 }
 

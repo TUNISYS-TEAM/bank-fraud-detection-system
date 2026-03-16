@@ -90,7 +90,8 @@ const routes: Routes = [
           permissionFailRedirect: '/dashboard/administration'
         }
       }
-    ]
+    ]  
+
   }
 ];
 
