@@ -138,13 +138,17 @@ public class DatasetService {
             throw new IllegalArgumentException("datasetName is required");
         }
 
+        log.info("Uploading dataset of type: {} with name: {}", type, datasetName);
+
         // Validation des colonnes selon le type
-        validateCsvColumns(file, type);
+        Map<String, String> columnMapping = getColumnMapping(file, type);
+        log.info("Column mapping successful: {}", columnMapping);
 
         // Gérer la contrainte "un seul actif/existant" pour CLIENTS et ACCOUNTS
         if (type == DatasetType.CLIENTS || type == DatasetType.ACCOUNTS) {
             List<Dataset> existing = datasetRepository.findByType(type, Pageable.unpaged()).getContent();
             for (Dataset e : existing) {
+                log.info("Deleting existing {} dataset: {}", type, e.getDatasetName());
                 delete(e.getDatasetUuid());
             }
         }
@@ -158,36 +162,307 @@ public class DatasetService {
                 .build();
 
         ds = datasetRepository.save(ds);
+        log.info("Created dataset with UUID: {}", ds.getDatasetUuid());
 
-        // Key Data Lake
-        String folder = type.toString().toLowerCase();
-        String key = "data/raw/" + folder + "/" + ds.getDatasetUuid() + "/original.csv";
+        String finalFilePath = null;
+        long rowCount = 0;
+        BigDecimal sizeMb = BigDecimal.ZERO;
 
-        // Stats
-        long rowCount = countCsvRows(file);
-        BigDecimal sizeMb = bytesToMb(file.getSize());
+        Path tempCsvFile = null;
+        Path utf8File = null;
+        Path parquetFile = null;
+        String containerOutputFile = null;
 
-        // Upload MinIO
-        storageService.upload(
-                key,
-                file.getInputStream(),
-                file.getSize(),
-                file.getContentType() != null ? file.getContentType() : "text/csv");
+        // Flags to track which files have been cleaned up
+        boolean csvDeleted = false;
+        boolean parquetDeleted = false;
 
-        // Update metadata + save
-        ds.updateFileStats(key, sizeMb, rowCount);
+        try {
+            // 1. Save uploaded file temporarily
+            tempCsvFile = Files.createTempFile("upload_", ".csv");
+            file.transferTo(tempCsvFile.toFile());
+            log.info("Temporary CSV saved: {}", tempCsvFile);
+
+            // 2. Convert to UTF-8 if needed
+            Path utf8CsvFile = convertToUtf8(tempCsvFile);
+            if (utf8CsvFile == null) {
+                utf8CsvFile = tempCsvFile;
+            } else {
+                utf8File = utf8CsvFile;
+            }
+
+            // 3. Docker paths
+            String containerInputFile = "/app/data/" + utf8CsvFile.getFileName().toString();
+            containerOutputFile = "/app/data/" + ds.getDatasetUuid() + ".parquet";
+
+            // 4. Ensure data directory exists in container
+            execDockerCommand("mkdir", "-p", "/app/data");
+
+            // 5. Copy CSV to container
+            execDockerCopy(utf8CsvFile, containerInputFile);
+            log.info("CSV copied to container: {}", containerInputFile);
+
+            // 6. Delete UTF-8 file if it's separate
+            if (utf8File != null) {
+                try {
+                    Files.deleteIfExists(utf8File);
+                    utf8File = null;
+                    log.info("Deleted temporary UTF-8 file: {}", utf8CsvFile);
+                } catch (Exception ex) {
+                    log.warn("Failed to delete UTF-8 temp file: {}", ex.getMessage());
+                }
+            }
+
+            // 7. Run conversion command
+            List<String> cmd = new ArrayList<>();
+            cmd.addAll(List.of(
+                    "docker", "exec", "fraud-ml-pipeline",
+                    "python", "-m", "ml_pipeline.cli.main",
+                    "convert-to-parquet",
+                    "--input", containerInputFile,
+                    "--output", containerOutputFile));
+
+            log.info("Running conversion command: {}", String.join(" ", cmd));
+
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            StringBuilder outputBuilder = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    outputBuilder.append(line).append("\n");
+                    log.debug("[Python] {}", line);
+                }
+            }
+
+            boolean finished = process.waitFor(5, TimeUnit.MINUTES);
+            if (!finished) {
+                process.destroyForcibly();
+                throw new RuntimeException("Parquet conversion timed out after 5 minutes");
+            }
+
+            int exitCode = process.exitValue();
+            String result = outputBuilder.toString().trim();
+
+            if (exitCode != 0) {
+                log.error("Parquet conversion failed with code {}: {}", exitCode, result);
+                throw new RuntimeException("Failed to convert CSV to Parquet");
+            }
+
+            // 8. Retrieve converted Parquet file from container
+            parquetFile = Files.createTempFile("converted_", ".parquet");
+            execDockerCopyFromContainer(containerOutputFile, parquetFile);
+            log.info("Parquet file retrieved: {}", parquetFile);
+
+            // 9. Delete container file now that we have it locally
+            try {
+                execDockerCommand("rm", "-f", containerOutputFile);
+                log.info("Removed container file: {}", containerOutputFile);
+                containerOutputFile = null;
+            } catch (Exception ex) {
+                log.warn("Failed to remove container file: {}", containerOutputFile, ex);
+            }
+
+            // 10. Upload Parquet to MinIO
+            String folder = type.toString().toLowerCase();
+            finalFilePath = "data/raw/" + folder + "/" + ds.getDatasetUuid() + "/data.parquet";
+            try (InputStream is = Files.newInputStream(parquetFile)) {
+                storageService.upload(finalFilePath, is, Files.size(parquetFile), "application/octet-stream");
+            }
+            log.info("Parquet file uploaded to MinIO: {}", finalFilePath);
+
+            // 11. Get row count and size from Parquet
+            rowCount = countParquetRows(parquetFile);
+            sizeMb = bytesToMb(Files.size(parquetFile));
+            log.info("Dataset converted to Parquet successfully. Row count: {}", rowCount);
+
+            // 12. Delete local Parquet temp file now that it's uploaded
+            try {
+                Files.deleteIfExists(parquetFile);
+                parquetDeleted = true;
+                log.info("Temporary Parquet file deleted: {}", parquetFile);
+            } catch (Exception ex) {
+                log.warn("Failed to delete temporary Parquet file: {}", ex.getMessage());
+            }
+
+        } catch (Exception e) {
+            log.error("Error during Parquet conversion, falling back to CSV: {}", e.getMessage(), e);
+
+            // Fallback to CSV – use the already saved temp file
+            String folder = type.toString().toLowerCase();
+            finalFilePath = "data/raw/" + folder + "/" + ds.getDatasetUuid() + "/original.csv";
+
+            try (InputStream is = Files.newInputStream(tempCsvFile)) {
+                storageService.upload(finalFilePath, is, Files.size(tempCsvFile),
+                        file.getContentType() != null ? file.getContentType() : "text/csv");
+            }
+
+            rowCount = countCsvRowsFromPath(tempCsvFile);
+            sizeMb = bytesToMb(Files.size(tempCsvFile));
+
+            log.info("Dataset uploaded as CSV (fallback). Row count: {}", rowCount);
+
+            // If container file exists but was not retrieved, try to delete it
+            if (containerOutputFile != null) {
+                try {
+                    execDockerCommand("rm", "-f", containerOutputFile);
+                    log.info("Removed container file after fallback: {}", containerOutputFile);
+                    containerOutputFile = null;
+                } catch (Exception ex) {
+                    log.warn("Failed to remove container file: {}", containerOutputFile, ex);
+                }
+            }
+
+            // Note: parquetFile will be null in this branch, so no need to delete
+        } finally {
+            // Clean up any leftover UTF-8 file
+            if (utf8File != null && Files.exists(utf8File)) {
+                try {
+                    Files.deleteIfExists(utf8File);
+                    log.info("Cleaned up UTF-8 file in finally: {}", utf8File);
+                } catch (Exception ex) {
+                    log.warn("Failed to delete UTF-8 file in finally: {}", ex.getMessage());
+                }
+            }
+        }
+
+        // Update dataset metadata (happens in both success and fallback paths)
+        ds.updateFileStats(finalFilePath, sizeMb, rowCount);
         ds = datasetRepository.save(ds);
+        log.info("Dataset metadata updated with file path: {}", finalFilePath);
 
-        // Si CLIENTS ou ACCOUNTS, insertion immédiate en base
-        if (type == DatasetType.CLIENTS) {
-            importClientsFromCsv(file);
-        } else if (type == DatasetType.ACCOUNTS) {
-            importAccountsFromCsv(file);
-        } else if (type == DatasetType.TRANSACTIONS_VAL) {
-            importTransactionsValFromCsv(file);
+        // Database import using the temporary CSV file (only for certain types)
+        boolean importPerformed = false;
+        if (tempCsvFile != null && Files.exists(tempCsvFile)) {
+            try {
+                if (type == DatasetType.CLIENTS || type == DatasetType.ACCOUNTS
+                        || type == DatasetType.TRANSACTIONS_VAL) {
+                    MultipartFile importFile = new FileMultipartFile(
+                            file.getName(),
+                            file.getOriginalFilename(),
+                            file.getContentType(),
+                            tempCsvFile);
+
+                    if (type == DatasetType.CLIENTS) {
+                        importClientsFromCsv(importFile);
+                    } else if (type == DatasetType.ACCOUNTS) {
+                        importAccountsFromCsv(importFile);
+                    } else if (type == DatasetType.TRANSACTIONS_VAL) {
+                        importTransactionsValFromCsv(importFile);
+                    }
+                    importPerformed = true;
+                }
+            } catch (Exception e) {
+                log.error("Error during database import: {}", e.getMessage(), e);
+            } finally {
+                // Always delete the temporary CSV file after we're done with it
+                // (whether import was attempted or not)
+                try {
+                    Files.deleteIfExists(tempCsvFile);
+                    csvDeleted = true;
+                    log.info("Temporary CSV file deleted: {}", tempCsvFile);
+                } catch (Exception ex) {
+                    log.warn("Failed to delete temporary CSV file: {}", ex.getMessage());
+                }
+            }
+        }
+
+        // If for some reason the CSV file was not deleted (e.g., tempCsvFile was null
+        // or didn't exist),
+        // we attempt one final cleanup here (should not happen, but just in case)
+        if (!csvDeleted && tempCsvFile != null && Files.exists(tempCsvFile)) {
+            try {
+                Files.deleteIfExists(tempCsvFile);
+                log.info("Final cleanup deleted CSV file: {}", tempCsvFile);
+            } catch (Exception ex) {
+                log.warn("Final cleanup failed to delete CSV file: {}", ex.getMessage());
+            }
+        }
+
+        // Ensure Parquet temp file is deleted if not already
+        if (!parquetDeleted && parquetFile != null && Files.exists(parquetFile)) {
+            try {
+                Files.deleteIfExists(parquetFile);
+                log.info("Final cleanup deleted Parquet file: {}", parquetFile);
+            } catch (Exception ex) {
+                log.warn("Final cleanup failed to delete Parquet file: {}", ex.getMessage());
+            }
         }
 
         return ds;
+    }
+
+    // Helper to count CSV rows from a Path (without consuming original stream)
+    private long countCsvRowsFromPath(Path csvPath) throws IOException {
+        try (BufferedReader br = Files.newBufferedReader(csvPath, StandardCharsets.UTF_8)) {
+            return br.lines().count() - 1; // subtract header
+        }
+    }
+
+    // Custom MultipartFile implementation to wrap a file on disk
+    private static class FileMultipartFile implements MultipartFile {
+        private final String name;
+        private final String originalFilename;
+        private final String contentType;
+        private final Path filePath;
+
+        public FileMultipartFile(String name, String originalFilename, String contentType, Path filePath) {
+            this.name = name;
+            this.originalFilename = originalFilename;
+            this.contentType = contentType;
+            this.filePath = filePath;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            try {
+                return !Files.exists(filePath) || Files.size(filePath) == 0;
+            } catch (IOException e) {
+                return true;
+            }
+        }
+
+        @Override
+        public long getSize() {
+            try {
+                return Files.size(filePath);
+            } catch (IOException e) {
+                return 0;
+            }
+        }
+
+        @Override
+        public byte[] getBytes() throws IOException {
+            return Files.readAllBytes(filePath);
+        }
+
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return Files.newInputStream(filePath);
+        }
+
+        @Override
+        public void transferTo(File dest) throws IOException, IllegalStateException {
+            Files.copy(filePath, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     @Transactional
@@ -1368,5 +1643,23 @@ public class DatasetService {
         }
         log.info("Conversion forcée de ISO-8859-1 vers UTF-8");
         return outputFile;
+    }
+
+    private long countParquetRows(Path parquetFile) throws IOException {
+        org.apache.hadoop.fs.Path hadoopPath = new org.apache.hadoop.fs.Path(parquetFile.toAbsolutePath().toString());
+        org.apache.hadoop.conf.Configuration conf = new org.apache.hadoop.conf.Configuration();
+        conf.set("fs.defaultFS", "file:///");
+        conf.setBoolean("fs.file.impl.disable.cache", true);
+
+        long count = 0;
+        try (ParquetReader<GenericRecord> reader = AvroParquetReader
+                .<GenericRecord>builder(hadoopPath)
+                .withConf(conf)
+                .build()) {
+            while (reader.read() != null) {
+                count++;
+            }
+        }
+        return count;
     }
 }

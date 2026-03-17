@@ -319,6 +319,124 @@
             </div>
             }
 
+            <!-- Extract Behavior in Progress -->
+            @if (extractingDatasetId() === dataset.datasetUuid && extractingBehavior()) {
+            <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-4">
+              <div class="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200">
+                <div
+                  class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center">
+                  <svg class="w-5 h-5 text-purple-600 animate-pulse" fill="none" stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-900">Extraction du comportement client</h3>
+                  <p class="text-xs text-gray-500">Génération des features comportementales</p>
+                </div>
+              </div>
+
+              <div class="space-y-4">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-600">Progression</span>
+                  <span class="font-mono text-purple-600">{{ extractingProgress().toFixed(0) }}%</span>
+                </div>
+
+                <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-300 relative"
+                    [style.width.%]="extractingProgress()">
+                    @if (extractingProgress() > 30) {
+                    <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                    }
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+                  <div class="flex items-center gap-2">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Temps écoulé: {{ extractingElapsedTime() }}</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span>Extraction en cours...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            }
+
+            <!-- Extract Behavior Success -->
+            @if (extractingSuccess() && extractingStats() && extractingDatasetId() === dataset.datasetUuid) {
+            <div class="bg-purple-50 rounded-xl p-6 border border-purple-200 mb-4">
+              <div class="flex items-start gap-4">
+                <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-purple-600 shadow-sm">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-lg font-bold text-purple-900">Extraction terminée avec succès !</h3>
+                  <p class="text-purple-700 text-sm mt-1">Les features comportementales ont été générées</p>
+
+                  @if (extractingStats()) {
+                  <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                    <div class="bg-white p-3 rounded-lg border border-purple-200">
+                      <p class="text-xs text-purple-600">Clients traités</p>
+                      <p class="text-lg font-bold text-gray-800">{{ formatNumber(extractingStats()?.totalClients) }}</p>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-purple-200">
+                      <p class="text-xs text-purple-600">Features générées</p>
+                      <p class="text-lg font-bold text-gray-800">{{ formatNumber(extractingStats()?.featuresGenerated)
+                        }}</p>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-purple-200">
+                      <p class="text-xs text-purple-600">Temps de traitement</p>
+                      <p class="text-lg font-bold text-gray-800">{{ ((extractingStats()?.processingTimeMs || 0) / 1000).toFixed(1) }}s</p>
+                    </div>
+                  </div>
+                  }
+
+                  @if (extractedFilePath()) {
+                  <div class="mt-4 flex items-center gap-2 text-sm text-purple-600">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Fichier disponible</span>
+                  </div>
+                  }
+                </div>
+              </div>
+            </div>
+            }
+
+            <!-- Extract Behavior Error -->
+            @if (extractingError() && extractingDatasetId() === dataset.datasetUuid) {
+            <div class="bg-red-50 rounded-xl p-6 border border-red-200 mb-4">
+              <div class="flex items-center gap-3 text-red-700">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p class="text-sm font-medium">{{ extractingError() }}</p>
+                  <button (click)="startExtractBehavior(dataset.datasetUuid)"
+                    class="mt-2 text-xs text-red-600 hover:text-red-800 underline">
+                    Réessayer
+                  </button>
+                </div>
+              </div>
+            </div>
+            }
+
             <!-- Analysis Error -->
             @if (analysisError() && analyzingDatasetId() === dataset.datasetUuid) {
             <div class="bg-red-50 rounded-xl p-6 border border-red-200 mb-4">
@@ -338,8 +456,8 @@
             </div>
             }
 
-            <!-- Action Buttons - Two Column Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <!-- Action Buttons - Three Column Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <!-- Analyze / Re-analyze Button -->
               @if (hasValidAnalysisForDataset(dataset.datasetUuid)) {
               <button (click)="$event.stopPropagation(); startAnalysis(dataset.datasetUuid)"
@@ -419,6 +537,49 @@
                   <p class="text-xs text-gray-500">Doublons et aberrations</p>
                 </div>
               </button>
+
+              <!-- Extract Behavior Button - Only enabled when status is PROCESSED -->
+              @if (dataset.status === 'PROCESSED') {
+              <button (click)="$event.stopPropagation(); startExtractBehavior(dataset.datasetUuid)"
+                [disabled]="extractingDatasetId() === dataset.datasetUuid"
+                class="flex items-center p-4 bg-white rounded-xl border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all group disabled:opacity-50">
+                <div class="p-2 rounded-lg bg-purple-50 group-hover:bg-purple-100 transition-colors mr-3 flex-shrink-0">
+                  @if (extractingDatasetId() !== dataset.datasetUuid) {
+                  <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  } @else {
+                  <svg class="w-5 h-5 text-purple-600 animate-spin" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                      fill="none" />
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  }
+                </div>
+                <div class="flex-1 text-left">
+                  <p class="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors">
+                    {{ extractingDatasetId() === dataset.datasetUuid ? 'Extraction...' : 'Comportement Client' }}
+                  </p>
+                  <p class="text-xs text-gray-500">Features comportementales</p>
+                </div>
+              </button>
+              } @else {
+              <!-- Disabled button for non-PROCESSED datasets -->
+              <div
+                class="flex items-center p-4 bg-gray-100 rounded-xl border border-gray-200 opacity-50 cursor-not-allowed">
+                <div class="p-2 rounded-lg bg-gray-200 mr-3 flex-shrink-0">
+                  <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <div class="flex-1 text-left">
+                  <p class="font-semibold text-gray-500">Comportement Client</p>
+                  <p class="text-xs text-gray-400">Nécessite un dataset traité</p>
+                </div>
+              </div>
+              }
             </div>
 
             <!-- Analysis Results Preview - FULL DISPLAY -->

@@ -9,8 +9,8 @@ from pathlib import Path
 from ml_pipeline.pipeline.onnx_exporter import main as export_main
 from ml_pipeline.training.train_models import main as train_main
 from ml_pipeline.training.analyze_dataset import analyze_dataset_file
-from ml_pipeline.transformers.behavioral.client_behavior import ClientBehaviorTransformer  # NOUVEAU
-import pandas as pd  # NOUVEAU
+from ml_pipeline.transformers.behavioral.client_behavior import ClientBehaviorTransformer 
+import pandas as pd 
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Nombre maximum de lignes à analyser pour les statistiques (0 = toutes, défaut: 10000)"
     )
 
-    # ---- extract-behavior - NOUVELLE COMMANDE ----
+    # ---- extract-behavior ----
     extract_parser = subparsers.add_parser(
         "extract-behavior",
         help="Extrait les features comportementales client pour un dataset de transactions"
@@ -109,6 +109,22 @@ def build_parser() -> argparse.ArgumentParser:
     extract_parser.add_argument(
         "--history-path",
         help="Chemin vers le fichier d'historique client (JSON) si --use-fitted-history est activé"
+    )
+
+    # ---- convert-to-parquet - NOUVELLE COMMANDE ----
+    convert_parser = subparsers.add_parser(
+        "convert-to-parquet",
+        help="Convertit un fichier CSV au format Parquet"
+    )
+    convert_parser.add_argument(
+        "--input",
+        required=True,
+        help="Chemin du fichier d'entrée (CSV)"
+    )
+    convert_parser.add_argument(
+        "--output",
+        required=True,
+        help="Chemin du fichier de sortie (Parquet)"
     )
 
     # ---- validate ----
@@ -235,6 +251,60 @@ def extract_behavior_command(args):
         sys.exit(1)
 
 
+def convert_to_parquet_command(args):
+    """Implémentation de la commande convert-to-parquet."""
+    try:
+        input_path = Path(args.input)
+        output_path = Path(args.output)
+        
+        logging.info("Conversion CSV vers Parquet - input=%s output=%s", input_path, output_path)
+        
+        # Vérifier que le fichier d'entrée existe
+        if not input_path.exists():
+            raise FileNotFoundError(f"Fichier d'entrée non trouvé: {input_path}")
+        
+        # Créer le répertoire de sortie si nécessaire
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Lire le CSV
+        logging.info("Lecture du fichier CSV: %s", input_path)
+        df = pd.read_csv(input_path)
+        logging.info("CSV chargé: %d lignes, %d colonnes", len(df), len(df.columns))
+        
+        # Convertir en Parquet
+        logging.info("Conversion en Parquet...")
+        df.to_parquet(output_path, index=False, compression='snappy')
+        
+        # Vérifier que le fichier a été créé
+        if output_path.exists():
+            file_size_mb = output_path.stat().st_size / (1024 * 1024)
+            logging.info("Conversion réussie: %s (%.2f MB)", output_path, file_size_mb)
+            
+            # Résultat JSON
+            result = {
+                "status": "success",
+                "input": str(input_path),
+                "output": str(output_path),
+                "rows": len(df),
+                "columns": len(df.columns),
+                "size_mb": round(file_size_mb, 2)
+            }
+            print(json.dumps(result))
+        else:
+            raise RuntimeError("Le fichier de sortie n'a pas été créé")
+        
+    except Exception as e:
+        error_result = {
+            "status": "error",
+            "error": str(e),
+            "input": args.input if hasattr(args, 'input') else None,
+            "output": args.output if hasattr(args, 'output') else None
+        }
+        print(json.dumps(error_result))
+        logging.exception("Erreur lors de la conversion CSV vers Parquet")
+        sys.exit(1)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -298,9 +368,11 @@ def main() -> None:
             logging.exception("Erreur lors de l'analyse")
             sys.exit(1)
 
-    # NOUVEAU : Commande extract-behavior
     elif args.command == "extract-behavior":
         extract_behavior_command(args)
+        
+    elif args.command == "convert-to-parquet":
+        convert_to_parquet_command(args)
 
     elif args.command == "validate":
         print("Validation CLI not fully wired yet.", file=sys.stderr)
