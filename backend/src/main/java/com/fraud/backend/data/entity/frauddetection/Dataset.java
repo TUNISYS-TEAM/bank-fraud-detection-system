@@ -44,11 +44,14 @@ public class Dataset {
     private BigDecimal fileSizeMb;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", length = 20)
     private DatasetStatus status;
 
+    @Column(name = "visibility", nullable = false)
+    private Boolean visibility = false;
+
     @Enumerated(EnumType.STRING)
-    @Column(name = "dataset_type", nullable = false, length = 20)
+    @Column(name = "dataset_type", nullable = false, length = 30)
     private DatasetType type;
 
     @Column(name = "imported_at")
@@ -85,12 +88,13 @@ public class Dataset {
         if (importedAt == null) {
             importedAt = LocalDateTime.now();
         }
-        if (status == null) {
-            status = DatasetStatus.INACTIVE;
+        if (visibility == null) {
+            visibility = false;
         }
         if (type == null) {
             type = DatasetType.TRANSACTIONS_TRAIN;
         }
+        // status can be null now
     }
 
     // =========================
@@ -98,21 +102,27 @@ public class Dataset {
     // =========================
 
     @Transient
-    public boolean isActive() {
-        return DatasetStatus.ACTIVE.equals(this.status);
+    public boolean isVisible() {
+        return Boolean.TRUE.equals(this.visibility);
     }
 
-    @Transient
-    public boolean isInactive() {
-        return DatasetStatus.INACTIVE.equals(this.status);
+    public void setVisible(boolean visible) {
+        this.visibility = visible;
     }
 
-    public void activate() {
-        this.status = DatasetStatus.ACTIVE;
+    public void markAsProcessed() {
+        this.status = DatasetStatus.PROCESSED;
+        this.visibility = true;
     }
 
-    public void deactivate() {
-        this.status = DatasetStatus.INACTIVE;
+    public void markAsCleaned() {
+        this.status = DatasetStatus.CLEANED;
+        this.visibility = true;
+    }
+
+    public void markAsInactive() {
+        this.status = null;
+        this.visibility = false;
     }
 
     public void updateFileStats(String filePath, BigDecimal fileSizeMb, Long rowCount) {

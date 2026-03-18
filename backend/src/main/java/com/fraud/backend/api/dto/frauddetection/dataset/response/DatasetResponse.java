@@ -22,5 +22,6 @@ public class DatasetResponse {
 
     private DatasetStatus status;
     private DatasetType type;
+    private Boolean visibility;
     private LocalDateTime importedAt;
 }

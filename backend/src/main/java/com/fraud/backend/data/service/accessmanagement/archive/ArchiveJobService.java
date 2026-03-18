@@ -201,6 +201,18 @@ public class ArchiveJobService {
 
             log.info("Restoration completed for archive {}: {} rows processed.", archiveId, count);
 
+            // Suppression physique du fichier MinIO puisque restauré en base
+            try {
+                if (ao.getObjectKey() != null) {
+                    storageService.delete(ao.getObjectKey());
+                    log.info("Deleted archive file from storage after restoration: {}", ao.getObjectKey());
+                }
+            } catch (Exception e) {
+                log.warn(
+                        "Failed to delete archive file {} from storage after restoration. Manual cleanup might be needed.",
+                        ao.getObjectKey(), e);
+            }
+
         } catch (Throwable e) {
             log.error("CATASTROPHIC failure restoring archive {}: {}", archiveId, e.getMessage());
             e.printStackTrace();

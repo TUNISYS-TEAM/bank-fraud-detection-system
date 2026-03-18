@@ -53,35 +53,35 @@
                         placeholder="Ex: Transactions Février 2026">
                 </div>
 
-                <!-- Status avec toggle switch -->
+                <!-- Visibilité (toggle switch) -->
                 <div class="bg-gradient-to-r from-gray-50 to-white p-5 rounded-xl border border-gray-100">
                     <div class="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
                         <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
-                        <span>Statut du dataset</span>
+                        <span>Visibilité du dataset</span>
                     </div>
                     <div class="flex items-center justify-between">
-                        <span class="text-sm text-gray-600">Inactif</span>
+                        <span class="text-sm text-gray-600">Masqué</span>
                         <button type="button"
-                            (click)="datasetForm.patchValue({ status: datasetForm.get('status')?.value === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' })"
+                            (click)="datasetForm.patchValue({ visibility: !datasetForm.get('visibility')?.value })"
                             class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                            [class.bg-indigo-600]="datasetForm.get('status')?.value === 'ACTIVE'"
-                            [class.bg-gray-200]="datasetForm.get('status')?.value !== 'ACTIVE'">
-                            <span class="sr-only">Activer le dataset</span>
+                            [class.bg-indigo-600]="datasetForm.get('visibility')?.value"
+                            [class.bg-gray-200]="!datasetForm.get('visibility')?.value">
+                            <span class="sr-only">Basculer la visibilité</span>
                             <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform"
-                                  [class.translate-x-5]="datasetForm.get('status')?.value === 'ACTIVE'"
-                                  [class.translate-x-0.5]="datasetForm.get('status')?.value !== 'ACTIVE'">
+                                  [class.translate-x-5]="datasetForm.get('visibility')?.value"
+                                  [class.translate-x-0.5]="!datasetForm.get('visibility')?.value">
                             </span>
                         </button>
-                        <span class="text-sm text-gray-600">Actif</span>
+                        <span class="text-sm text-gray-600">Visible</span>
                     </div>
                     <p class="mt-3 text-xs text-gray-400">
-                        @if (datasetForm.get('status')?.value === 'ACTIVE') {
-                            Le dataset est disponible pour les analyses
+                        @if (datasetForm.get('visibility')?.value) {
+                            Le dataset est visible dans les listes et utilisable
                         } @else {
-                            Le dataset est masqué et non disponible
+                            Le dataset est masqué et non disponible pour utilisation
                         }
                     </p>
                 </div>
@@ -96,7 +96,7 @@
                             </svg>
                         </div>
                         <p class="text-xs text-indigo-800 leading-relaxed">
-                            Note: Seuls le nom et le statut peuvent être modifiés. Le contenu du fichier et le code identifiant restent inchangés.
+                            Seuls le nom et la visibilité peuvent être modifiés.
                         </p>
                     </div>
                 </div>

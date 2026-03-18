@@ -25,12 +25,22 @@
                 </div>
             </div>
             <div class="flex items-center space-x-3">
+                <!-- Statut de traitement -->
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border"
-                      [ngClass]="dataset.status === 'ACTIVE' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'">
+                      [ngClass]="getStatusClass(dataset.status)">
                     <span class="w-1.5 h-1.5 rounded-full mr-1.5"
-                          [class.bg-green-500]="dataset.status === 'ACTIVE'"
-                          [class.bg-gray-400]="dataset.status !== 'ACTIVE'"></span>
-                    {{ dataset.status === 'ACTIVE' ? 'Actif' : 'Inactif' }}
+                          [class.bg-blue-500]="dataset.status === 'PROCESSED'"
+                          [class.bg-purple-500]="dataset.status === 'CLEANED'"
+                          [class.bg-gray-400]="!dataset.status"></span>
+                    {{ getStatusLabel(dataset.status) }}
+                </span>
+                <!-- Visibilité -->
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border"
+                      [ngClass]="getVisibilityClass(dataset.visibility)">
+                    <span class="w-1.5 h-1.5 rounded-full mr-1.5"
+                          [class.bg-green-500]="dataset.visibility"
+                          [class.bg-gray-400]="!dataset.visibility"></span>
+                    {{ getVisibilityLabel(dataset.visibility) }}
                 </span>
                 <button (click)="closeModal()" 
                         class="text-gray-400 hover:text-gray-600 hover:bg-white/50 p-2 rounded-lg transition-colors">
@@ -80,7 +90,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                                       d="M4 6h16M4 12h16M4 18h7" />
                             </svg>
-                            Aperçu des 20 premières lignes
+                            Aperçu des 10 premières lignes
                         </h4>
                     </div>
                     <div class="overflow-x-auto">

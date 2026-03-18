@@ -88,8 +88,8 @@
                 </svg>
               </div>
 
-              <!-- Dataset Info - 6 columns (type removed) -->
-              <div class="flex-1 grid grid-cols-6 gap-6 items-center">
+              <!-- Dataset Info - 7 columns (added visibility) -->
+              <div class="flex-1 grid grid-cols-7 gap-6 items-center">
                 <!-- Code column -->
                 <div class="col-span-1">
                   <span class="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">{{ dataset.datasetCode
@@ -107,7 +107,7 @@
                       </svg>
                     </div>
                     <p class="text-sm font-semibold text-gray-900 truncate max-w-[150px]"
-                      title="{{ dataset.datasetName }}">{{ dataset.datasetName }}</p>
+                      [title]="dataset.datasetName">{{ dataset.datasetName }}</p>
                   </div>
                 </div>
 
@@ -139,22 +139,24 @@
                 <div class="col-span-1">
                   <span
                     class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap"
-                    [ngClass]="{
-                          'bg-green-50 text-green-700 border-green-200': dataset.status === 'ACTIVE',
-                          'bg-blue-50 text-blue-700 border-blue-200': dataset.status === 'PROCESSED',
-                          'bg-gray-100 text-gray-600 border-gray-200': dataset.status === 'INACTIVE'
-                        }">
+                    [ngClass]="getStatusClass(dataset.status)">
                     <span class="w-1.5 h-1.5 rounded-full mr-1.5 flex-shrink-0"
-                      [class.bg-green-500]="dataset.status === 'ACTIVE'"
                       [class.bg-blue-500]="dataset.status === 'PROCESSED'"
-                      [class.bg-gray-400]="dataset.status === 'INACTIVE'"></span>
-                    <span>
-                      @switch (dataset.status) {
-                      @case ('ACTIVE') { Actif }
-                      @case ('PROCESSED') { Traité }
-                      @case ('INACTIVE') { Inactif }
-                      }
-                    </span>
+                      [class.bg-purple-500]="dataset.status === 'CLEANED'"
+                      [class.bg-gray-400]="!dataset.status"></span>
+                    <span>{{ getStatusLabel(dataset.status) }}</span>
+                  </span>
+                </div>
+
+                <!-- Visibility column -->
+                <div class="col-span-1">
+                  <span
+                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap"
+                    [ngClass]="getVisibilityClass(dataset.visibility)">
+                    <span class="w-1.5 h-1.5 rounded-full mr-1.5 flex-shrink-0"
+                      [class.bg-green-500]="dataset.visibility"
+                      [class.bg-gray-400]="!dataset.visibility"></span>
+                    <span>{{ getVisibilityLabel(dataset.visibility) }}</span>
                   </span>
                 </div>
               </div>
@@ -320,7 +322,7 @@
             }
 
             <!-- Extract Behavior in Progress -->
-            @if (extractingDatasetId() === dataset.datasetUuid && extractingBehavior()) {
+            @if (extractingDatasetId() === dataset.datasetUuid) {
             <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-4">
               <div class="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200">
                 <div
@@ -373,52 +375,7 @@
             </div>
             }
 
-            <!-- Extract Behavior Success -->
-            @if (extractingSuccess() && extractingStats() && extractingDatasetId() === dataset.datasetUuid) {
-            <div class="bg-purple-50 rounded-xl p-6 border border-purple-200 mb-4">
-              <div class="flex items-start gap-4">
-                <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-purple-600 shadow-sm">
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div class="flex-1">
-                  <h3 class="text-lg font-bold text-purple-900">Extraction terminée avec succès !</h3>
-                  <p class="text-purple-700 text-sm mt-1">Les features comportementales ont été générées</p>
-
-                  @if (extractingStats()) {
-                  <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-                    <div class="bg-white p-3 rounded-lg border border-purple-200">
-                      <p class="text-xs text-purple-600">Clients traités</p>
-                      <p class="text-lg font-bold text-gray-800">{{ formatNumber(extractingStats()?.totalClients) }}</p>
-                    </div>
-                    <div class="bg-white p-3 rounded-lg border border-purple-200">
-                      <p class="text-xs text-purple-600">Features générées</p>
-                      <p class="text-lg font-bold text-gray-800">{{ formatNumber(extractingStats()?.featuresGenerated)
-                        }}</p>
-                    </div>
-                    <div class="bg-white p-3 rounded-lg border border-purple-200">
-                      <p class="text-xs text-purple-600">Temps de traitement</p>
-                      <p class="text-lg font-bold text-gray-800">{{ ((extractingStats()?.processingTimeMs || 0) / 1000).toFixed(1) }}s</p>
-                    </div>
-                  </div>
-                  }
-
-                  @if (extractedFilePath()) {
-                  <div class="mt-4 flex items-center gap-2 text-sm text-purple-600">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span>Fichier disponible</span>
-                  </div>
-                  }
-                </div>
-              </div>
-            </div>
-            }
-
-            <!-- Extract Behavior Error -->
+            <!-- Extract Behavior Error  -->
             @if (extractingError() && extractingDatasetId() === dataset.datasetUuid) {
             <div class="bg-red-50 rounded-xl p-6 border border-red-200 mb-4">
               <div class="flex items-center gap-3 text-red-700">
@@ -538,8 +495,8 @@
                 </div>
               </button>
 
-              <!-- Extract Behavior Button - Only enabled when status is PROCESSED -->
-              @if (dataset.status === 'PROCESSED') {
+              <!-- Extract Behavior Button - Enabled when status is PROCESSED or CLEANED -->
+              @if (dataset.status === 'PROCESSED' || dataset.status === 'CLEANED') {
               <button (click)="$event.stopPropagation(); startExtractBehavior(dataset.datasetUuid)"
                 [disabled]="extractingDatasetId() === dataset.datasetUuid"
                 class="flex items-center p-4 bg-white rounded-xl border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all group disabled:opacity-50">
@@ -565,7 +522,7 @@
                 </div>
               </button>
               } @else {
-              <!-- Disabled button for non-PROCESSED datasets -->
+              <!-- Disabled button for non-PROCESSED / non-CLEANED datasets -->
               <div
                 class="flex items-center p-4 bg-gray-100 rounded-xl border border-gray-200 opacity-50 cursor-not-allowed">
                 <div class="p-2 rounded-lg bg-gray-200 mr-3 flex-shrink-0">
@@ -576,15 +533,82 @@
                 </div>
                 <div class="flex-1 text-left">
                   <p class="font-semibold text-gray-500">Comportement Client</p>
-                  <p class="text-xs text-gray-400">Nécessite un dataset traité</p>
+                  <p class="text-xs text-gray-400">Nécessite un dataset traité ou nettoyé</p>
                 </div>
               </div>
               }
             </div>
 
-            <!-- Analysis Results Preview - FULL DISPLAY -->
-            @if (hasValidAnalysisForDataset(dataset.datasetUuid) && analyzingDatasetId() !== dataset.datasetUuid) {
+            <!-- Data Preview - FULL DISPLAY without truncation -->
+            @if (previewDataForDataset(dataset.datasetUuid); as preview) {
             <div class="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50">
+                <div class="flex items-center space-x-3">
+                  <div class="p-2 bg-indigo-50 rounded-lg">
+                    <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 class="text-sm font-bold text-gray-900">Aperçu des données</h4>
+                    <p class="text-xs text-gray-500">
+                      {{ preview.rows.length }} premières lignes • {{ preview.columns.length }} colonnes
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Full table without truncation - shows ALL columns -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead class="bg-gray-50">
+                    <tr class="border-b border-gray-200">
+                      @for (col of preview.columns; track col) {
+                      <th class="px-6 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">
+                        {{ col }}
+                      </th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    @for (row of preview.rows; track $index) {
+                    <tr class="hover:bg-gray-50/50">
+                      @for (col of preview.columns; track col) {
+                      <td class="px-6 py-3 text-sm text-gray-600 font-mono whitespace-nowrap">
+                        {{ row[col] || '—' }}
+                      </td>
+                      }
+                    </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="px-6 py-3 border-t border-gray-200 bg-gray-50/50 flex items-center">
+                <svg class="w-4 h-4 mr-1 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p class="text-xs text-gray-400">Seul un échantillon des données est affiché ({{ preview.rows.length }} lignes)</p>
+              </div>
+            </div>
+            } @else if (!previewLoading()) {
+            <!-- Preview placeholder when no preview available -->
+            <div class="mt-6 bg-gray-50 rounded-xl border border-gray-200 p-8 text-center">
+              <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+              </svg>
+              <p class="text-sm text-gray-500">Aperçu non disponible</p>
+              <p class="text-xs text-gray-400 mt-1">Le fichier de données n'a pas pu être chargé</p>
+            </div>
+            }
+
+            <!-- Analysis Results Preview -->
+            @if (hasValidAnalysisForDataset(dataset.datasetUuid) && analyzingDatasetId() !== dataset.datasetUuid) {
+            <div class="mt-8 bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50">
                 <div class="flex items-center space-x-3">
                   <div class="p-2 bg-indigo-50 rounded-lg">
@@ -613,7 +637,7 @@
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100">
-                    @for (col of getAnalysisForDataset(dataset.datasetUuid)?.columns; track col.name) {
+                    @for (col of getAnalysisForDataset(dataset.datasetUuid)?.columns || []; track col.name) {
                     <tr class="hover:bg-gray-50/50">
                       <td class="px-6 py-3">
                         <div class="flex items-center">
@@ -646,66 +670,9 @@
             </div>
             }
 
-            <!-- Data Preview - FULL DISPLAY -->
-            @if (previewDataForDataset(dataset.datasetUuid); as preview) {
-            <div class="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div class="px-6 py-4 border-b border-gray-200 bg-gray-50/50">
-                <div class="flex items-center space-x-3">
-                  <div class="p-2 bg-indigo-50 rounded-lg">
-                    <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h4 class="text-sm font-bold text-gray-900">Aperçu des données</h4>
-                    <p class="text-xs text-gray-500">
-                      {{ preview.rows.length }} premières lignes • {{ preview.columns.length }} colonnes
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                  <thead class="bg-gray-50">
-                    <tr class="border-b border-gray-200">
-                      @for (col of preview.columns; track col) {
-                      <th class="px-6 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">
-                        {{ col }}
-                      </th>
-                      }
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-100">
-                    @for (row of preview.rows; track $index) {
-                    <tr class="hover:bg-gray-50/50">
-                      @for (col of preview.columns; track col) {
-                      <td class="px-6 py-3 text-sm text-gray-600 font-mono whitespace-nowrap">
-                        {{ row[col] || '—' }}
-                      </td>
-                      }
-                    </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-
-              <div class="px-6 py-3 border-t border-gray-200 bg-gray-50/50 flex items-center">
-                <svg class="w-4 h-4 mr-1 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor"
-                  viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p class="text-xs text-gray-400">Seul un échantillon des données est affiché ({{ preview.rows.length }}
-                  lignes)</p>
-              </div>
-            </div>
-            }
-
-            <!-- Placeholder when no data -->
-            @if (!hasValidAnalysisForDataset(dataset.datasetUuid) && !previewDataForDataset(dataset.datasetUuid)) {
-            <div class="bg-white rounded-xl border border-gray-200 p-8 text-center">
+            <!-- Placeholder when no analysis (with padding top) -->
+            @if (!hasValidAnalysisForDataset(dataset.datasetUuid)) {
+            <div class="mt-8 bg-white rounded-xl border border-gray-200 p-8 text-center">
               <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

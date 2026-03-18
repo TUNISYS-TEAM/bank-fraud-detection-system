@@ -4,13 +4,13 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export enum DatasetStatus {
-    ACTIVE = 'ACTIVE',
-    INACTIVE = 'INACTIVE',
-    PROCESSED = 'PROCESSED'
+    PROCESSED = 'PROCESSED',
+    CLEANED = 'CLEANED'
 }
 
 export enum DatasetType {
     TRANSACTIONS_TRAIN = 'TRANSACTIONS_TRAIN',
+    TRANSACTIONS_TRAIN_ENRICHED = 'TRANSACTIONS_TRAIN_ENRICHED',
     TRANSACTIONS_VAL = 'TRANSACTIONS_VAL',
     CLIENTS = 'CLIENTS',
     ACCOUNTS = 'ACCOUNTS'
@@ -23,9 +23,10 @@ export interface Dataset {
     fileSizeMb: number;
     rowCount: number;
     columnCount: number;
-    status: DatasetStatus;
+    status: DatasetStatus | null;
     type: DatasetType;
     importedAt: string;
+    visibility: boolean; 
 }
 
 export interface DatasetPreviewResponse {
@@ -52,11 +53,12 @@ export class DatasetService {
     private http = inject(HttpClient);
     private readonly apiUrl = `${environment.apiUrl}/datasets`;
 
-    list(params: { q?: string; status?: DatasetStatus; type?: DatasetType; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
+    list(params: { q?: string; status?: DatasetStatus; type?: DatasetType; visibility?: boolean; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
         let httpParams = new HttpParams();
         if (params.q) httpParams = httpParams.set('q', params.q);
         if (params.status) httpParams = httpParams.set('status', params.status);
         if (params.type) httpParams = httpParams.set('type', params.type);
+        if (params.visibility !== undefined) httpParams = httpParams.set('visibility', params.visibility.toString());
         if (params.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
         if (params.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
 
@@ -85,7 +87,7 @@ export class DatasetService {
         return this.http.delete<void>(`${this.apiUrl}/${uuid}`);
     }
 
-    update(uuid: string, data: { datasetName?: string; status?: DatasetStatus }): Observable<Dataset> {
+    update(uuid: string, data: { datasetName?: string; status?: DatasetStatus; visibility?: boolean }): Observable<Dataset> {
         return this.http.put<Dataset>(`${this.apiUrl}/${uuid}`, data);
     }
 

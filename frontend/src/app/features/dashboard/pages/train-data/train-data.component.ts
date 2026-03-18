@@ -116,7 +116,7 @@ export class TrainDataComponent implements OnInit, OnDestroy {
 
   // Analysis states per dataset
   analysisResults = signal<Map<string, AnalysisResult>>(new Map());
-  previewDataMap = signal<Map<string, PreviewResponse>>(new Map());
+  previewDataMap = signal<Map<string, PreviewResponse | null>>(new Map());
   analyzingDatasetId = signal<string | null>(null);
   analysisError = signal<string | null>(null);
   previewLoading = signal(false);
@@ -131,7 +131,7 @@ export class TrainDataComponent implements OnInit, OnDestroy {
 
   // Extract Behavior states
   extractingBehavior = signal<boolean>(false);
-  extractingSuccess = signal<boolean>(false);
+  extractingSuccess = signal<boolean>(false); // Keep but don't use in UI
   extractingError = signal<string | null>(null);
   extractingStats = signal<any | null>(null);
   extractingDatasetId = signal<string | null>(null);
@@ -296,7 +296,7 @@ export class TrainDataComponent implements OnInit, OnDestroy {
     return this.analysisResults().get(datasetUuid);
   }
 
-  previewDataForDataset(datasetUuid: string): PreviewResponse | undefined {
+  previewDataForDataset(datasetUuid: string): PreviewResponse | null | undefined {
     return this.previewDataMap().get(datasetUuid);
   }
 
@@ -395,15 +395,16 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   private loadPreview(datasetUuid: string): void {
     this.previewLoading.set(true);
 
-    this.datasetService.preview(datasetUuid, 5).subscribe({
+    this.datasetService.preview(datasetUuid, 5).pipe(
+      catchError(error => {
+        console.warn('Preview not available for dataset:', datasetUuid, error.status);
+        return of(null);
+      })
+    ).subscribe({
       next: (preview) => {
         const newMap = new Map(this.previewDataMap());
         newMap.set(datasetUuid, preview);
         this.previewDataMap.set(newMap);
-        this.previewLoading.set(false);
-      },
-      error: (error) => {
-        console.error('Error loading preview:', error);
         this.previewLoading.set(false);
       }
     });
@@ -449,7 +450,6 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   }
 
   // ── Clean Endpoint ────────────────────────────────────────────────────
-  // ── Clean Endpoint ────────────────────────────────────────────────────
   startCleaning(datasetUuid: string): void {
     if (!datasetUuid) return;
 
@@ -464,13 +464,13 @@ export class TrainDataComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.stopCleaningProgress(true);
 
-        // Update dataset status
+        // Update dataset status to CLEANED
         this.datasets.update(datasets => {
           return datasets.map(d => {
             if (d.datasetUuid === datasetUuid) {
               return {
                 ...d,
-                status: DatasetStatus.PROCESSED,
+                status: DatasetStatus.CLEANED,
                 processedFilePath: response.processedFilePath
               } as ExtendedDataset;
             }
@@ -481,7 +481,7 @@ export class TrainDataComponent implements OnInit, OnDestroy {
         // Reload preview to show updated data
         this.loadPreview(datasetUuid);
 
-        // Reset cleaning state immediately
+        // Reset cleaning state
         this.cleaningDatasetId.set(null);
         this.cleaningProgress.set(0);
 
@@ -499,9 +499,17 @@ export class TrainDataComponent implements OnInit, OnDestroy {
 
   private startCleaningProgressSimulation(): void {
     this.cleaningProgress.set(0);
+    this.cleaningElapsedTime.set('0:00');
     this.cleaningStartTime = Date.now();
 
     this.cleaningProgressInterval = setInterval(() => {
+      // Update elapsed time
+      const elapsedSeconds = Math.floor((Date.now() - this.cleaningStartTime) / 1000);
+      const minutes = Math.floor(elapsedSeconds / 60);
+      const seconds = elapsedSeconds % 60;
+      this.cleaningElapsedTime.set(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+
+      // Update progress
       const currentProgress = this.cleaningProgress();
       if (currentProgress < 90) {
         const increment = Math.max(0.5, (90 - currentProgress) / 20);
@@ -529,6 +537,7 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   }
 
   // ── Extract Behavior Endpoint ─────────────────────────────────────────
+  // ── Extract Behavior Endpoint ─────────────────────────────────────────
   startExtractBehavior(datasetUuid: string): void {
     if (!datasetUuid) return;
 
@@ -551,12 +560,20 @@ export class TrainDataComponent implements OnInit, OnDestroy {
         this.extractedFilePath.set(response.outputPath || null);
         this.extractingStats.set(response.stats || null);
 
+        this.extractingDatasetId.set(null);
+        this.extractingProgress.set(0);
+
+        // Reload datasets to show the new enriched dataset with its actual visibility from the database
+        this.loadDatasets();
+
         console.log('Extraction du comportement client terminée avec succès');
       },
       error: (err) => {
         this.stopExtractingProgress(false);
         this.extractingBehavior.set(false);
         this.extractingError.set(err.error?.message || 'Erreur lors de l\'extraction du comportement client');
+        this.extractingDatasetId.set(null);
+        this.extractingProgress.set(0);
         console.error('Error extracting behavior:', err);
       }
     });
@@ -597,6 +614,35 @@ export class TrainDataComponent implements OnInit, OnDestroy {
       clearInterval(this.extractingProgressInterval);
       this.extractingProgressInterval = null;
     }
+  }
+
+  // ── Helper methods for status and visibility ──────────────────────────
+  getStatusLabel(status: DatasetStatus | null): string {
+    if (!status) return 'Non traité';
+    switch (status) {
+      case DatasetStatus.PROCESSED: return 'Traité';
+      case DatasetStatus.CLEANED: return 'Nettoyé';
+      default: return status;
+    }
+  }
+
+  getStatusClass(status: DatasetStatus | null): string {
+    if (!status) return 'bg-gray-100 text-gray-600 border-gray-200';
+    switch (status) {
+      case DatasetStatus.PROCESSED: return 'bg-blue-50 text-blue-700 border-blue-200';
+      case DatasetStatus.CLEANED: return 'bg-purple-50 text-purple-700 border-purple-200';
+      default: return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  }
+
+  getVisibilityLabel(visible: boolean): string {
+    return visible ? 'Visible' : 'Masqué';
+  }
+
+  getVisibilityClass(visible: boolean): string {
+    return visible
+      ? 'bg-green-50 text-green-700 border-green-200'
+      : 'bg-gray-100 text-gray-600 border-gray-200';
   }
 
   // ── Formatters ────────────────────────────────────────────────────────

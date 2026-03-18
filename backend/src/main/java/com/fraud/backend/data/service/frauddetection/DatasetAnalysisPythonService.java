@@ -59,7 +59,7 @@ public class DatasetAnalysisPythonService {
             // 1. Download file from MinIO into a temp file with the correct extension
             tempFile = Files.createTempFile("dataset_", extension);
             try (InputStream in = storageService.download(storedPath);
-                 OutputStream out = Files.newOutputStream(tempFile)) {
+                    OutputStream out = Files.newOutputStream(tempFile)) {
                 in.transferTo(out);
             }
             log.info("Dataset downloaded to temp file: {}", tempFile);
@@ -150,7 +150,9 @@ public class DatasetAnalysisPythonService {
         } finally {
             cleanup(tempFile, containerFileName);
             if (utf8File != null && !utf8File.equals(tempFile)) {
-                try { Files.deleteIfExists(utf8File); } catch (Exception e) {
+                try {
+                    Files.deleteIfExists(utf8File);
+                } catch (Exception e) {
                     log.warn("Nettoyage utf8 file failed: {}", e.getMessage());
                 }
             }
@@ -192,7 +194,7 @@ public class DatasetAnalysisPythonService {
             // 1. Download with correct extension
             tempFile = Files.createTempFile("dataset_clean_", extension);
             try (InputStream in = storageService.download(storedPath);
-                 OutputStream out = Files.newOutputStream(tempFile)) {
+                    OutputStream out = Files.newOutputStream(tempFile)) {
                 in.transferTo(out);
             }
             log.info("Fichier téléchargé: {}", tempFile);
@@ -287,9 +289,10 @@ public class DatasetAnalysisPythonService {
             log.info("Fichier nettoyé récupéré: {}", cleanedFile);
 
             // 7. Upload cleaned Parquet to MinIO
-            String minioKey = "data/processed/transactions/" + datasetUuid + "/" + cleanedFilename;
+            String minioKey = "data/cleaned/transactions/" + datasetUuid + "/" + cleanedFilename;
             try (InputStream cleanedInputStream = Files.newInputStream(cleanedFile)) {
-                storageService.upload(minioKey, cleanedInputStream, Files.size(cleanedFile), "application/octet-stream");
+                storageService.upload(minioKey, cleanedInputStream, Files.size(cleanedFile),
+                        "application/octet-stream");
             }
             log.info("Fichier nettoyé uploadé vers MinIO: {}", minioKey);
 
@@ -299,10 +302,11 @@ public class DatasetAnalysisPythonService {
 
             // Update filePath to the new Parquet file so future previews use it
             dataset.setFilePath(minioKey);
-            dataset.setStatus(DatasetStatus.PROCESSED);
+            dataset.setStatus(DatasetStatus.CLEANED);
 
             Map<String, Object> featureCols = dataset.getFeatureColumns();
-            if (featureCols == null) featureCols = new HashMap<>();
+            if (featureCols == null)
+                featureCols = new HashMap<>();
 
             Map<String, Object> cleaningStatsMap = new HashMap<>();
             cleaningStatsMap.put("originalRows", cleaningStats.getOriginalRows());
@@ -335,14 +339,32 @@ public class DatasetAnalysisPythonService {
         } finally {
             cleanup(tempFile, containerFileName);
             if (utf8File != null && !utf8File.equals(tempFile)) {
-                try { Files.deleteIfExists(utf8File); } catch (Exception e) {
+                try {
+                    Files.deleteIfExists(utf8File);
+                } catch (Exception e) {
                     log.warn("Nettoyage utf8 file failed: {}", e.getMessage());
                 }
             }
-            if (analysisFile != null) try { Files.deleteIfExists(analysisFile); } catch (Exception ignored) {}
-            if (containerAnalysisFile != null) try { execDockerCommand("rm", "-f", containerAnalysisFile); } catch (Exception ignored) {}
-            if (containerOutputFile != null) try { execDockerCommand("rm", "-f", containerOutputFile); } catch (Exception ignored) {}
-            if (cleanedFile != null) try { Files.deleteIfExists(cleanedFile); } catch (Exception ignored) {}
+            if (analysisFile != null)
+                try {
+                    Files.deleteIfExists(analysisFile);
+                } catch (Exception ignored) {
+                }
+            if (containerAnalysisFile != null)
+                try {
+                    execDockerCommand("rm", "-f", containerAnalysisFile);
+                } catch (Exception ignored) {
+                }
+            if (containerOutputFile != null)
+                try {
+                    execDockerCommand("rm", "-f", containerOutputFile);
+                } catch (Exception ignored) {
+                }
+            if (cleanedFile != null)
+                try {
+                    Files.deleteIfExists(cleanedFile);
+                } catch (Exception ignored) {
+                }
         }
     }
 
@@ -404,7 +426,8 @@ public class DatasetAnalysisPythonService {
         Process process = pb.start();
         String output = readStream(process.getInputStream());
         int exitCode = process.waitFor();
-        if (exitCode != 0) throw new RuntimeException("Docker command failed: " + output);
+        if (exitCode != 0)
+            throw new RuntimeException("Docker command failed: " + output);
         return output;
     }
 
@@ -416,7 +439,8 @@ public class DatasetAnalysisPythonService {
         Process process = pb.start();
         String output = readStream(process.getInputStream());
         int exitCode = process.waitFor();
-        if (exitCode != 0) throw new RuntimeException("Docker copy failed: " + output);
+        if (exitCode != 0)
+            throw new RuntimeException("Docker copy failed: " + output);
     }
 
     private void execDockerCopyFromContainer(String containerPath, Path localPath) throws Exception {
@@ -427,14 +451,16 @@ public class DatasetAnalysisPythonService {
         Process process = pb.start();
         String output = readStream(process.getInputStream());
         int exitCode = process.waitFor();
-        if (exitCode != 0) throw new RuntimeException("Docker copy from container failed: " + output);
+        if (exitCode != 0)
+            throw new RuntimeException("Docker copy from container failed: " + output);
     }
 
     // ==================== PARSING HELPERS ====================
 
     private DatasetCleanResponse.CleaningStats parseCleaningStats(JsonNode root) {
         JsonNode statsNode = root.get("cleaning_stats");
-        if (statsNode == null) return DatasetCleanResponse.CleaningStats.builder().build();
+        if (statsNode == null)
+            return DatasetCleanResponse.CleaningStats.builder().build();
         return DatasetCleanResponse.CleaningStats.builder()
                 .originalRows(statsNode.path("original_rows").asLong(0))
                 .cleanedRows(statsNode.path("cleaned_rows").asLong(0))
@@ -461,11 +487,17 @@ public class DatasetAnalysisPythonService {
     }
 
     private JsonNode extractJsonFromOutput(String output) {
-        try { return objectMapper.readTree(output); } catch (Exception e) { /* fall through */ }
+        try {
+            return objectMapper.readTree(output);
+        } catch (Exception e) {
+            /* fall through */ }
         int jsonStart = output.indexOf('{');
         int jsonEnd = output.lastIndexOf('}');
         if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            try { return objectMapper.readTree(output.substring(jsonStart, jsonEnd + 1)); } catch (Exception ignored) {}
+            try {
+                return objectMapper.readTree(output.substring(jsonStart, jsonEnd + 1));
+            } catch (Exception ignored) {
+            }
         }
         return null;
     }
@@ -475,7 +507,8 @@ public class DatasetAnalysisPythonService {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             String line;
-            while ((line = reader.readLine()) != null) sb.append(line).append("\n");
+            while ((line = reader.readLine()) != null)
+                sb.append(line).append("\n");
         }
         return sb.toString();
     }
@@ -495,10 +528,14 @@ public class DatasetAnalysisPythonService {
                         .build());
             }
         }
+
+        // Handle null status
+        String statusString = dataset.getStatus() != null ? dataset.getStatus().toString() : null;
+
         return DatasetAnalysisResponse.builder()
                 .datasetUuid(dataset.getDatasetUuid())
                 .datasetName(dataset.getDatasetName())
-                .status(dataset.getStatus().toString())
+                .status(statusString)
                 .columns(columns)
                 .statistics(objectMapper.convertValue(root.get("statistics"), Map.class))
                 .suggestedFeatures(objectMapper.convertValue(root.get("suggestedFeatures"),
@@ -514,12 +551,16 @@ public class DatasetAnalysisPythonService {
 
     private void cleanup(Path tempFile, String containerFileName) {
         if (containerFileName != null) {
-            try { execDockerCommand("rm", "-f", containerFileName); } catch (Exception e) {
+            try {
+                execDockerCommand("rm", "-f", containerFileName);
+            } catch (Exception e) {
                 log.warn("Nettoyage conteneur échoué: {}", e.getMessage());
             }
         }
         if (tempFile != null) {
-            try { Files.deleteIfExists(tempFile); } catch (Exception e) {
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (Exception e) {
                 log.warn("Suppression fichier temporaire échouée: {}", e.getMessage());
             }
         }

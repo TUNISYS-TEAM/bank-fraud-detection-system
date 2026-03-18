@@ -16,7 +16,7 @@ export class DatasetUpdateModalComponent {
     this.selectedDataset.set(value);
     this.datasetForm.patchValue({
       datasetName: value.datasetName,
-      status: value.status
+      visibility: value.visibility
     });
   }
   @Output() close = new EventEmitter<void>();
@@ -32,7 +32,7 @@ export class DatasetUpdateModalComponent {
 
   datasetForm: FormGroup = this.fb.group({
     datasetName: ['', [Validators.required, Validators.minLength(3)]],
-    status: [DatasetStatus.ACTIVE, Validators.required]
+    visibility: [false, Validators.required]
   });
 
   closeModal(): void {
@@ -47,7 +47,7 @@ export class DatasetUpdateModalComponent {
     this.errorMessage.set('');
 
     const uuid = this.selectedDataset()!.datasetUuid;
-    const updateData = this.datasetForm.value;
+    const updateData = this.datasetForm.value; // contains datasetName and visibility
 
     this.datasetService.update(uuid, updateData).subscribe({
       next: () => {
@@ -61,5 +61,25 @@ export class DatasetUpdateModalComponent {
         console.error('Error updating dataset:', err);
       }
     });
+  }
+
+  // Helper to display status label
+  getStatusLabel(status: DatasetStatus | null): string {
+    if (!status) return 'Non traité';
+    switch (status) {
+      case DatasetStatus.PROCESSED: return 'Traité';
+      case DatasetStatus.CLEANED: return 'Nettoyé';
+      default: return status;
+    }
+  }
+
+  // Helper to get status color class
+  getStatusClass(status: DatasetStatus | null): string {
+    if (!status) return 'bg-gray-100 text-gray-600';
+    switch (status) {
+      case DatasetStatus.PROCESSED: return 'bg-blue-50 text-blue-700';
+      case DatasetStatus.CLEANED: return 'bg-purple-50 text-purple-700';
+      default: return 'bg-gray-100 text-gray-600';
+    }
   }
 }

@@ -9,8 +9,8 @@
             </div>
         </div>
 
-        <!-- Barre de Recherche & Filtre Type -->
-        <div class="flex-1 max-w-3xl ml-auto mr-12 flex items-center space-x-4">
+        <!-- Barre de Recherche & Filtres -->
+        <div class="flex-1 max-w-4xl ml-auto mr-12 flex items-center space-x-4">
             <div class="relative flex-1">
                 <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none"
                     stroke="currentColor" viewBox="0 0 24 24">
@@ -22,11 +22,18 @@
             </div>
 
             <select (change)="onTypeChange($event)"
-                class="w-48 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white/80 text-sm font-medium text-gray-700">
-                <option value="ALL">Tous les types</option>
+                class="w-40 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white/80 text-sm font-medium text-gray-700">
+                <option value="ALL">Tous types</option>
                 @for (type of datasetTypes(); track type) {
-                    <option [value]="type">{{ type }}</option>
+                    <option [value]="type">{{ type === 'TRANSACTIONS_TRAIN' ? 'Transactions (Train)' : type }}</option>
                 }
+            </select>
+
+            <select (change)="onVisibilityChange($event)"
+                class="w-40 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white/80 text-sm font-medium text-gray-700">
+                <option value="ALL">Tous statuts</option>
+                <option value="true">Visible</option>
+                <option value="false">Masqué</option>
             </select>
         </div>
 
@@ -68,16 +75,11 @@
                     <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                     <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
                     <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Taille
-                    </th>
-                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lignes
-                    </th>
-                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Import
-                    </th>
-                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut
-                    </th>
-                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions
-                    </th>
+                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Taille</th>
+                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lignes</th>
+                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Import</th>
+                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visibilité</th>
+                    <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-100">
@@ -106,6 +108,7 @@
                         <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border transition-all duration-300"
                             [ngClass]="{
                                 'bg-emerald-50 text-emerald-700 border-emerald-100': dataset.type === 'TRANSACTIONS_TRAIN',
+                                'bg-indigo-50 text-indigo-700 border-indigo-100': dataset.type === 'TRANSACTIONS_TRAIN_ENRICHED',
                                 'bg-green-50 text-green-700 border-green-100': dataset.type === 'TRANSACTIONS_VAL',
                                 'bg-purple-50 text-purple-700 border-purple-100': dataset.type === 'CLIENTS',
                                 'bg-blue-50 text-blue-700 border-blue-100': dataset.type === 'ACCOUNTS'
@@ -118,7 +121,7 @@
                                 <svg class="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                                 </svg>
-                            } @else if (dataset.type === 'TRANSACTIONS_VAL') {
+                            } @else if (dataset.type === 'TRANSACTIONS_VAL' || dataset.type === 'TRANSACTIONS_TRAIN_ENRICHED') {
                                 <svg class="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                                 </svg>
@@ -127,7 +130,11 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                 </svg>
                             }
-                            {{ dataset.type === 'TRANSACTIONS_TRAIN' ? 'Transactions (TRAIN)' : (dataset.type === 'TRANSACTIONS_VAL' ? 'Transactions' : dataset.type) }}
+                            {{ dataset.type === 'TRANSACTIONS_TRAIN' ? 'Train' : 
+                               dataset.type === 'TRANSACTIONS_TRAIN_ENRICHED' ? 'Train Enrichi' :
+                               dataset.type === 'TRANSACTIONS_VAL' ? 'Validation' : 
+                               dataset.type === 'CLIENTS' ? 'Clients' : 
+                               dataset.type === 'ACCOUNTS' ? 'Comptes' : dataset.type }}
                         </span>
                     </td>
                     <td class="px-8 py-4">
@@ -148,11 +155,11 @@
                     </td>
                     <td class="px-8 py-4">
                         <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border"
-                            [ngClass]="dataset.status === 'ACTIVE' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'">
+                            [ngClass]="getVisibilityClass(dataset.visibility)">
                             <span class="w-1.5 h-1.5 rounded-full mr-1.5"
-                                [class.bg-green-500]="dataset.status === 'ACTIVE'"
-                                [class.bg-gray-400]="dataset.status !== 'ACTIVE'"></span>
-                            {{ dataset.status === 'ACTIVE' ? 'Actif' : 'Inactif' }}
+                                [class.bg-green-500]="dataset.visibility"
+                                [class.bg-gray-400]="!dataset.visibility"></span>
+                            {{ getVisibilityLabel(dataset.visibility) }}
                         </span>
                     </td>
                     <td class="px-8 py-4">
@@ -188,7 +195,7 @@
                 </tr>
                 } @empty {
                 <tr>
-                    <td colspan="7" class="px-8 py-16 text-center text-gray-500">
+                    <td colspan="8" class="px-8 py-16 text-center text-gray-500">
                         <div class="inline-flex p-3 bg-gray-100 rounded-2xl mb-4">
                             <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"

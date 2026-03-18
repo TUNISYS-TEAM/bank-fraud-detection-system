@@ -1,5 +1,5 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { DatasetService, Dataset, ApiResponse, DatasetType } from '../../../../../../core/services/dataset.service';
+import { DatasetService, Dataset, ApiResponse, DatasetType, DatasetStatus } from '../../../../../../core/services/dataset.service';
 import { AuthStore } from '../../../../../../core/store/auth.store';
 
 @Component({
@@ -20,6 +20,8 @@ export class DatasetsComponent implements OnInit {
   totalPages = signal(0);
   searchQuery = signal('');
   selectedType = signal<DatasetType | null>(null);
+  selectedVisibility = signal<boolean | null>(null);
+
   datasetTypes = computed(() => {
     if (this.authStore.isAdmin()) {
       return [DatasetType.CLIENTS, DatasetType.ACCOUNTS, DatasetType.TRANSACTIONS_VAL];
@@ -27,7 +29,7 @@ export class DatasetsComponent implements OnInit {
     if (this.authStore.isManager()) {
       return [DatasetType.TRANSACTIONS_TRAIN];
     }
-    return Object.values(DatasetType);
+    return Object.values(DatasetType).filter(type => type !== DatasetType.TRANSACTIONS_TRAIN_ENRICHED);
   });
 
   // Modals state
@@ -54,15 +56,19 @@ export class DatasetsComponent implements OnInit {
   loadDatasets(): void {
     this.loading.set(true);
     this.datasetService.list({
-      q: this.searchQuery(),
+      q: this.searchQuery() || undefined,
       type: this.selectedType() || undefined,
+      visibility: this.selectedVisibility() !== null ? this.selectedVisibility()! : undefined,
       page: this.currentPage(),
       size: this.pageSize
     }).subscribe({
       next: (response: ApiResponse<Dataset>) => {
         let content = response.content;
         if (this.authStore.isAdmin()) {
-          content = content.filter(d => d.type !== DatasetType.TRANSACTIONS_TRAIN);
+          content = content.filter(
+            d => d.type !== DatasetType.TRANSACTIONS_TRAIN &&
+              d.type !== DatasetType.TRANSACTIONS_TRAIN_ENRICHED
+          );
         }
         this.datasets.set(content);
         this.totalElements.set(response.totalElements);
@@ -90,6 +96,17 @@ export class DatasetsComponent implements OnInit {
     this.loadDatasets();
   }
 
+  onVisibilityChange(event: any): void {
+    const value = event.target.value;
+    if (value === 'ALL') {
+      this.selectedVisibility.set(null);
+    } else {
+      this.selectedVisibility.set(value === 'true');
+    }
+    this.currentPage.set(0);
+    this.loadDatasets();
+  }
+
   onPageChange(page: number): void {
     this.currentPage.set(page);
     this.loadDatasets();
@@ -105,12 +122,44 @@ export class DatasetsComponent implements OnInit {
   }
 
   formatSize(mb: number): string {
+    if (!mb && mb !== 0) return 'N/A';
     if (mb < 1024) return `${mb.toFixed(2)} MB`;
     return `${(mb / 1024).toFixed(2)} GB`;
   }
 
   formatNumber(n: number): string {
+    if (!n && n !== 0) return '0';
     return new Intl.NumberFormat('fr-FR').format(n);
+  }
+
+  // Helper methods for status
+  getStatusLabel(status: DatasetStatus | null): string {
+    if (!status) return 'Non traité';
+    switch (status) {
+      case DatasetStatus.PROCESSED: return 'Traité';
+      case DatasetStatus.CLEANED: return 'Nettoyé';
+      default: return status;
+    }
+  }
+
+  getStatusClass(status: DatasetStatus | null): string {
+    if (!status) return 'bg-gray-100 text-gray-600 border-gray-200';
+    switch (status) {
+      case DatasetStatus.PROCESSED: return 'bg-blue-50 text-blue-700 border-blue-200';
+      case DatasetStatus.CLEANED: return 'bg-purple-50 text-purple-700 border-purple-200';
+      default: return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  }
+
+  // Helper methods for visibility
+  getVisibilityLabel(visible: boolean): string {
+    return visible ? 'Visible' : 'Masqué';
+  }
+
+  getVisibilityClass(visible: boolean): string {
+    return visible
+      ? 'bg-green-50 text-green-700 border-green-200'
+      : 'bg-gray-100 text-gray-600 border-gray-200';
   }
 
   // Modals actions
@@ -173,7 +222,7 @@ export class DatasetsComponent implements OnInit {
     const delta = 2;
     const range: number[] = [];
     const rangeWithDots: number[] = [];
-    let l: number;
+    let l: number = 0;
 
     for (let i = 1; i <= total; i++) {
       if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {

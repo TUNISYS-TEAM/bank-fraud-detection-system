@@ -182,7 +182,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   loadAllTrainingDatasets(): void {
     this.isLoadingDatasets = true;
 
-    const url = `${environment.apiUrl}/datasets?type=TRANSACTIONS_TRAIN&page=${this.currentPage}&size=${this.pageSize}${this.searchQuery ? '&q=' + encodeURIComponent(this.searchQuery) : ''}`;
+    const url = `${environment.apiUrl}/datasets?type=TRANSACTIONS_TRAIN_ENRICHED&page=${this.currentPage}&size=${this.pageSize}${this.searchQuery ? '&q=' + encodeURIComponent(this.searchQuery) : ''}`;
 
     this.http.get<PageResponse<Dataset>>(url).subscribe({
       next: (response) => {

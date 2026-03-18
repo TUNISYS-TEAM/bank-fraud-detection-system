@@ -108,7 +108,7 @@ public class DatasetService {
 
     // ==================== PUBLIC CRUD ====================
 
-    public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, Pageable pageable) {
+    public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, Boolean visibility, Pageable pageable) {
         if (status != null && type != null) {
             return datasetRepository.findByStatusAndType(status, type, pageable);
         }
@@ -145,7 +145,7 @@ public class DatasetService {
         log.info("Column mapping successful: {}", columnMapping);
 
         // Gérer la contrainte "un seul actif/existant" pour CLIENTS et ACCOUNTS
-        if (type == DatasetType.CLIENTS || type == DatasetType.ACCOUNTS) {
+        if (type == DatasetType.CLIENTS || type == DatasetType.ACCOUNTS || type == DatasetType.TRANSACTIONS_VAL) {
             List<Dataset> existing = datasetRepository.findByType(type, Pageable.unpaged()).getContent();
             for (Dataset e : existing) {
                 log.info("Deleting existing {} dataset: {}", type, e.getDatasetName());
@@ -153,16 +153,17 @@ public class DatasetService {
             }
         }
 
-        // Créer dataset
+        // Créer dataset : status = null, visibility = false par défaut
         Dataset ds = Dataset.builder()
                 .datasetName(datasetName.trim())
                 .datasetCode(generateCode())
-                .status(DatasetStatus.ACTIVE)
+                .status(null) // nouveau dataset non traité
+                .visibility(false) // invisible par défaut
                 .type(type)
                 .build();
 
         ds = datasetRepository.save(ds);
-        log.info("Created dataset with UUID: {}", ds.getDatasetUuid());
+        log.info("Created dataset with UUID: {}, status=null, visibility=false", ds.getDatasetUuid());
 
         String finalFilePath = null;
         long rowCount = 0;
@@ -335,7 +336,6 @@ public class DatasetService {
         log.info("Dataset metadata updated with file path: {}", finalFilePath);
 
         // Database import using the temporary CSV file (only for certain types)
-        boolean importPerformed = false;
         if (tempCsvFile != null && Files.exists(tempCsvFile)) {
             try {
                 if (type == DatasetType.CLIENTS || type == DatasetType.ACCOUNTS
@@ -353,13 +353,11 @@ public class DatasetService {
                     } else if (type == DatasetType.TRANSACTIONS_VAL) {
                         importTransactionsValFromCsv(importFile);
                     }
-                    importPerformed = true;
                 }
             } catch (Exception e) {
                 log.error("Error during database import: {}", e.getMessage(), e);
             } finally {
                 // Always delete the temporary CSV file after we're done with it
-                // (whether import was attempted or not)
                 try {
                     Files.deleteIfExists(tempCsvFile);
                     csvDeleted = true;
@@ -370,9 +368,7 @@ public class DatasetService {
             }
         }
 
-        // If for some reason the CSV file was not deleted (e.g., tempCsvFile was null
-        // or didn't exist),
-        // we attempt one final cleanup here (should not happen, but just in case)
+        // If for some reason the CSV file was not deleted, attempt final cleanup
         if (!csvDeleted && tempCsvFile != null && Files.exists(tempCsvFile)) {
             try {
                 Files.deleteIfExists(tempCsvFile);
@@ -468,44 +464,283 @@ public class DatasetService {
     @Transactional
     public void activate(UUID uuid) {
         Dataset target = get(uuid);
-        if (target.getStatus() == DatasetStatus.ACTIVE) {
-            return;
+
+        // For types that should have only one visible dataset
+        if (shouldEnforceSingleVisibility(target.getType())) {
+            // Use findAllVisibleByType which returns List<Dataset>
+            List<Dataset> visibleOfSameType = datasetRepository.findAllVisibleByType(target.getType());
+
+            if (!visibleOfSameType.isEmpty() && !visibleOfSameType.get(0).getDatasetUuid().equals(uuid)) {
+                Dataset other = visibleOfSameType.get(0);
+                // Auto-hide the other one and clear its table
+                other.setVisibility(false);
+                datasetRepository.save(other);
+                clearTableForType(other.getType());
+                log.info("Auto-hidden other {} dataset: {} (visibility=false) and cleared its table",
+                        target.getType(), other.getDatasetUuid());
+            }
         }
-        target.activate();
+
+        target.setVisibility(true);
         datasetRepository.save(target);
+        log.info("Dataset {} activated (visibility=true)", uuid);
+
+        // Handle bidirectional sync for training datasets
+        if (target.getType() == DatasetType.TRANSACTIONS_TRAIN) {
+            activateEnrichedVersion(target);
+        } else if (target.getType() == DatasetType.TRANSACTIONS_TRAIN_ENRICHED) {
+            activateSourceVersion(target);
+        }
+    }
+
+    @Transactional
+    public void deactivate(UUID uuid) {
+        Dataset target = get(uuid);
+
+        // If this dataset was visible, clear its table
+        if (target.getVisibility()) {
+            clearTableForType(target.getType());
+        }
+
+        target.setVisibility(false);
+        datasetRepository.save(target);
+        log.info("Dataset {} deactivated (visibility=false)", uuid);
+
+        // Handle bidirectional sync for training datasets
+        if (target.getType() == DatasetType.TRANSACTIONS_TRAIN) {
+            deactivateEnrichedVersion(target);
+        } else if (target.getType() == DatasetType.TRANSACTIONS_TRAIN_ENRICHED) {
+            deactivateSourceVersion(target);
+        }
+    }
+
+    private boolean shouldEnforceSingleVisibility(DatasetType type) {
+        return type == DatasetType.CLIENTS ||
+                type == DatasetType.ACCOUNTS ||
+                type == DatasetType.TRANSACTIONS_VAL;
+    }
+
+    private void clearTableForType(DatasetType type) {
+        log.info("Clearing database tables for dataset type: {}", type);
+
+        try {
+            switch (type) {
+                case CLIENTS:
+                    // Ordre : enfants → parents
+                    jdbcTemplate.execute("DELETE FROM fraud_alert");
+                    jdbcTemplate.execute("DELETE FROM client_behavior_history");
+                    jdbcTemplate.execute("DELETE FROM client_behavior");
+                    jdbcTemplate.execute("DELETE FROM transaction");
+                    jdbcTemplate.execute("DELETE FROM account");
+                    jdbcTemplate.execute("DELETE FROM client");
+                    log.info("All client-related tables cleared");
+                    break;
+
+                case ACCOUNTS:
+                    jdbcTemplate.execute("DELETE FROM fraud_alert");
+                    jdbcTemplate.execute("DELETE FROM client_behavior_history");
+                    jdbcTemplate.execute("DELETE FROM client_behavior");
+                    jdbcTemplate.execute("DELETE FROM transaction");
+                    jdbcTemplate.execute("DELETE FROM account");
+                    log.info("All account-related tables cleared");
+                    break;
+
+                case TRANSACTIONS_VAL:
+                    jdbcTemplate.execute("DELETE FROM fraud_alert");
+                    jdbcTemplate.execute("DELETE FROM client_behavior_history");
+                    jdbcTemplate.execute("DELETE FROM client_behavior");
+                    jdbcTemplate.execute("DELETE FROM transaction");
+                    log.info("All transaction validation tables cleared");
+                    break;
+
+                case TRANSACTIONS_TRAIN:
+                case TRANSACTIONS_TRAIN_ENRICHED:
+                    // These don't have database tables to clear
+                    log.info("No database tables to clear for type: {}", type);
+                    break;
+
+                default:
+                    log.warn("Unknown dataset type: {}", type);
+            }
+        } catch (Exception e) {
+            log.error("Error clearing tables for type {}: {}", type, e.getMessage(), e);
+            throw new RuntimeException("Failed to clear database tables", e);
+        }
+    }
+
+    private void activateEnrichedVersion(Dataset sourceDataset) {
+        try {
+            UUID sourceUuid = sourceDataset.getDatasetUuid();
+            log.info("Looking for enriched version of source dataset: {}", sourceUuid);
+
+            List<Dataset> enrichedDatasets = datasetRepository.findByType(
+                    DatasetType.TRANSACTIONS_TRAIN_ENRICHED,
+                    Pageable.unpaged()).getContent();
+
+            for (Dataset enriched : enrichedDatasets) {
+                Map<String, Object> featureCols = enriched.getFeatureColumns();
+                if (featureCols != null && featureCols.containsKey("enrichment")) {
+                    Map<String, Object> enrichment = (Map<String, Object>) featureCols.get("enrichment");
+                    if (enrichment != null && sourceUuid.toString().equals(enrichment.get("sourceDatasetId"))) {
+                        enriched.setVisibility(true);
+                        datasetRepository.save(enriched);
+                        log.info("✓ Also activated enriched dataset {} (visibility=true)",
+                                enriched.getDatasetUuid());
+                        return;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Could not activate enriched version for dataset {}: {}",
+                    sourceDataset.getDatasetUuid(), e.getMessage(), e);
+        }
+    }
+
+    private void deactivateEnrichedVersion(Dataset sourceDataset) {
+        try {
+            UUID sourceUuid = sourceDataset.getDatasetUuid();
+
+            List<Dataset> enrichedDatasets = datasetRepository.findByType(
+                    DatasetType.TRANSACTIONS_TRAIN_ENRICHED,
+                    Pageable.unpaged()).getContent();
+
+            for (Dataset enriched : enrichedDatasets) {
+                Map<String, Object> featureCols = enriched.getFeatureColumns();
+                if (featureCols != null && featureCols.containsKey("enrichment")) {
+                    Map<String, Object> enrichment = (Map<String, Object>) featureCols.get("enrichment");
+                    if (enrichment != null && sourceUuid.toString().equals(enrichment.get("sourceDatasetId"))) {
+                        enriched.setVisibility(false);
+                        datasetRepository.save(enriched);
+                        log.info("Also deactivated enriched dataset {} (visibility=false)",
+                                enriched.getDatasetUuid());
+                        return;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not deactivate enriched version for dataset {}: {}",
+                    sourceDataset.getDatasetUuid(), e.getMessage());
+        }
+    }
+
+    private void activateSourceVersion(Dataset enrichedDataset) {
+        try {
+            Map<String, Object> featureCols = enrichedDataset.getFeatureColumns();
+            if (featureCols == null || !featureCols.containsKey("enrichment")) {
+                return;
+            }
+
+            Map<String, Object> enrichment = (Map<String, Object>) featureCols.get("enrichment");
+            if (enrichment == null || !enrichment.containsKey("sourceDatasetId")) {
+                return;
+            }
+
+            String sourceIdStr = (String) enrichment.get("sourceDatasetId");
+            UUID sourceUuid = UUID.fromString(sourceIdStr);
+
+            Optional<Dataset> sourceOpt = datasetRepository.findByDatasetUuid(sourceUuid);
+            if (sourceOpt.isPresent()) {
+                Dataset source = sourceOpt.get();
+                source.setVisibility(true);
+                datasetRepository.save(source);
+                log.info("Also activated source dataset {} (visibility=true)", sourceUuid);
+            }
+        } catch (Exception e) {
+            log.error("Could not activate source version for enriched dataset {}: {}",
+                    enrichedDataset.getDatasetUuid(), e.getMessage(), e);
+        }
+    }
+
+    private void deactivateSourceVersion(Dataset enrichedDataset) {
+        try {
+            Map<String, Object> featureCols = enrichedDataset.getFeatureColumns();
+            if (featureCols == null || !featureCols.containsKey("enrichment"))
+                return;
+
+            Map<String, Object> enrichment = (Map<String, Object>) featureCols.get("enrichment");
+            if (enrichment == null || !enrichment.containsKey("sourceDatasetId"))
+                return;
+
+            String sourceIdStr = (String) enrichment.get("sourceDatasetId");
+            UUID sourceUuid = UUID.fromString(sourceIdStr);
+
+            Optional<Dataset> sourceOpt = datasetRepository.findByDatasetUuid(sourceUuid);
+            if (sourceOpt.isPresent()) {
+                Dataset source = sourceOpt.get();
+                source.setVisibility(false);
+                datasetRepository.save(source);
+                log.info("Also deactivated source dataset {} (visibility=false)", sourceUuid);
+            }
+        } catch (Exception e) {
+            log.warn("Could not deactivate source version for enriched dataset {}: {}",
+                    enrichedDataset.getDatasetUuid(), e.getMessage());
+        }
     }
 
     @Transactional
     public void delete(UUID uuid) {
         Dataset ds = get(uuid);
-        try {
-            if (ds.getType() == DatasetType.CLIENTS) {
-                // Ordre : enfants → parents
-                jdbcTemplate.execute("DELETE FROM fraud_alert");
-                jdbcTemplate.execute("DELETE FROM client_behavior_history");
-                jdbcTemplate.execute("DELETE FROM client_behavior");
-                jdbcTemplate.execute("DELETE FROM transaction");
-                jdbcTemplate.execute("DELETE FROM account");
-                jdbcTemplate.execute("DELETE FROM client");
-            } else if (ds.getType() == DatasetType.ACCOUNTS) {
-                jdbcTemplate.execute("DELETE FROM fraud_alert");
-                jdbcTemplate.execute("DELETE FROM client_behavior_history");
-                jdbcTemplate.execute("DELETE FROM client_behavior");
-                jdbcTemplate.execute("DELETE FROM transaction");
-                jdbcTemplate.execute("DELETE FROM account");
-            } else if (ds.getType() == DatasetType.TRANSACTIONS_VAL) {
-                jdbcTemplate.execute("DELETE FROM fraud_alert");
-                jdbcTemplate.execute("DELETE FROM client_behavior_history");
-                jdbcTemplate.execute("DELETE FROM transaction");
-            }
 
-            // Supprimer le fichier du datalake (MinIO)
+        // If this is a TRANSACTIONS_TRAIN dataset, also delete its enriched version
+        // first
+        if (ds.getType() == DatasetType.TRANSACTIONS_TRAIN) {
+            try {
+                List<Dataset> enrichedDatasets = datasetRepository.findByType(
+                        DatasetType.TRANSACTIONS_TRAIN_ENRICHED,
+                        Pageable.unpaged()).getContent();
+
+                for (Dataset enriched : enrichedDatasets) {
+                    Map<String, Object> enrichedFeatureCols = enriched.getFeatureColumns();
+                    if (enrichedFeatureCols != null && enrichedFeatureCols.containsKey("enrichment")) {
+                        Map<String, Object> enrichedMeta = (Map<String, Object>) enrichedFeatureCols
+                                .get("enrichment");
+                        if (enrichedMeta != null &&
+                                uuid.toString().equals(enrichedMeta.get("sourceDatasetId"))) {
+
+                            log.info("Found enriched dataset {} to delete along with source",
+                                    enriched.getDatasetUuid());
+
+                            // Delete the enriched dataset's file from MinIO
+                            if (enriched.getFilePath() != null && !enriched.getFilePath().isBlank()) {
+                                try {
+                                    storageService.delete(enriched.getFilePath());
+                                    log.info("Deleted enriched dataset file from MinIO: {}",
+                                            enriched.getFilePath());
+                                } catch (Exception e) {
+                                    log.warn("Failed to delete enriched dataset file from MinIO: {}",
+                                            e.getMessage());
+                                }
+                            }
+
+                            // Delete the enriched dataset from database
+                            datasetRepository.delete(enriched);
+                            log.info("Deleted enriched dataset: {}", enriched.getDatasetUuid());
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not delete enriched version for dataset {}: {}", uuid, e.getMessage());
+            }
+        }
+
+        // Clear database tables if this dataset is of a type that has tables
+        if (shouldEnforceSingleVisibility(ds.getType())) {
+            clearTableForType(ds.getType());
+        }
+
+        try {
+            // Supprimer le fichier du datalake (MinIO) for the main dataset
             if (ds.getFilePath() != null && !ds.getFilePath().isBlank()) {
                 storageService.delete(ds.getFilePath());
             }
-            // Supprimer l'entrée dataset
+
+            // Supprimer l'entrée dataset principale
             datasetRepository.delete(ds);
             datasetRepository.flush();
+
+            log.info("Successfully deleted dataset {} and its associated resources", uuid);
+
         } catch (DataIntegrityViolationException e) {
             log.warn("Échec de la suppression du dataset {} ({}) : {}", ds.getDatasetName(), uuid, e.getMessage());
             throw new IllegalArgumentException(
@@ -516,20 +751,67 @@ public class DatasetService {
     @Transactional
     public Dataset update(UUID uuid, DatasetUpdateRequest request) {
         Dataset ds = get(uuid);
+        boolean visibilityChanged = false;
+        Boolean oldVisibility = ds.getVisibility();
 
         if (request.getDatasetName() != null && !request.getDatasetName().isBlank()) {
             ds.setDatasetName(request.getDatasetName().trim());
         }
 
         if (request.getStatus() != null) {
-            if (request.getStatus() == DatasetStatus.ACTIVE) {
-                activate(uuid);
-            } else {
-                ds.setStatus(DatasetStatus.INACTIVE);
+            ds.setStatus(request.getStatus());
+        }
+
+        if (request.getVisibility() != null && !request.getVisibility().equals(oldVisibility)) {
+            // If trying to set visibility to false
+            if (!request.getVisibility() && oldVisibility) {
+                // Clear the corresponding table if this dataset was visible
+                clearTableForType(ds.getType());
+            }
+
+            // If trying to set visibility to true
+            if (request.getVisibility() && !oldVisibility) {
+                // For types that should have only one visible dataset
+                if (shouldEnforceSingleVisibility(ds.getType())) {
+                    // Use findAllVisibleByType which returns List<Dataset>
+                    List<Dataset> visibleOfSameType = datasetRepository.findAllVisibleByType(ds.getType());
+
+                    if (!visibleOfSameType.isEmpty() && !visibleOfSameType.get(0).getDatasetUuid().equals(uuid)) {
+                        Dataset other = visibleOfSameType.get(0);
+                        // Auto-hide the other one and clear its table
+                        other.setVisibility(false);
+                        datasetRepository.save(other);
+                        clearTableForType(other.getType());
+                        log.info("Auto-hidden other {} dataset: {} (visibility=false) and cleared its table",
+                                ds.getType(), other.getDatasetUuid());
+                    }
+                }
+            }
+
+            ds.setVisibility(request.getVisibility());
+            visibilityChanged = true;
+        }
+
+        ds = datasetRepository.save(ds);
+
+        // If visibility changed, sync the related dataset for training types
+        if (visibilityChanged) {
+            if (ds.getType() == DatasetType.TRANSACTIONS_TRAIN) {
+                if (ds.getVisibility()) {
+                    activateEnrichedVersion(ds);
+                } else {
+                    deactivateEnrichedVersion(ds);
+                }
+            } else if (ds.getType() == DatasetType.TRANSACTIONS_TRAIN_ENRICHED) {
+                if (ds.getVisibility()) {
+                    activateSourceVersion(ds);
+                } else {
+                    deactivateSourceVersion(ds);
+                }
             }
         }
 
-        return datasetRepository.save(ds);
+        return ds;
     }
 
     // ==================== ANALYSE ====================
@@ -550,7 +832,7 @@ public class DatasetService {
             return DatasetAnalysisResponse.builder()
                     .datasetUuid(dataset.getDatasetUuid())
                     .datasetName(dataset.getDatasetName())
-                    .status(dataset.getStatus().toString())
+                    .status(dataset.getStatus() != null ? dataset.getStatus().toString() : null)
                     .build();
         }
 
@@ -574,7 +856,7 @@ public class DatasetService {
         return DatasetAnalysisResponse.builder()
                 .datasetUuid(dataset.getDatasetUuid())
                 .datasetName(dataset.getDatasetName())
-                .status(dataset.getStatus().toString())
+                .status(dataset.getStatus() != null ? dataset.getStatus().toString() : null)
                 .columns(columnInfos)
                 .statistics(dataset.getStatistics())
                 .suggestedFeatures((List<String>) dataset.getFeatureColumns().get("suggestedFeatures"))
@@ -1132,20 +1414,20 @@ public class DatasetService {
                             cur = "TND";
 
                         batch.add(new Object[] {
-                                UUID.randomUUID(), // transaction_uuid
-                                accountId, // account_id (foreign key to account.id)
-                                amount, // amount
-                                cur, // currency
-                                txTime != null ? Timestamp.valueOf(txTime) : now, // transaction_date
-                                category, // merchant_category
-                                channel, // channel
-                                "COMPLETED", // status
-                                mPostal, // postal_code_merchant
-                                cPostal, // postal_code_client
-                                deviceId, // device_id
-                                ipAddress, // ip_address
-                                now, // created_at
-                                now // updated_at
+                                UUID.randomUUID(),
+                                accountId,
+                                amount,
+                                cur,
+                                txTime != null ? Timestamp.valueOf(txTime) : now,
+                                category,
+                                channel,
+                                "COMPLETED",
+                                mPostal,
+                                cPostal,
+                                deviceId,
+                                ipAddress,
+                                now,
+                                now
                         });
 
                         if (batch.size() >= BATCH_SIZE) {
@@ -1277,32 +1559,37 @@ public class DatasetService {
     }
 
     public Page<Dataset> listTrainingDatasets(String q, Pageable pageable) {
-        List<DatasetStatus> statuses = List.of(DatasetStatus.ACTIVE, DatasetStatus.PROCESSED);
+        // Only datasets with status PROCESSED or CLEANED and visibility true should be
+        // considered for training
+        List<DatasetStatus> statuses = List.of(DatasetStatus.PROCESSED, DatasetStatus.CLEANED);
 
         if (q != null && !q.isBlank()) {
             return datasetRepository.findTrainingDatasetsBySearchTerm(
-                    DatasetType.TRANSACTIONS_TRAIN,
+                    DatasetType.TRANSACTIONS_TRAIN_ENRICHED,
                     statuses,
                     q.trim(),
                     pageable);
         }
 
-        return datasetRepository.findByTypeAndStatusIn(
-                DatasetType.TRANSACTIONS_TRAIN,
+        return datasetRepository.findByTypeAndStatusInAndVisibilityTrue(
+                DatasetType.TRANSACTIONS_TRAIN_ENRICHED,
                 statuses,
                 pageable);
     }
 
     public Page<Dataset> listAllTrainingDatasets(String q, Pageable pageable) {
         if (q != null && !q.isBlank()) {
-            // Search with term across all TRANSACTIONS_TRAIN datasets
-            return datasetRepository.findByTypeAndSearchTerm(
-                    DatasetType.TRANSACTIONS_TRAIN,
+            // Search with term across all TRANSACTIONS_TRAIN_ENRICHED datasets with
+            // visibility true
+            return datasetRepository.findByTypeAndSearchTermAndVisibilityTrue(
+                    DatasetType.TRANSACTIONS_TRAIN_ENRICHED,
                     q.trim(),
                     pageable);
         }
-        // Get all TRANSACTIONS_TRAIN datasets regardless of status
-        return datasetRepository.findByType(DatasetType.TRANSACTIONS_TRAIN, pageable);
+
+        return datasetRepository.findByTypeAndVisibilityTrue(
+                DatasetType.TRANSACTIONS_TRAIN_ENRICHED,
+                pageable);
     }
 
     // ========================== EXTRACTION COMPORTEMENT CLIENT
@@ -1352,13 +1639,17 @@ public class DatasetService {
                     utf8File = tempFile;
             }
 
-            // 3. Copier dans le conteneur
+            // 3. Préparer les répertoires dans le conteneur
             execDockerCommand("mkdir", "-p", "/app/data");
+            execDockerCommand("mkdir", "-p", "/app/data/enriched");
+            execDockerCommand("mkdir", "-p", "/app/output");
+
+            // 4. Copier dans le conteneur
             containerInput = "/app/data/" + utf8File.getFileName().toString();
             execDockerCopy(utf8File, containerInput);
             log.info("Fichier copié dans le conteneur: {}", containerInput);
 
-            // 4. Construire la commande Python
+            // 5. Construire la commande Python
             List<String> cmd = new ArrayList<>();
             cmd.addAll(List.of(
                     "docker", "exec", "fraud-ml-pipeline",
@@ -1366,7 +1657,8 @@ public class DatasetService {
                     "extract-behavior",
                     "--input", containerInput,
                     "--dataset-id", sourceDataset.getDatasetUuid().toString(),
-                    "--job-id", jobId));
+                    "--job-id", jobId,
+                    "--output", "/app/data/enriched/enriched_" + sourceDataset.getDatasetUuid() + ".parquet"));
 
             log.info("Exécution de la commande: {}", String.join(" ", cmd));
 
@@ -1399,7 +1691,7 @@ public class DatasetService {
                 throw new RuntimeException("Extraction failed with code " + exitCode);
             }
 
-            // 5. Extraire le JSON de sortie
+            // 6. Extraire le JSON de sortie
             JsonNode root = extractJsonFromOutput(result);
             if (root == null) {
                 throw new RuntimeException("Aucun JSON valide trouvé dans la sortie");
@@ -1409,41 +1701,78 @@ public class DatasetService {
                 throw new RuntimeException("Erreur Python: " + root.get("error").asText());
             }
 
-            // 6. Récupérer le chemin du fichier de sortie depuis le JSON
-            String outputFilename = "enriched_" + sourceDataset.getDatasetUuid() + "_" + jobId + ".parquet";
-            containerOutput = "/app/data/" + outputFilename;
+            // 7. Récupérer le chemin du fichier de sortie
+            String outputFilename = "enriched_" + sourceDataset.getDatasetUuid() + ".parquet";
+            containerOutput = "/app/data/enriched/" + outputFilename;
+            log.info("Recherche du fichier dans le conteneur: {}", containerOutput);
 
-            // Télécharger le fichier depuis le conteneur
+            // 8. Télécharger le fichier depuis le conteneur
             outputFile = Files.createTempFile("enriched_", ".parquet");
             execDockerCopyFromContainer(containerOutput, outputFile);
             log.info("Fichier enrichi récupéré: {}", outputFile);
 
-            // 7. CRÉER UN NOUVEAU DATASET (copie enrichie)
+            // 9. METTRE À JOUR LE DATASET SOURCE EN STATUS PROCESSED
+            sourceDataset.setStatus(DatasetStatus.PROCESSED);
+
+            // Ajouter les métadonnées d'enrichissement au dataset source
+            Map<String, Object> sourceFeatureCols = sourceDataset.getFeatureColumns();
+            if (sourceFeatureCols == null) {
+                sourceFeatureCols = new HashMap<>();
+            }
+
+            Map<String, Object> sourceEnrichmentMetadata = new HashMap<>();
+            sourceEnrichmentMetadata.put("extractedAt", LocalDateTime.now().toString());
+            sourceEnrichmentMetadata.put("jobId", jobId);
+            sourceEnrichmentMetadata.put("enrichedDatasetCreated", true);
+
+            JsonNode columnsAddedNode = root.get("columns_added");
+            if (columnsAddedNode != null && columnsAddedNode.isArray()) {
+                List<String> columnsAdded = new ArrayList<>();
+                for (JsonNode col : columnsAddedNode) {
+                    columnsAdded.add(col.asText());
+                }
+                sourceEnrichmentMetadata.put("columnsExtracted", columnsAdded);
+            }
+
+            sourceFeatureCols.put("enrichment", sourceEnrichmentMetadata);
+            sourceDataset.setFeatureColumns(sourceFeatureCols);
+
+            // Sauvegarder le dataset source mis à jour
+            datasetRepository.save(sourceDataset);
+            log.info("Dataset source {} mis à jour avec status PROCESSED",
+                    sourceDataset.getDatasetUuid());
+
+            // 10. CRÉER UN NOUVEAU DATASET (copie enrichie) avec status PROCESSED,
+            // visibility=false et type TRANSACTIONS_TRAIN_ENRICHED
             String newDatasetName = sourceDataset.getDatasetName() + " (enriched)";
             String newDatasetCode = generateCode();
 
             newDataset = Dataset.builder()
                     .datasetName(newDatasetName)
                     .datasetCode(newDatasetCode)
-                    .status(DatasetStatus.ACTIVE)
-                    .type(sourceDataset.getType())
+                    .status(DatasetStatus.PROCESSED)
+                    .visibility(false)
+                    .type(DatasetType.TRANSACTIONS_TRAIN_ENRICHED)
                     .build();
 
+            // Save immediately to ensure status is persisted
             newDataset = datasetRepository.save(newDataset);
+            log.info("Nouveau dataset enrichi créé avec status: {}, visibility=false et type: {}",
+                    newDataset.getStatus(), newDataset.getType());
 
-            // 8. Upload du fichier enrichi vers MinIO pour le NOUVEAU dataset
+            // 11. Upload du fichier enrichi vers MinIO pour le NOUVEAU dataset
             String minioKey = "data/enriched/transactions/" + newDataset.getDatasetUuid() + "/" + outputFilename;
             try (InputStream is = Files.newInputStream(outputFile)) {
                 storageService.upload(minioKey, is, Files.size(outputFile), "application/octet-stream");
             }
             log.info("Fichier enrichi uploadé vers MinIO: {}", minioKey);
 
-            // 9. Mettre à jour les stats du nouveau dataset
+            // 12. Mettre à jour les stats du nouveau dataset
             long rowCount = root.path("original_rows").asLong(0);
             BigDecimal fileSizeMb = bytesToMb(Files.size(outputFile));
             newDataset.updateFileStats(minioKey, fileSizeMb, rowCount);
 
-            // 10. Ajouter les métadonnées d'enrichissement
+            // 13. Ajouter les métadonnées d'enrichissement au nouveau dataset
             Map<String, Object> featureCols = newDataset.getFeatureColumns();
             if (featureCols == null) {
                 featureCols = new HashMap<>();
@@ -1452,10 +1781,10 @@ public class DatasetService {
             Map<String, Object> enrichmentMetadata = new HashMap<>();
             enrichmentMetadata.put("sourceDatasetId", sourceDataset.getDatasetUuid().toString());
             enrichmentMetadata.put("sourceDatasetName", sourceDataset.getDatasetName());
+            enrichmentMetadata.put("sourceDatasetType", sourceDataset.getType().toString());
             enrichmentMetadata.put("jobId", jobId);
             enrichmentMetadata.put("extractedAt", LocalDateTime.now().toString());
 
-            JsonNode columnsAddedNode = root.get("columns_added");
             if (columnsAddedNode != null && columnsAddedNode.isArray()) {
                 List<String> columnsAdded = new ArrayList<>();
                 for (JsonNode col : columnsAddedNode) {
@@ -1467,9 +1796,20 @@ public class DatasetService {
             featureCols.put("enrichment", enrichmentMetadata);
             newDataset.setFeatureColumns(featureCols);
 
-            datasetRepository.save(newDataset);
+            // Final save with all metadata
+            newDataset = datasetRepository.save(newDataset);
+            log.info("Dataset enrichi final sauvegardé avec status: {}, visibility=false et type: {}",
+                    newDataset.getStatus(), newDataset.getType());
 
-            // 11. Construire la réponse
+            // 14. Supprimer le fichier du conteneur après l'avoir récupéré
+            try {
+                execDockerCommand("rm", "-f", containerOutput);
+                log.info("Fichier conteneur supprimé: {}", containerOutput);
+            } catch (Exception e) {
+                log.warn("Impossible de supprimer le fichier conteneur: {}", e.getMessage());
+            }
+
+            // 15. Construire la réponse
             DatasetCleanResponse.CleaningStats stats = DatasetCleanResponse.CleaningStats.builder()
                     .originalRows(root.path("original_rows").asLong(0))
                     .cleanedRows(root.path("original_rows").asLong(0))
@@ -1488,27 +1828,24 @@ public class DatasetService {
             log.error("Erreur lors de l'extraction des features pour le dataset {}", datasetUuid, e);
             throw e;
         } finally {
-            // Nettoyage
-            cleanup(tempFile, containerInput);
-            if (utf8File != null && !utf8File.equals(tempFile)) {
-                try {
+            // Nettoyage des fichiers temporaires
+            try {
+                if (tempFile != null)
+                    Files.deleteIfExists(tempFile);
+                if (utf8File != null && !utf8File.equals(tempFile))
                     Files.deleteIfExists(utf8File);
-                } catch (Exception e) {
-                    log.warn("Nettoyage utf8 file failed: {}", e.getMessage());
-                }
-            }
-            if (outputFile != null) {
-                try {
+                if (outputFile != null)
                     Files.deleteIfExists(outputFile);
-                } catch (Exception e) {
-                    log.warn("Nettoyage output file failed: {}", e.getMessage());
-                }
+            } catch (Exception e) {
+                log.warn("Erreur lors du nettoyage des fichiers temporaires: {}", e.getMessage());
             }
-            if (containerOutput != null) {
+
+            // Nettoyage du fichier d'entrée dans le conteneur
+            if (containerInput != null) {
                 try {
-                    execDockerCommand("rm", "-f", containerOutput);
+                    execDockerCommand("rm", "-f", containerInput);
                 } catch (Exception e) {
-                    log.warn("Nettoyage conteneur échoué: {}", e.getMessage());
+                    log.warn("Erreur lors du nettoyage du fichier d'entrée dans le conteneur: {}", e.getMessage());
                 }
             }
         }

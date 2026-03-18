@@ -136,6 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def extract_behavior_command(args):
     """Implémentation de la commande extract-behavior."""
+    import json
     try:
         input_path = Path(args.input)
         dataset_id = args.dataset_id

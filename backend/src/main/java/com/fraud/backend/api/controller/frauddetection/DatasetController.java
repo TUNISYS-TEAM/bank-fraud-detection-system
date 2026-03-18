@@ -2,7 +2,6 @@ package com.fraud.backend.api.controller.frauddetection;
 
 import com.fraud.backend.api.dto.frauddetection.dataset.request.DatasetUpdateRequest;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetCleanResponse;
-import com.fraud.backend.data.entity.frauddetection.Dataset;
 import com.fraud.backend.data.enums.datasets.DatasetStatus;
 import com.fraud.backend.data.enums.datasets.DatasetType;
 import com.fraud.backend.data.service.frauddetection.DatasetService;
@@ -42,10 +41,13 @@ public class DatasetController {
             @RequestParam(value = "q", required = false) String q,
             @RequestParam(value = "status", required = false) DatasetStatus status,
             @RequestParam(value = "type", required = false) DatasetType type,
+            @RequestParam(value = "visibility", required = false) Boolean visibility,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
+        
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
-        return datasetService.list(q, status, type, pageable).map(datasetMapper::toResponse);
+        return datasetService.list(q, status, type, visibility, pageable)
+                .map(datasetMapper::toResponse);
     }
 
     @GetMapping("/{uuid}")
@@ -53,12 +55,6 @@ public class DatasetController {
         return datasetMapper.toResponse(datasetService.get(uuid));
     }
 
-    /**
-     * Returns paginated TRANSACTIONS_TRAIN datasets with status ACTIVE or
-     * PROCESSED.
-     * Used by the model training pipeline to select a training dataset.
-     * GET /api/datasets/training?page=0&size=10&q=search
-     */
     @GetMapping("/training")
     public Page<DatasetResponse> listTrainingDatasets(
             @RequestParam(value = "q", required = false) String q,
@@ -176,6 +172,24 @@ public class DatasetController {
         BigDecimal totalSize = datasetService.getTotalSize(types);
         return ResponseEntity.ok(totalSize);
     }
+
+    // ==================== VISIBILITY CONTROLS ====================
+
+    @PostMapping("/{uuid}/activate")
+    public ResponseEntity<Void> activate(@PathVariable UUID uuid) {
+        log.info("Activation du dataset: {}", uuid);
+        datasetService.activate(uuid);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{uuid}/deactivate")
+    public ResponseEntity<Void> deactivate(@PathVariable UUID uuid) {
+        log.info("Désactivation du dataset: {}", uuid);
+        datasetService.deactivate(uuid);
+        return ResponseEntity.ok().build();
+    }
+
+    // ==================== EXTRACTION COMPORTEMENT ====================
 
     @PostMapping("/{uuid}/extract-behavior")
     public ResponseEntity<DatasetCleanResponse> extractBehavior(@PathVariable UUID uuid) throws Exception {

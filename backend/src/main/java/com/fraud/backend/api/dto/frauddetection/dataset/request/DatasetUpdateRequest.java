@@ -16,4 +16,5 @@ public class DatasetUpdateRequest {
     private String datasetName;
     private DatasetStatus status;
     private DatasetType type;
+    private Boolean visibility;
 }
