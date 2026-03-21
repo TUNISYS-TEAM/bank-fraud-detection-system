@@ -11,6 +11,22 @@ export interface CreateUserData {
   lastName: string;
   isActive: boolean;
   roleId: number;
+  managerId: number | null;
+}
+
+export interface User {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  roleId: number;
+  roleName: string;
+}
+
+export interface Role {
+  id: number;
+  name: string;
+  description: string;
 }
 
 @Component({
@@ -27,10 +43,12 @@ export class UserCreateModalComponent implements OnInit {
   private fb = inject(FormBuilder);
   private http = inject(HttpClient);
 
-  // Conversion en signals
+  // Signals
   isVisible = signal(true);
   isLoading = signal(false);
-  roles = signal<any[]>([]);
+  roles = signal<Role[]>([]);
+  availableManagers = signal<User[]>([]);
+  filteredManagers = signal<User[]>([]);
   errorMessage = signal('');
 
   userForm: FormGroup = this.fb.group({
@@ -38,23 +56,87 @@ export class UserCreateModalComponent implements OnInit {
     password: ['', [Validators.required, Validators.minLength(6)]],
     firstName: ['', Validators.required],
     lastName: ['', Validators.required],
-    isActive: [true], 
-    roleId: ['', Validators.required]
+    isActive: [true],
+    roleId: ['', Validators.required],
+    managerId: [null]
   });
 
   ngOnInit() {
     this.loadRoles();
+    this.loadAvailableManagers();
+    
+    // When role changes, filter managers based on role hierarchy
+    this.userForm.get('roleId')?.valueChanges.subscribe((roleId) => {
+      this.filterManagersByRole(roleId);
+    });
+  }
+
+  /**
+   * Get role name by role ID
+   */
+  getRoleName(roleId: number | null): string | null {
+    if (!roleId) return null;
+    const role = this.roles().find(r => r.id === roleId);
+    return role ? role.name : null;
   }
 
   loadRoles() {
-    this.http.get<any[]>(`${environment.apiUrl}/roles`).subscribe({
+    this.http.get<Role[]>(`${environment.apiUrl}/roles`).subscribe({
       next: (roles) => {
-        this.roles.set(roles); 
+        this.roles.set(roles);
       },
       error: (err) => {
         console.error('Error loading roles:', err);
       }
     });
+  }
+
+  loadAvailableManagers() {
+    this.http.get<User[]>(`${environment.apiUrl}/users/available-managers`).subscribe({
+      next: (managers) => {
+        this.availableManagers.set(managers);
+        this.filteredManagers.set(managers);
+      },
+      error: (err) => {
+        console.error('Error loading managers:', err);
+      }
+    });
+  }
+
+  filterManagersByRole(roleId: number) {
+    if (!roleId) {
+      this.filteredManagers.set(this.availableManagers());
+      return;
+    }
+
+    const selectedRole = this.roles().find(r => r.id === roleId);
+    if (!selectedRole) {
+      this.filteredManagers.set(this.availableManagers());
+      return;
+    }
+
+    // Define allowed manager roles based on selected user role
+    const allowedManagerRoles: Record<string, string[]> = {
+      'ANALYST': ['MANAGER', 'ADMIN'],
+      'MANAGER': ['ADMIN'],
+      'ADMIN': []
+    };
+
+    const allowedRoles = allowedManagerRoles[selectedRole.name] || [];
+
+    if (allowedRoles.length === 0) {
+      // User cannot have a manager, disable the field
+      this.userForm.get('managerId')?.disable();
+      this.userForm.get('managerId')?.setValue(null);
+      this.filteredManagers.set([]);
+    } else {
+      this.userForm.get('managerId')?.enable();
+      // Filter managers that have allowed roles
+      const filtered = this.availableManagers().filter(manager => 
+        allowedRoles.includes(manager.roleName || '')
+      );
+      this.filteredManagers.set(filtered);
+    }
   }
 
   closeModal() {

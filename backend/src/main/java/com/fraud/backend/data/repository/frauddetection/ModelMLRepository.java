@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-
 @Repository
 public interface ModelMLRepository extends JpaRepository<ModelML, Long> {
 
@@ -47,4 +46,31 @@ public interface ModelMLRepository extends JpaRepository<ModelML, Long> {
     List<ModelML> findAllByOrderByCreatedAtDesc();
 
     Page<ModelML> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    
+    // ==================== NEW METHODS FOR CREATOR FILTERING ====================
+    
+    /**
+     * Find all models created by a specific user
+     */
+    List<ModelML> findByCreatedByIdOrderByCreatedAtDesc(Long createdById);
+    
+    /**
+     * Find models created by a specific user with pagination
+     */
+    Page<ModelML> findByCreatedByIdOrderByCreatedAtDesc(Long createdById, Pageable pageable);
+    
+    /**
+     * Count models created by a specific user
+     */
+    long countByCreatedById(Long createdById);
+    
+    /**
+     * Find models by creator ID and status
+     */
+    List<ModelML> findByCreatedByIdAndStatusOrderByCreatedAtDesc(Long createdById, String status);
+    
+    /**
+     * Find models by creator ID and status with pagination
+     */
+    Page<ModelML> findByCreatedByIdAndStatusOrderByCreatedAtDesc(Long createdById, String status, Pageable pageable);
 }

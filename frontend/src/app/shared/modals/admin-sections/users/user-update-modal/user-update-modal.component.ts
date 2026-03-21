@@ -13,9 +13,10 @@ export interface UpdateUserData {
   dateOfBirth?: string | null;
   roleId: number;
   isActive: boolean;
+  managerId: number | null;
 }
 
-interface User {
+export interface User {
   id: number;
   uuid: string;
   email: string;
@@ -25,11 +26,14 @@ interface User {
   address?: string | null;
   dateOfBirth?: string | null;
   roleId: number;
+  roleName?: string;
   isActive: boolean;
+  managerId?: number | null;
+  managerName?: string | null;
   lastLogin: string | null;
 }
 
-interface Role {
+export interface Role {
   id: number;
   name: string;
   description: string;
@@ -40,7 +44,7 @@ interface Role {
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './user-update-modal.component.html',
-  styleUrl: './user-update-modal.component.css'
+  styleUrls: ['./user-update-modal.component.css']
 })
 export class UserUpdateModalComponent implements OnInit {
   @Input() user: User | null = null;
@@ -51,10 +55,12 @@ export class UserUpdateModalComponent implements OnInit {
   private fb = inject(FormBuilder);
   private http = inject(HttpClient);
 
-  // Signals pour l'état local
+  // Signals
   isVisible = signal(true);
   isLoading = signal(false);
   errorMessage = signal('');
+  availableManagers = signal<User[]>([]);
+  filteredManagers = signal<User[]>([]);
   
   updateForm: FormGroup = this.fb.group({
     firstName: ['', [Validators.required, Validators.minLength(2)]],
@@ -64,10 +70,18 @@ export class UserUpdateModalComponent implements OnInit {
     address: [''],
     dateOfBirth: [''],
     roleId: [null, Validators.required],
-    isActive: [true]
+    isActive: [true],
+    managerId: [null]
   });
 
   ngOnInit(): void {
+    this.loadAvailableManagers();
+    
+    // When role changes, filter managers based on role hierarchy
+    this.updateForm.get('roleId')?.valueChanges.subscribe((roleId) => {
+      this.filterManagersByRole(roleId);
+    });
+    
     if (this.user) {
       this.updateForm.patchValue({
         firstName: this.user.firstName,
@@ -77,8 +91,77 @@ export class UserUpdateModalComponent implements OnInit {
         address: this.user.address || '',
         dateOfBirth: this.user.dateOfBirth || '',
         roleId: this.user.roleId,
-        isActive: this.user.isActive
+        isActive: this.user.isActive,
+        managerId: this.user.managerId || null
       });
+      
+      // Trigger filter after patch
+      setTimeout(() => {
+        this.filterManagersByRole(this.user!.roleId);
+      });
+    }
+  }
+
+  /**
+   * Get role name by role ID
+   */
+  getRoleName(roleId: number | null): string | null {
+    if (!roleId) return null;
+    const role = this.roles.find(r => r.id === roleId);
+    return role ? role.name : null;
+  }
+
+  loadAvailableManagers() {
+    this.http.get<User[]>(`${environment.apiUrl}/users/available-managers`).subscribe({
+      next: (managers) => {
+        this.availableManagers.set(managers);
+        this.filteredManagers.set(managers);
+      },
+      error: (err) => {
+        console.error('Error loading managers:', err);
+      }
+    });
+  }
+
+  filterManagersByRole(roleId: number) {
+    if (!roleId) {
+      this.filteredManagers.set(this.availableManagers());
+      return;
+    }
+
+    const selectedRole = this.roles.find(r => r.id === roleId);
+    if (!selectedRole) {
+      this.filteredManagers.set(this.availableManagers());
+      return;
+    }
+
+    // Define allowed manager roles based on selected user role
+    const allowedManagerRoles: Record<string, string[]> = {
+      'ANALYST': ['MANAGER', 'ADMIN'],
+      'MANAGER': ['ADMIN'],
+      'ADMIN': []
+    };
+
+    const allowedRoles = allowedManagerRoles[selectedRole.name] || [];
+
+    if (allowedRoles.length === 0) {
+      // User cannot have a manager, disable the field
+      this.updateForm.get('managerId')?.disable();
+      this.updateForm.get('managerId')?.setValue(null);
+      this.filteredManagers.set([]);
+    } else {
+      this.updateForm.get('managerId')?.enable();
+      // Filter managers that have allowed roles
+      const filtered = this.availableManagers().filter(manager => 
+        allowedRoles.includes(manager.roleName || '')
+      );
+      this.filteredManagers.set(filtered);
+      
+      // Also filter out the current user if they are in the list (can't be your own manager)
+      if (this.user) {
+        const withoutSelf = filtered.filter(m => m.id !== this.user!.id);
+        this.filteredManagers.set(withoutSelf);
+      }
     }
   }
 
@@ -95,10 +178,10 @@ export class UserUpdateModalComponent implements OnInit {
         address: this.updateForm.value.address || null,
         dateOfBirth: this.updateForm.value.dateOfBirth || null,
         roleId: this.updateForm.value.roleId,
-        isActive: this.updateForm.value.isActive
+        isActive: this.updateForm.value.isActive,
+        managerId: this.updateForm.value.managerId || null
       };
 
-      // Appel API PUT pour mettre à jour l'utilisateur
       this.http.put<User>(`${environment.apiUrl}/users/${this.user.id}`, updateData).subscribe({
         next: (updatedUser) => {
           this.isLoading.set(false);

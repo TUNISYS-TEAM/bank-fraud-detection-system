@@ -13,4 +13,5 @@ public class UpdateUserRequest {
     private String email;
     private Long roleId;
     private Boolean isActive;
+    private Long managerId;
 }

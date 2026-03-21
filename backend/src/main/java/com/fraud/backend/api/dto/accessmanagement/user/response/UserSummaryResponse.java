@@ -2,6 +2,7 @@ package com.fraud.backend.api.dto.accessmanagement.user.response;
 
 import lombok.Builder;
 import lombok.Data;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -14,6 +15,9 @@ public class UserSummaryResponse {
     private String firstName;
     private String lastName;
     private Long roleId;
+    private String roleName; 
+    private Long managerId; 
+    private String managerName; 
     private Boolean isActive;
     private LocalDateTime lastLogin;
 }

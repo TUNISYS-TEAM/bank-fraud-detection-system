@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -27,4 +28,17 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
     Optional<AppUser> findByIdWithRole(@Param("id") Long id);
 
     long countByIsActiveTrue();
+    
+    // Manager relationship queries
+    @Query("SELECT u FROM AppUser u WHERE u.manager.id = :managerId")
+    List<AppUser> findByManagerId(@Param("managerId") Long managerId);
+    
+    @Query("SELECT u FROM AppUser u WHERE u.role.name IN :roleNames AND u.isActive = true")
+    List<AppUser> findByRoleNames(@Param("roleNames") List<String> roleNames);
+    
+    @Query("SELECT u FROM AppUser u WHERE u.role.name = :roleName AND u.isActive = true")
+    Optional<AppUser> findFirstByRoleName(@Param("roleName") String roleName);
+    
+    @Query("SELECT u FROM AppUser u WHERE u.manager.id = :managerId AND u.isActive = true")
+    List<AppUser> findActiveSubordinates(@Param("managerId") Long managerId);
 }

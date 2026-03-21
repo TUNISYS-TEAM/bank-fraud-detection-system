@@ -1,5 +1,6 @@
 package com.fraud.backend.data.service.frauddetection;
 
+import com.fraud.backend.api.dto.accessmanagement.user.response.UserSummaryResponse;
 import com.fraud.backend.api.dto.frauddetection.model.request.TrainingJobRequest;
 import com.fraud.backend.api.dto.frauddetection.model.response.ModelMetricsResponse;
 import com.fraud.backend.api.dto.frauddetection.model.response.TrainingJobResponse;
@@ -21,10 +22,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
@@ -45,12 +50,206 @@ public class ModelTrainingService {
     private final StorageService storageService;
     private final ObjectMapper objectMapper;
 
-    public List<ModelML> getModelHistory() {
-        return modelMLRepository.findAllByOrderByCreatedAtDesc();
+    /**
+     * Get the currently authenticated user
+     */
+    /**
+     * Get the currently authenticated user from JWT token
+     */
+    private AppUser getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            log.error("No authentication found");
+            throw new IllegalStateException("Utilisateur non authentifié");
+        }
+
+        Object principal = authentication.getPrincipal();
+        log.debug("Principal class: {}", principal != null ? principal.getClass().getSimpleName() : "null");
+
+        // Extract email from principal
+        String email = null;
+
+        // Handle JWT token principal (OAuth2)
+        if (principal instanceof Jwt) {
+            Jwt jwt = (Jwt) principal;
+            log.debug("JWT claims: {}", jwt.getClaims());
+
+            // Try different claim names where email might be stored
+            email = jwt.getClaim("preferred_username");
+            if (email == null) {
+                email = jwt.getClaim("email");
+            }
+            if (email == null) {
+                email = jwt.getClaim("sub");
+            }
+        }
+        // Handle UserDetails principal (username/password)
+        else if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
+            email = ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+        }
+        // Handle String principal (sometimes the email is directly the principal)
+        else if (principal instanceof String) {
+            email = (String) principal;
+        }
+
+        // Fallback to authentication name
+        if (email == null || email.isEmpty()) {
+            email = authentication.getName();
+        }
+
+        // Final email variable for lambda usage
+        final String userEmail = email;
+
+        if (userEmail == null || userEmail.isEmpty()) {
+            log.error("Could not extract email from authentication");
+            throw new IllegalStateException("Impossible d'extraire l'email de l'authentification");
+        }
+
+        log.info("Looking for user with email: {}", userEmail);
+
+        // Find user by email
+        return keycloakMappingRepository.findByEmail(userEmail)
+                .map(KeycloakMapping::getUser)
+                .orElseThrow(() -> new IllegalStateException("Utilisateur non trouvé avec l'email: " + userEmail));
     }
 
-    public Page<ModelML> getModelHistory(Pageable pageable) {
-        return modelMLRepository.findAllByOrderByCreatedAtDesc(pageable);
+    /**
+     * Convert AppUser to UserSummaryResponse DTO
+     */
+    private UserSummaryResponse toUserSummaryResponse(AppUser user) {
+        if (user == null)
+            return null;
+
+        return UserSummaryResponse.builder()
+                .id(user.getId())
+                .uuid(user.getUuid())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .roleId(user.getRole() != null ? user.getRole().getId() : null)
+                .roleName(user.getRole() != null ? user.getRole().getName() : null)
+                .managerId(user.getManager() != null ? user.getManager().getId() : null)
+                .managerName(user.getManager() != null
+                        ? user.getManager().getFirstName() + " " + user.getManager().getLastName()
+                        : null)
+                .isActive(user.getIsActive())
+                .lastLogin(user.getLastLogin())
+                .build();
+    }
+
+    /**
+     * Convert ModelML entity to TrainingJobResponse DTO
+     */
+    private TrainingJobResponse toTrainingJobResponse(ModelML model) {
+        if (model == null)
+            return null;
+
+        // Extract training results from hyperparameters if available
+        Map<String, Object> metrics = new HashMap<>();
+        Map<String, Object> confusionMatrix = new HashMap<>();
+        Integer trainingRows = null;
+        Integer testRows = null;
+        Double fraudRate = null;
+        String modelPath = null;
+        String pipelinePath = null;
+        String onnxPath = null;
+
+        if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingResults")) {
+            Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters()
+                    .get("_trainingResults");
+
+            if (trainingResults.containsKey("metrics")) {
+                metrics = (Map<String, Object>) trainingResults.get("metrics");
+            }
+            if (trainingResults.containsKey("confusionMatrix")) {
+                confusionMatrix = (Map<String, Object>) trainingResults.get("confusionMatrix");
+            }
+            if (trainingResults.containsKey("trainingRows")) {
+                trainingRows = (Integer) trainingResults.get("trainingRows");
+            }
+            if (trainingResults.containsKey("testRows")) {
+                testRows = (Integer) trainingResults.get("testRows");
+            }
+            if (trainingResults.containsKey("fraudRate")) {
+                fraudRate = (Double) trainingResults.get("fraudRate");
+            }
+            if (trainingResults.containsKey("modelPath")) {
+                modelPath = (String) trainingResults.get("modelPath");
+            }
+            if (trainingResults.containsKey("pipelinePath")) {
+                pipelinePath = (String) trainingResults.get("pipelinePath");
+            }
+            if (trainingResults.containsKey("onnxPath")) {
+                onnxPath = (String) trainingResults.get("onnxPath");
+            }
+        }
+
+        // Get training metadata
+        Map<String, Object> trainingMetadata = null;
+        String datasetName = null;
+        if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingMetadata")) {
+            trainingMetadata = (Map<String, Object>) model.getHyperparameters().get("_trainingMetadata");
+            if (trainingMetadata.containsKey("datasetName")) {
+                datasetName = (String) trainingMetadata.get("datasetName");
+            }
+        }
+
+        TrainingJobResponse response = TrainingJobResponse.builder()
+                .modelUuid(model.getModelUuid())
+                .modelName(model.getModelName())
+                .modelType(model.getModelType())
+                .status(model.getStatus())
+                .metrics(metrics)
+                .confusionMatrix(confusionMatrix)
+                .hyperparameters(model.getHyperparameters())
+                .featureImportance(model.getFeatureImportance())
+                .trainingRows(trainingRows)
+                .testRows(testRows)
+                .fraudRate(fraudRate)
+                .modelPath(modelPath)
+                .pipelinePath(pipelinePath)
+                .onnxPath(onnxPath)
+                .startedAt(model.getCreatedAt())
+                .completedAt(model.getUpdatedAt())
+                .durationSeconds(model.getUpdatedAt() != null && model.getCreatedAt() != null
+                        ? (int) (model.getUpdatedAt().getSecond() - model.getCreatedAt().getSecond())
+                        : null)
+                .build();
+
+        // Set derived metrics
+        response.setAucRoc(model.getAuc());
+        response.setPrecision(model.getPrecision());
+        response.setRecall(model.getRecall());
+        response.setF1Score(model.getF1Score());
+
+        return response;
+    }
+
+    /**
+     * Get model history as DTOs
+     */
+    public List<TrainingJobResponse> getModelHistory() {
+        return modelMLRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(this::toTrainingJobResponse)
+                .toList();
+    }
+
+    /**
+     * Get model history as paginated DTOs
+     */
+    public Page<TrainingJobResponse> getModelHistory(Pageable pageable) {
+        return modelMLRepository.findAllByOrderByCreatedAtDesc(pageable)
+                .map(this::toTrainingJobResponse);
+    }
+
+    /**
+     * Get model by UUID as DTO
+     */
+    public TrainingJobResponse getModelByUuid(UUID modelUuid) {
+        ModelML model = modelMLRepository.findByModelUuid(modelUuid)
+                .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
+        return toTrainingJobResponse(model);
     }
 
     @Transactional
@@ -149,6 +348,10 @@ public class ModelTrainingService {
     public TrainingJobResponse trainRandomForest(TrainingJobRequest request) throws Exception {
         log.info("Starting Random Forest training for dataset: {}", request.getDatasetUuid());
 
+        // Get current user (the creator)
+        AppUser currentUser = getCurrentUser();
+        log.info("Training initiated by user: {}", currentUser.getEmail());
+
         // 1. Get dataset and validate
         Dataset dataset = datasetRepository.findByDatasetUuid(request.getDatasetUuid())
                 .orElseThrow(() -> new IllegalArgumentException("Dataset not found: " + request.getDatasetUuid()));
@@ -174,11 +377,12 @@ public class ModelTrainingService {
         trainingMetadata.put("testSize", request.getTestSize());
         trainingMetadata.put("randomSeed", request.getRandomSeed());
         trainingMetadata.put("trainingDate", LocalDateTime.now().toString());
+        trainingMetadata.put("createdBy", currentUser.getEmail()); // Add creator email to metadata
 
         hyperparameters.put("_trainingMetadata", trainingMetadata);
 
         // 3. Create or get model
-        ModelML model = getOrCreateModel(request, hyperparameters);
+        ModelML model = getOrCreateModel(request, hyperparameters, currentUser);
 
         // 4. Launch training in Python container
         TrainingJobResponse response = launchTraining(
@@ -195,14 +399,14 @@ public class ModelTrainingService {
         return response;
     }
 
-    private ModelML getOrCreateModel(TrainingJobRequest request, Map<String, Object> hyperparameters) {
+    private ModelML getOrCreateModel(TrainingJobRequest request, Map<String, Object> hyperparameters, AppUser creator) {
         // If modelUuid is provided, use existing model
         if (request.getModelUuid() != null) {
             return modelMLRepository.findByModelUuid(request.getModelUuid())
                     .orElseThrow(() -> new IllegalArgumentException("Model not found: " + request.getModelUuid()));
         }
 
-        // Create new model
+        // Create new model with creator
         ModelML model = ModelML.builder()
                 .modelUuid(UUID.randomUUID())
                 .modelName(request.getJobName())
@@ -210,6 +414,7 @@ public class ModelTrainingService {
                 .version(generateVersion())
                 .hyperparameters(hyperparameters)
                 .status("Draft")
+                .createdBy(creator) // Set the creator
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -271,13 +476,7 @@ public class ModelTrainingService {
             log.info("Executing command: {}", String.join(" ", command));
 
             // 5. Run training.
-            // IMPORTANT: do NOT use redirectErrorStream(true).
-            // The Python script writes all logging to stderr and only the final JSON to
-            // stdout.
-            // Merging the streams causes log lines (which may contain '{' from dict reprs)
-            // to pollute stdout and break JSON parsing.
             ProcessBuilder pb = new ProcessBuilder(command);
-            // stderr → Spring logs (INFO level); stdout kept separate for JSON
             pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process process = pb.start();
 
@@ -302,7 +501,6 @@ public class ModelTrainingService {
 
             if (exitCode != 0) {
                 log.error("Training script exited with code {}", exitCode);
-                // Try to parse an error JSON from stdout first; fall back to raw output
                 if (!result.isEmpty()) {
                     log.error("Training stdout: {}", result);
                 }
@@ -316,7 +514,7 @@ public class ModelTrainingService {
             log.debug("Training stdout (first 500 chars): {}",
                     result.length() > 500 ? result.substring(0, 500) : result);
 
-            // 6. Parse JSON result — stdout should contain exactly one JSON line
+            // 6. Parse JSON result
             JsonNode root = extractJsonFromOutput(result);
             if (root == null) {
                 log.error("Could not extract JSON from stdout: {}", result);
@@ -355,9 +553,7 @@ public class ModelTrainingService {
                 log.warn("Could not upload pipeline: {}", e.getMessage());
             }
 
-            // 10. Upload ONNX model to MinIO if the training script exported it.
-            // The Python script runs to_onnx() inline and sets onnx_path in the JSON
-            // result.
+            // 10. Upload ONNX model to MinIO
             JsonNode onnxPathNode = root.get("onnx_path");
             if (onnxPathNode != null && !onnxPathNode.isNull()) {
                 String containerOnnxPath = onnxPathNode.asText();
@@ -371,7 +567,6 @@ public class ModelTrainingService {
                     }
                     response.setOnnxPath(onnxKey);
                     log.info("ONNX model uploaded to MinIO: {}", onnxKey);
-                    // cleanup container onnx file
                     try {
                         execDockerCommand("rm", "-f", containerOnnxPath);
                     } catch (Exception e) {
@@ -382,7 +577,7 @@ public class ModelTrainingService {
                     Files.deleteIfExists(tempOnnx);
                 }
             } else {
-                log.info("No ONNX output from training script (to_onnx may not be implemented yet)");
+                log.info("No ONNX output from training script");
             }
 
             return response;
@@ -616,9 +811,10 @@ public class ModelTrainingService {
                 .featureImportance(importance)
                 .topFeatures(topFeatures)
                 .onnxPath(onnxPath)
-                .validationComment(commentRepository.findFirstByModelModelUuidAndObjectOrderByCreatedAtDesc(modelUuid, "Model Validation")
-                .map(Comment::getContent)
-                .orElse(null))
+                .validationComment(commentRepository
+                        .findFirstByModelModelUuidAndObjectOrderByCreatedAtDesc(modelUuid, "Model Validation")
+                        .map(Comment::getContent)
+                        .orElse(null))
                 .build();
 
         response.calculateDerivedMetrics();
@@ -649,8 +845,6 @@ public class ModelTrainingService {
     }
 
     private JsonNode extractJsonFromOutput(String output) {
-        // The Python script writes exactly one JSON line to stdout.
-        // Try each line in order — the first valid JSON object wins.
         for (String line : output.split("\n")) {
             String trimmed = line.trim();
             if (trimmed.startsWith("{")) {
@@ -661,7 +855,6 @@ public class ModelTrainingService {
                 }
             }
         }
-        // Fallback: try the whole output as a single blob
         int jsonStart = output.indexOf('{');
         int jsonEnd = output.lastIndexOf('}');
         if (jsonStart >= 0 && jsonEnd > jsonStart) {
@@ -707,4 +900,26 @@ public class ModelTrainingService {
         log.info("Model {} validated with status {} by manager {}", model.getModelUuid(), action.getStatus(),
                 manager.getEmail());
     }
+
+    /**
+     * Get ALL models (for ADMIN users) with pagination
+     */
+    public Page<TrainingJobResponse> getAllModels(Pageable pageable) {
+        log.info("Fetching ALL models with pagination: {}", pageable);
+        return modelMLRepository.findAllByOrderByCreatedAtDesc(pageable)
+                .map(this::toTrainingJobResponse);
+    }
+
+    /**
+     * Get models created by the current user with pagination
+     */
+    public Page<TrainingJobResponse> getMyModels(Pageable pageable) {
+        AppUser currentUser = getCurrentUser();
+        log.info("Fetching models for user: {} (ID: {}) with pagination: {}",
+                currentUser.getEmail(), currentUser.getId(), pageable);
+        return modelMLRepository.findByCreatedByIdOrderByCreatedAtDesc(currentUser.getId(), pageable)
+                .map(this::toTrainingJobResponse);
+    }
+
+    
 }

@@ -1,5 +1,6 @@
 package com.fraud.backend.api.controller.accessmanagement;
 
+import com.fraud.backend.api.dto.accessmanagement.user.request.ChangeManagerRequest;
 import com.fraud.backend.api.dto.accessmanagement.user.request.ChangeRoleRequest;
 import com.fraud.backend.api.dto.accessmanagement.user.request.CreateUserRequest;
 import com.fraud.backend.api.dto.accessmanagement.user.request.UpdateUserRequest;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -84,7 +86,8 @@ public class UserController {
                                 request.getDateOfBirth(),
                                 request.getAddress(),
                                 request.getRoleId(),
-                                request.getIsActive())));
+                                request.getIsActive(),
+                                request.getManagerId())));
     }
 
     // PUT /api/users/{id}
@@ -102,7 +105,8 @@ public class UserController {
                                 request.getAddress(),
                                 request.getDateOfBirth(),
                                 request.getRoleId(),
-                                request.getIsActive())));
+                                request.getIsActive(),
+                                request.getManagerId())));
     }
 
     // PATCH /api/users/{id}/role
@@ -112,6 +116,35 @@ public class UserController {
             @Valid @RequestBody ChangeRoleRequest request) {
         return ResponseEntity.ok(userMapper.toResponse(
                 userService.changeRole(id, request.getRoleId())));
+    }
+
+    // PATCH /api/users/{id}/manager
+    @PatchMapping("/{id}/manager")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponse> changeManager(@PathVariable Long id,
+            @Valid @RequestBody ChangeManagerRequest request) {
+        return ResponseEntity.ok(userMapper.toResponse(
+                userService.changeManager(id, request.getManagerId())));
+    }
+
+    // GET /api/users/available-managers
+    @GetMapping("/available-managers")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<UserSummaryResponse>> getAvailableManagers() {
+        return ResponseEntity.ok(
+                userService.getAvailableManagers().stream()
+                        .map(userMapper::toSummaryResponse)
+                        .toList());
+    }
+
+    // GET /api/users/{id}/subordinates
+    @GetMapping("/{id}/subordinates")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<UserSummaryResponse>> getSubordinates(@PathVariable Long id) {
+        return ResponseEntity.ok(
+                userService.getSubordinates(id).stream()
+                        .map(userMapper::toSummaryResponse)
+                        .toList());
     }
 
     // PATCH /api/users/{id}/activate

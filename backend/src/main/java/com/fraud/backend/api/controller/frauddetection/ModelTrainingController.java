@@ -14,7 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
-import com.fraud.backend.data.entity.frauddetection.ModelML;
 
 @Slf4j
 @RestController
@@ -44,10 +43,32 @@ public class ModelTrainingController {
         return ResponseEntity.ok(metrics);
     }
 
-    @GetMapping("/history")
-    public ResponseEntity<Page<ModelML>> getModelHistory(@PageableDefault(size = 5) Pageable pageable) {
-        log.info("Fetching model training history with pagination: {}", pageable);
-        return ResponseEntity.ok(trainingService.getModelHistory(pageable));
+    /**
+     * Get a specific model by its UUID
+     */
+    @GetMapping("/{modelUuid}")
+    public ResponseEntity<TrainingJobResponse> getModelByUuid(@PathVariable UUID modelUuid) {
+        log.info("Fetching model with UUID: {}", modelUuid);
+        TrainingJobResponse response = trainingService.getModelByUuid(modelUuid);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get all models created by the current user
+     */
+    @GetMapping("/my-models")
+    public ResponseEntity<Page<TrainingJobResponse>> getMyModels(@PageableDefault(size = 5) Pageable pageable) {
+        log.info("Fetching my models with pagination: {}", pageable);
+        return ResponseEntity.ok(trainingService.getMyModels(pageable));
+    }
+
+    /**
+     * Get all models (for admin users)
+     */
+    @GetMapping("/all-models")
+    public ResponseEntity<Page<TrainingJobResponse>> getAllModels(@PageableDefault(size = 5) Pageable pageable) {
+        log.info("Fetching ALL models with pagination: {}", pageable);
+        return ResponseEntity.ok(trainingService.getAllModels(pageable));
     }
 
     @DeleteMapping("/{modelUuid}")

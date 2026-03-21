@@ -9,6 +9,10 @@ import org.springframework.stereotype.Component;
 public class UserMapper {
 
     public UserResponse toResponse(AppUser user) {
+        if (user == null) {
+            return null;
+        }
+        
         return UserResponse.builder()
                 .id(user.getId())
                 .uuid(user.getUuid())
@@ -19,6 +23,10 @@ public class UserMapper {
                 .address(user.getAddress())
                 .dateOfBirth(user.getDateOfBirth())
                 .roleId(user.getRole() != null ? user.getRole().getId() : null)
+                .roleName(user.getRole() != null ? user.getRole().getName() : null)
+                .managerId(user.getManager() != null ? user.getManager().getId() : null)
+                .managerName(user.getManager() != null ? 
+                        user.getManager().getFirstName() + " " + user.getManager().getLastName() : null)
                 .isActive(user.getIsActive())
                 .lastLogin(user.getLastLogin())
                 .createdAt(user.getCreatedAt())
@@ -27,6 +35,10 @@ public class UserMapper {
     }
 
     public UserSummaryResponse toSummaryResponse(AppUser user) {
+        if (user == null) {
+            return null;
+        }
+        
         return UserSummaryResponse.builder()
                 .id(user.getId())
                 .uuid(user.getUuid())
@@ -34,6 +46,10 @@ public class UserMapper {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .roleId(user.getRole() != null ? user.getRole().getId() : null)
+                .roleName(user.getRole() != null ? user.getRole().getName() : null)
+                .managerId(user.getManager() != null ? user.getManager().getId() : null)
+                .managerName(user.getManager() != null ? 
+                        user.getManager().getFirstName() + " " + user.getManager().getLastName() : null)
                 .isActive(user.getIsActive())
                 .lastLogin(user.getLastLogin())
                 .build();

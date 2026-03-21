@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface KeycloakMappingRepository extends JpaRepository<KeycloakMapping, Long> {
     Optional<KeycloakMapping> findByKeycloakId(String keycloakId);
     Optional<KeycloakMapping> findByUserId(Long userId);
+    Optional<KeycloakMapping> findByEmail(String email);
 }

@@ -32,4 +32,6 @@ public class CreateUserRequest {
     private Long roleId;
 
     private Boolean isActive;
+
+    private Long managerId;
 }

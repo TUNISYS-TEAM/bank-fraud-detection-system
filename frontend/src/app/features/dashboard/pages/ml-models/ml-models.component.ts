@@ -646,10 +646,12 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       modelUuid: model.modelUuid,
       modelName: model.modelName || 'Random Forest',
       status: model.status || 'COMPLETED',
-      completedAt: model.completedAt || model.createdAt || trainingResults.completedAt || new Date().toISOString(),
+      startedAt: trainingMetadata.trainingDate || model.startedAt || null,
+      completedAt: trainingResults.completedAt || model.completedAt || null,
       durationSeconds: trainingResults.durationSeconds || model.durationSeconds || 0,
       fraudRate: trainingResults.fraudRate || model.fraudRate || 0,
       testRows: trainingResults.testRows || model.testRows || 0,
+      trainingRows: trainingResults.trainingRows || model.trainingRows || 0,
 
       // Metrics
       metrics: {
@@ -723,10 +725,27 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   }
 
   loadModelHistory(): void {
-    const url = `${environment.apiUrl}/v1/fraud-detection/models/training/history?page=${this.historyCurrentPage}&size=${this.historyPageSize}`;
+    const url = `${environment.apiUrl}/v1/fraud-detection/models/training/my-models?page=${this.historyCurrentPage}&size=${this.historyPageSize}`;
+
     this.http.get<any>(url).subscribe({
       next: (response) => {
-        this.modelHistory = response.content;
+        // Transform each model to extract dates from nested structures
+        this.modelHistory = response.content.map((model: any) => {
+          const hyperparameters = model.hyperparameters || {};
+          const trainingResults = hyperparameters._trainingResults || {};
+          const trainingMetadata = hyperparameters._trainingMetadata || {};
+          
+          return {
+            ...model,
+            startedAt: trainingMetadata.trainingDate || model.startedAt,
+            completedAt: trainingResults.completedAt || model.completedAt,
+            durationSeconds: trainingResults.durationSeconds || model.durationSeconds,
+            trainingRows: trainingResults.trainingRows || model.trainingRows,
+            testRows: trainingResults.testRows || model.testRows,
+            fraudRate: trainingResults.fraudRate || model.fraudRate
+          };
+        });
+        
         this.historyTotalElements = response.totalElements;
         this.historyTotalPages = response.totalPages;
         this.historyCurrentPage = response.number;
@@ -823,7 +842,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         modelName: model.modelName,
         modelUuid: model.modelUuid,
         version: model.version,
-        auc: model.hyperparameters._trainingResults.metrics.auc_roc,
+        auc: model.hyperparameters?._trainingResults?.metrics?.auc_roc || 0,
         precision: model.precision || 0,
         recall: model.recall || 0,
         f1Score: model.f1Score || model.f1_score || 0,
@@ -831,5 +850,20 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         createdAt: model.createdAt || new Date().toISOString()
       }
     });
+  }
+
+  formatDate(date: string | null): string {
+    if (!date) return 'N/A';
+    try {
+      return new Date(date).toLocaleString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return 'N/A';
+    }
   }
 }

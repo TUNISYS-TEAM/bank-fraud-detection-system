@@ -14,9 +14,11 @@ export interface UserDetails {
   dateOfBirth: string | null;
   roleId: number;
   roleName: string;
+  managerId: number | null;
+  managerName: string | null;
   isActive: boolean;
   lastLogin: string | null;
-  createdAt: string;  // Date d'embauche/création
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -45,22 +47,9 @@ export class UserViewModalComponent implements OnInit {
   errorMessage = signal('');
   userIdInternal = signal<number | null>(null);
   userDetails = signal<UserDetails | null>(null);
-  rolesCache = signal<Map<number, string>>(new Map());
 
   ngOnInit() {
-    this.loadRoles();
-  }
-
-  loadRoles() {
-    this.http.get<any[]>(`${environment.apiUrl}/roles`).subscribe({
-      next: (roles) => {
-        const roleMap = new Map(roles.map(role => [role.id, role.name]));
-        this.rolesCache.set(roleMap);
-      },
-      error: (err) => {
-        console.error('Error loading roles:', err);
-      }
-    });
+    // No need to load roles anymore
   }
 
   loadUserDetails(id: number) {
@@ -68,9 +57,8 @@ export class UserViewModalComponent implements OnInit {
     
     this.http.get<UserDetails>(`${environment.apiUrl}/users/${id}`).subscribe({
       next: (user) => {
-        // Ajouter le nom du rôle depuis le cache
-        const roleName = this.rolesCache().get(user.roleId) || 'Inconnu';
-        this.userDetails.set({ ...user, roleName });
+        // The API already returns roleName, so we just set the user details directly
+        this.userDetails.set(user);
         this.isLoading.set(false);
       },
       error: (err) => {

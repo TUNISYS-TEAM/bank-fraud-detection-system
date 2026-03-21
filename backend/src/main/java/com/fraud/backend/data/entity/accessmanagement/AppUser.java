@@ -51,6 +51,11 @@ public class AppUser {
     @JoinColumn(name = "role_id")
     private Role role;
     
+    // Self-referential relationship for hierarchical management
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "manager_id")
+    private AppUser manager;
+    
     @Column(name = "is_active")
     private Boolean isActive;
     
