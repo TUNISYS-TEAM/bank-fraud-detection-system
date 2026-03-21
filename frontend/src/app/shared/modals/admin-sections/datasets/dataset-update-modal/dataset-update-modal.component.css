@@ -1,0 +1,31 @@
+.conflict-text ::ng-deep strong {
+    color: #b91c1c;
+    background-color: #fff1f2;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.4rem;
+    font-weight: 700;
+    border: 1px solid #fecaca;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.9em;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.animate-message {
+    animation: slideInShake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes slideInShake {
+    0% { 
+        transform: translateY(-8px); 
+        opacity: 0; 
+    }
+    15% { transform: translateX(-4px); }
+    30% { transform: translateX(8px); }
+    45% { transform: translateX(-6px); }
+    60% { transform: translateX(6px); }
+    75% { transform: translateX(-2px); }
+    100% { 
+        transform: translateY(0); 
+        opacity: 1; 
+    }
+}

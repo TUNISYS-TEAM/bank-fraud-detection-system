@@ -10,6 +10,8 @@ import java.util.List;
 public interface CommentRepository extends JpaRepository<Comment, Long> {
 
     List<Comment> findByModelId(Long modelId);
+    
+    java.util.Optional<Comment> findFirstByModelModelUuidAndObjectOrderByCreatedAtDesc(java.util.UUID modelUuid, String object);
 
     List<Comment> findByAuthorId(Long authorId);
 

@@ -11,7 +11,7 @@ export interface Message {
   content: string;
   isRead: boolean;
   readAt?: string;
-  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  messageType?: string;
   createdAt: string;
   parentMessageUuid?: string;
 }
@@ -20,7 +20,7 @@ export interface SendMessageRequest {
   receiverId: number;
   subject?: string;
   content: string;
-  priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  messageType?: string;
   parentMessageUuid?: string;
 }
 

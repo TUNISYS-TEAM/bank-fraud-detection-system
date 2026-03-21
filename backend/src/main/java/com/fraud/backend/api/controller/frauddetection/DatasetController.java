@@ -16,6 +16,7 @@ import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.*;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +25,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -105,10 +108,16 @@ public class DatasetController {
     }
 
     @PutMapping("/{uuid}")
-    public DatasetResponse update(
+    public ResponseEntity<?> update(
             @PathVariable UUID uuid,
             @RequestBody DatasetUpdateRequest request) {
-        return datasetMapper.toResponse(datasetService.update(uuid, request));
+        try {
+            return ResponseEntity.ok(datasetMapper.toResponse(datasetService.update(uuid, request)));
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("error", e.getMessage());
+            return ResponseEntity.ok(body);
+        }
     }
 
     // ==================== ANALYSE DU DATASET ====================
@@ -162,7 +171,7 @@ public class DatasetController {
     @GetMapping("/count")
     @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Long> count(@RequestParam(required = false) List<DatasetType> types) {
-        long count = (types != null && !types.isEmpty()) ? datasetService.count(types) : datasetService.count();
+        long count = datasetService.count(types);
         return ResponseEntity.ok(count);
     }
 
@@ -176,10 +185,15 @@ public class DatasetController {
     // ==================== VISIBILITY CONTROLS ====================
 
     @PostMapping("/{uuid}/activate")
-    public ResponseEntity<Void> activate(@PathVariable UUID uuid) {
-        log.info("Activation du dataset: {}", uuid);
-        datasetService.activate(uuid);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> activate(@PathVariable UUID uuid) {
+        try {
+            datasetService.activate(uuid);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        }
     }
 
     @PostMapping("/{uuid}/deactivate")

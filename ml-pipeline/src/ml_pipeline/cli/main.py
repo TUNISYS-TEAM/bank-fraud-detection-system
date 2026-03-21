@@ -127,6 +127,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Chemin du fichier de sortie (Parquet)"
     )
 
+    # ---- convert-to-csv ----
+    convert_csv_parser = subparsers.add_parser(
+        "convert-to-csv",
+        help="Convertit un fichier Parquet au format CSV"
+    )
+    convert_csv_parser.add_argument(
+        "--input",
+        required=True,
+        help="Chemin du fichier d'entrée (Parquet)"
+    )
+    convert_csv_parser.add_argument(
+        "--output",
+        required=True,
+        help="Chemin du fichier de sortie (CSV)"
+    )
+
     # ---- validate ----
     validate_parser = subparsers.add_parser("validate", help="Exécute les vérifications de validation")
     validate_parser.add_argument("--data-dir", default="artifacts/exported_parquet")
@@ -306,6 +322,60 @@ def convert_to_parquet_command(args):
         sys.exit(1)
 
 
+def convert_to_csv_command(args):
+    """Implémentation de la commande convert-to-csv."""
+    try:
+        input_path = Path(args.input)
+        output_path = Path(args.output)
+        
+        logging.info("Conversion Parquet vers CSV - input=%s output=%s", input_path, output_path)
+        
+        # Vérifier que le fichier d'entrée existe
+        if not input_path.exists():
+            raise FileNotFoundError(f"Fichier d'entrée non trouvé: {input_path}")
+        
+        # Créer le répertoire de sortie si nécessaire
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Lire le Parquet
+        logging.info("Lecture du fichier Parquet: %s", input_path)
+        df = pd.read_parquet(input_path)
+        logging.info("Parquet chargé: %d lignes, %d colonnes", len(df), len(df.columns))
+        
+        # Convertir en CSV
+        logging.info("Conversion en CSV...")
+        df.to_csv(output_path, index=False)
+        
+        # Vérifier que le fichier a été créé
+        if output_path.exists():
+            file_size_mb = output_path.stat().st_size / (1024 * 1024)
+            logging.info("Conversion réussie: %s (%.2f MB)", output_path, file_size_mb)
+            
+            # Résultat JSON
+            result = {
+                "status": "success",
+                "input": str(input_path),
+                "output": str(output_path),
+                "rows": len(df),
+                "columns": len(df.columns),
+                "size_mb": round(file_size_mb, 2)
+            }
+            print(json.dumps(result))
+        else:
+            raise RuntimeError("Le fichier de sortie n'a pas été créé")
+        
+    except Exception as e:
+        error_result = {
+            "status": "error",
+            "error": str(e),
+            "input": args.input if hasattr(args, 'input') else None,
+            "output": args.output if hasattr(args, 'output') else None
+        }
+        print(json.dumps(error_result))
+        logging.exception("Erreur lors de la conversion Parquet vers CSV")
+        sys.exit(1)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -374,6 +444,9 @@ def main() -> None:
         
     elif args.command == "convert-to-parquet":
         convert_to_parquet_command(args)
+
+    elif args.command == "convert-to-csv":
+        convert_to_csv_command(args)
 
     elif args.command == "validate":
         print("Validation CLI not fully wired yet.", file=sys.stderr)

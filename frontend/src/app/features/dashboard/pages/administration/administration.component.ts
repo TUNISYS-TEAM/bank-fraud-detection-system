@@ -1,19 +1,22 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { forkJoin, of } from 'rxjs';
+import { forkJoin, of, Subscription } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { environment } from '../../../../../environments/environment';
 import { AuthStore } from '../../../../core/store/auth.store';
 import { KpiCard } from '../../../../shared/cards/cards.component';
+import { DatasetService } from '../../../../core/services/dataset.service';
 
 @Component({
   selector: 'app-administration',
   templateUrl: './administration.component.html',
   styleUrls: ['./administration.component.css']
 })
-export class AdministrationComponent implements OnInit {
+export class AdministrationComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   authStore = inject(AuthStore);
+  private datasetService = inject(DatasetService);
+  private statsSubscription?: Subscription;
 
   tabs = this.authStore.administrationTabs;
 
@@ -46,6 +49,17 @@ export class AdministrationComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadStats();
+
+    // S'abonner aux notifications de changement de stats
+    this.statsSubscription = this.datasetService.refreshStats$.subscribe(() => {
+      this.loadStats();
+    });
+  }
+
+  ngOnDestroy(): void {
+    if (this.statsSubscription) {
+      this.statsSubscription.unsubscribe();
+    }
   }
 
   private loadStats(): void {

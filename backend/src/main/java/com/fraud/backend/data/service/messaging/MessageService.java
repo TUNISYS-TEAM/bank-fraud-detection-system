@@ -62,6 +62,7 @@ public class MessageService {
                 .receiver(receiver)
                 .subject(request.getSubject())
                 .content(request.getContent())
+                .messageType(request.getMessageType() != null ? request.getMessageType() : "GENERAL")
                 .parentMessage(parentMessage)
                 .isRead(false)
                 .build();
@@ -99,14 +100,40 @@ public class MessageService {
         AppUser user = findUserByKeycloakId(userKeycloakId);
         
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return messageRepository.findByReceiverIdOrderByCreatedAtDesc(user.getId(), pageable);
+        return messageRepository.findByReceiverIdAndIsArchivedFalseOrderByCreatedAtDesc(user.getId(), pageable);
+    }
+
+    public Page<Message> getValidationMessages(String userKeycloakId, int page, int size) {
+        AppUser user = findUserByKeycloakId(userKeycloakId);
+        
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        return messageRepository.findByReceiverIdAndMessageTypeAndIsArchivedFalseOrderByCreatedAtDesc(user.getId(), "VALIDATION", pageable);
     }
 
     public Page<Message> getSent(String userKeycloakId, int page, int size) {
         AppUser user = findUserByKeycloakId(userKeycloakId);
         
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return messageRepository.findBySenderIdOrderByCreatedAtDesc(user.getId(), pageable);
+        return messageRepository.findBySenderIdAndIsArchivedFalseOrderByCreatedAtDesc(user.getId(), pageable);
+    }
+
+    public Page<Message> getArchived(String userKeycloakId, int page, int size) {
+        AppUser user = findUserByKeycloakId(userKeycloakId);
+        
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        return messageRepository.findByReceiverIdAndIsArchivedTrueOrderByCreatedAtDesc(user.getId(), pageable);
+    }
+
+    @Transactional
+    public void archiveMessages(String userKeycloakId, java.util.List<UUID> messageUuids) {
+        AppUser user = findUserByKeycloakId(userKeycloakId);
+        messageRepository.archiveMessages(messageUuids, user.getId());
+    }
+
+    @Transactional
+    public void restoreMessages(String userKeycloakId, java.util.List<UUID> messageUuids) {
+        AppUser user = findUserByKeycloakId(userKeycloakId);
+        messageRepository.restoreMessages(messageUuids, user.getId());
     }
 
     public Page<Message> getConversation(String user1KeycloakId, String user2KeycloakId, int page, int size) {
@@ -141,6 +168,12 @@ public class MessageService {
     }
 
     @Transactional
+    public int markAsReadByUuid(UUID messageUuid, String receiverKeycloakId) {
+        Message message = getMessage(messageUuid);
+        return markAsRead(message.getId(), receiverKeycloakId);
+    }
+
+    @Transactional
     public int markAllAsRead(String receiverKeycloakId) {
         AppUser receiver = findUserByKeycloakId(receiverKeycloakId);
         
@@ -153,7 +186,6 @@ public class MessageService {
                     0L
             );
         }
-        
         return updated;
     }
 

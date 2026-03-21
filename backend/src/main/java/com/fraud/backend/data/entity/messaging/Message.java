@@ -1,5 +1,6 @@
 package com.fraud.backend.data.entity.messaging;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -39,8 +40,17 @@ public class Message {
     @Column(columnDefinition = "TEXT")
     private String content;
 
+    @Builder.Default
+    @Column(name = "message_type")
+    private String messageType = "GENERAL";
+
+    @JsonProperty("isRead")
     @Column(name = "is_read")
     private Boolean isRead;
+
+    @Builder.Default
+    @Column(name = "is_archived")
+    private Boolean isArchived = false;
 
     @Column(name = "read_at")
     private LocalDateTime readAt;
@@ -60,6 +70,9 @@ public class Message {
         }
         if (isRead == null) {
             isRead = false;
+        }
+        if (isArchived == null) {
+            isArchived = false;
         }
     }
 }

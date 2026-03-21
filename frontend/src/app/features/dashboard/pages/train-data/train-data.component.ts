@@ -233,22 +233,36 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   loadDatasets(): void {
     this.loading.set(true);
 
-    this.datasetService.list({
+    const params: any = {
       q: this.searchQuery() || undefined,
-      type: DatasetType.TRANSACTIONS_TRAIN,
       page: this.currentPage(),
       size: this.pageSize
-    }).subscribe({
+    };
+
+    // If searching, we don't send type to backend to avoid it ignoring the search term,
+    // we will filter by type in the frontend (matching administration tab logic)
+    if (!this.searchQuery()) {
+      params.type = DatasetType.TRANSACTIONS_TRAIN;
+    }
+
+    this.datasetService.list(params).subscribe({
       next: (response: ApiResponse<Dataset>) => {
+        let content = response.content;
+
+        // Frontend filtering by type if we couldn't send it to backend
+        if (this.searchQuery()) {
+          content = content.filter(d => d.type === DatasetType.TRANSACTIONS_TRAIN);
+        }
+
         // Transform to ExtendedDataset
-        const extendedDatasets: ExtendedDataset[] = response.content.map(ds => ({
+        const extendedDatasets: ExtendedDataset[] = content.map(ds => ({
           ...ds,
           statistics: (ds as any).statistics || { columnCount: ds.columnCount }
         }));
 
         this.datasets.set(extendedDatasets);
-        this.totalElements.set(response.totalElements);
-        this.totalPages.set(response.totalPages);
+        this.totalElements.set(this.searchQuery() ? extendedDatasets.length : response.totalElements);
+        this.totalPages.set(this.searchQuery() ? 1 : response.totalPages);
         this.loading.set(false);
         this.updateExtraKpis();
 

@@ -120,6 +120,8 @@ export class ImportDataComponent implements OnInit, OnDestroy {
       label: 'Lignes Importées',
       value: 'Chargement...',
       icon: 'database',
+      trend: 'Vérification...',
+      trendUp: true,
       color: '#4f46e5'
     },
     {
@@ -337,6 +339,23 @@ export class ImportDataComponent implements OnInit, OnDestroy {
       }
 
       return newCards;
+    });
+  }
+
+  exportDataset(dataset: Dataset): void {
+    const url = `${environment.apiUrl}/datasets/${dataset.datasetUuid}/download`;
+    
+    this.http.get(url, { responseType: 'blob' }).subscribe({
+      next: (blob) => {
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `${dataset.datasetName}.csv`;
+        link.click();
+        window.URL.revokeObjectURL(link.href);
+      },
+      error: (error) => {
+        console.error('Error exporting dataset:', error);
+      }
     });
   }
 
@@ -560,4 +579,5 @@ export class ImportDataComponent implements OnInit, OnDestroy {
     if (ratio < 0.05) return 'text-amber-600';
     return 'text-red-600';
   }
+  
 }

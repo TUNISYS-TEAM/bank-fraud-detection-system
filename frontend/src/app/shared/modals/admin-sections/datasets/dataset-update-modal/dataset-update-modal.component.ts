@@ -47,18 +47,21 @@ export class DatasetUpdateModalComponent {
     this.errorMessage.set('');
 
     const uuid = this.selectedDataset()!.datasetUuid;
-    const updateData = this.datasetForm.value; // contains datasetName and visibility
+    const updateData = this.datasetForm.value;
 
     this.datasetService.update(uuid, updateData).subscribe({
-      next: () => {
+      next: (response: any) => {
         this.isLoading.set(false);
-        this.updated.emit();
-        this.closeModal();
+        if (response?.error) {
+          this.errorMessage.set(response.error);
+        } else {
+          this.updated.emit();
+          this.closeModal();
+        }
       },
-      error: (err: any) => {
+      error: () => {
         this.isLoading.set(false);
-        this.errorMessage.set(err.error?.message || 'Erreur lors de la mise à jour du dataset');
-        console.error('Error updating dataset:', err);
+        this.errorMessage.set('Erreur lors de la mise à jour du dataset');
       }
     });
   }

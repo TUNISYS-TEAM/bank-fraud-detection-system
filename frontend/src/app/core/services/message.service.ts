@@ -26,6 +26,16 @@ export class MessageService {
     return this.http.get<any>(`${this.baseUrl}/sent?page=${page}&size=${size}`);
   }
 
+  // Messages de validation
+  getValidationMessages(page: number = 0, size: number = 20): Observable<any> {
+    return this.http.get<any>(`${this.baseUrl}/validation?page=${page}&size=${size}`);
+  }
+
+  // Messages archivés
+  getArchived(page: number = 0, size: number = 20): Observable<any> {
+    return this.http.get<any>(`${this.baseUrl}/archived?page=${page}&size=${size}`);
+  }
+
   // Conversation avec un utilisateur
   getConversation(userId: number, page: number = 0, size: number = 20): Observable<any> {
     return this.http.get<any>(`${this.baseUrl}/conversation/${userId}?page=${page}&size=${size}`);
@@ -44,6 +54,21 @@ export class MessageService {
   // Marquer tous les messages comme lus
   markAllAsRead(): Observable<void> {
     return this.http.patch<void>(`${this.baseUrl}/read-all`, {});
+  }
+
+  // Archiver des messages
+  archiveMessages(messageUuids: string[]): Observable<void> {
+    return this.http.patch<void>(`${this.baseUrl}/archive`, { messageUuids });
+  }
+
+  // Restaurer des messages
+  restoreMessages(messageUuids: string[]): Observable<void> {
+    return this.http.patch<void>(`${this.baseUrl}/restore`, { messageUuids });
+  }
+
+  // Valider ou Rejeter un modèle
+  validateModel(payload: { modelUuid: string, status: string, comment?: string }): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/validate-model`, payload);
   }
 
   // Récupérer un message spécifique

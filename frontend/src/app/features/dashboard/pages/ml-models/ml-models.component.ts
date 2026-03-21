@@ -7,18 +7,9 @@ import {
   FeatureInfo,
   TrainingJobRequest,
   TrainingJobResponse,
-  ModelConfig
+  ModelConfig,
+  PageResponse
 } from '../../../../core/models/ml-models.models';
-
-export interface PageResponse<T> {
-  content: T[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
-  size: number;
-  first: boolean;
-  last: boolean;
-}
 
 @Component({
   selector: 'app-ml-models',
@@ -43,9 +34,11 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   isLoadingDatasets = false;
   isLoadingFeatures = false;
 
-  // Features
+  // Features - only original features shown in UI
   features: FeatureInfo[] = [];
-  expandedCategories: Set<string> = new Set(['behavioral', 'temporal', 'transaction', 'categorical']);
+  // Store all client behavior features to be sent automatically
+  private allClientBehaviorFeatures: string[] = [];
+  expandedCategories: Set<string> = new Set(['transaction', 'categorical', 'temporal']);
 
   // Model selection
   availableModels = [
@@ -79,18 +72,13 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   ];
   selectedModelType: string = 'RANDOM_FOREST';
 
-  // Random Forest configuration
+  // Random Forest configuration – only user‑adjustable parameters
   rfConfig: ModelConfig = {
     modelName: 'Random Forest',
     modelType: 'RANDOM_FOREST',
     hyperparameters: {
       n_estimators: 100,
-      max_depth: 10,
-      min_samples_split: 20,
-      min_samples_leaf: 10,
-      max_features: 'sqrt',
-      bootstrap: true,
-      class_weight: 'balanced'
+      max_depth: 10
     },
     testSize: 0.2,
     randomSeed: 42
@@ -127,6 +115,18 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   showUpdateModal = false;
   selectedModelForAction: any = null;
 
+  // Model Details Modal
+  showModelDetailsModal = false;
+  selectedModelForDetails: any = null;
+
+  // Original features mapping
+  private readonly originalFeatures = new Set([
+    'tx_amount', 'channel', 'category', 'customer_postal_code',
+    'merchant_postal_code', 'device_id', 'tx_time', 'ip_address', 'currency',
+    'account_id', 'TX_Amount', 'TX_Time', 'Account_Id', 'Customer_Postal_Code',
+    'Merchant_Postal_Code', 'Device_Id', 'ip_adress'
+  ]);
+
   constructor(
     private http: HttpClient,
     private router: Router
@@ -139,6 +139,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.stopPolling();
+    this.stopTrainingProgress();
   }
 
   private stopPolling(): void {
@@ -146,7 +147,13 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
-    this.stopTrainingProgress();
+  }
+
+  private stopTrainingProgress(): void {
+    if (this.trainingProgressInterval) {
+      clearInterval(this.trainingProgressInterval);
+      this.trainingProgressInterval = null;
+    }
   }
 
   private startTrainingProgress(): void {
@@ -157,19 +164,12 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     this.trainingProgressInterval = setInterval(() => {
       this.trainingElapsedTime = Date.now() - this.trainingStartTime;
-      
+
       // Simulate progress: faster at first, then slows down
       if (this.trainingProgress < 90) {
         this.trainingProgress += (90 - this.trainingProgress) * 0.05;
       }
     }, 1000);
-  }
-
-  private stopTrainingProgress(): void {
-    if (this.trainingProgressInterval) {
-      clearInterval(this.trainingProgressInterval);
-      this.trainingProgressInterval = null;
-    }
   }
 
   get formattedTrainingTime(): string {
@@ -187,7 +187,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     this.http.get<PageResponse<Dataset>>(url).subscribe({
       next: (response) => {
         this.allTrainingDatasets = response.content;
-        this.processedDatasets = response.content.filter(d => d.status === 'PROCESSED');
+        this.processedDatasets = response.content.filter(d => d.status === 'PROCESSED' || d.status === 'CLEANED');
         this.totalElements = response.totalElements;
         this.totalPages = response.totalPages;
         this.currentPage = response.number;
@@ -231,6 +231,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     } else {
       this.selectedDataset = null;
       this.features = [];
+      this.allClientBehaviorFeatures = [];
       this.totalSelectedFeatures = 0;
     }
   }
@@ -238,25 +239,33 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   loadDatasetFeatures(): void {
     this.http.get<any>(`${environment.apiUrl}/datasets/${this.selectedDatasetUuid}/analysis`).subscribe({
       next: (analysis) => {
-        // Mettre à jour les statistiques du dataset sélectionné pour éviter le "0%"
+        // Mettre à jour les statistiques du dataset sélectionné
         if (this.selectedDataset && analysis.statistics) {
           this.selectedDataset.statistics = analysis.statistics;
         }
-        this.features = this.extractFeaturesFromAnalysis(analysis);
+
+        // Extract features - separate original and client behavior
+        const { originalFeatures, clientBehaviorFeatures } = this.extractFeaturesFromAnalysis(analysis);
+        this.features = originalFeatures;
+        this.allClientBehaviorFeatures = clientBehaviorFeatures;
+
         this.updateSelectedCount();
         this.isLoadingFeatures = false;
       },
       error: (error) => {
         console.error('Error loading features:', error);
-        this.features = this.getDefaultFeatures();
+        const { originalFeatures, clientBehaviorFeatures } = this.getDefaultFeatures();
+        this.features = originalFeatures;
+        this.allClientBehaviorFeatures = clientBehaviorFeatures;
         this.updateSelectedCount();
         this.isLoadingFeatures = false;
       }
     });
   }
 
-  extractFeaturesFromAnalysis(analysis: any): FeatureInfo[] {
-    const features: FeatureInfo[] = [];
+  extractFeaturesFromAnalysis(analysis: any): { originalFeatures: FeatureInfo[], clientBehaviorFeatures: string[] } {
+    const originalFeatures: FeatureInfo[] = [];
+    const clientBehaviorFeatures: string[] = [];
 
     if (analysis?.columns) {
       analysis.columns.forEach((col: any) => {
@@ -264,68 +273,91 @@ export class MlModelsComponent implements OnInit, OnDestroy {
           return;
         }
 
-        let category: 'behavioral' | 'temporal' | 'transaction' | 'categorical' = 'transaction';
-
         const name = col.name.toLowerCase();
-        if (name.includes('client') || name.includes('customer') || name.includes('behavior') || name.includes('risk')) {
-          category = 'behavioral';
-        } else if (name.includes('hour') || name.includes('time') || name.includes('day') || name.includes('date') || name.includes('month') || name.includes('year')) {
-          category = 'temporal';
-        } else if (col.type === 'CATEGORICAL' || name.includes('channel') || name.includes('category') || name.includes('type')) {
-          category = 'categorical';
+
+        // Check if it's a client behavior feature
+        if (name.startsWith('client_')) {
+          clientBehaviorFeatures.push(col.name);
+          return;
         }
 
-        features.push({
-          name: col.name,
-          enabled: true,
-          type: col.type,
-          description: this.generateFeatureDescription(col.name, col.type),
-          category: category,
-          importance: col.stats?.importance || this.getRandomImportance()
-        });
+        // Only include original features that are in our set
+        if (this.originalFeatures.has(name) || this.originalFeatures.has(col.name)) {
+          let category: 'transaction' | 'categorical' | 'temporal' = 'transaction';
+
+          if (name.includes('hour') || name.includes('time') || name.includes('day') ||
+            name.includes('date') || name.includes('month') || name.includes('year')) {
+            category = 'temporal';
+          } else if (col.type === 'CATEGORICAL' || name.includes('channel') ||
+            name.includes('category') || name.includes('type')) {
+            category = 'categorical';
+          }
+
+          originalFeatures.push({
+            name: col.name,
+            enabled: true,
+            type: col.type,
+            description: this.generateFeatureDescription(col.name, col.type),
+            category: category
+          });
+        }
       });
     }
 
-    return features;
+    return { originalFeatures, clientBehaviorFeatures };
   }
 
   generateFeatureDescription(name: string, type: string): string {
     const descriptions: Record<string, string> = {
       'tx_amount': 'Montant de la transaction',
+      'TX_Amount': 'Montant de la transaction',
       'channel': 'Canal de transaction',
+      'Channel': 'Canal de transaction',
       'category': 'Catégorie marchande',
-      'hour_of_day': 'Heure de la journée',
-      'day_of_week': 'Jour de la semaine',
-      'is_weekend': 'Transaction weekend',
-      'is_night': 'Transaction nocturne',
-      'client_avg_tx_amount': 'Montant moyen client',
-      'client_tx_frequency': 'Fréquence transactions',
-      'client_risk_score': 'Score de risque client',
-      'amount_deviation': 'Écart au montant moyen'
+      'Category': 'Catégorie marchande',
+      'customer_postal_code': 'Code postal client',
+      'Customer_Postal_Code': 'Code postal client',
+      'merchant_postal_code': 'Code postal marchand',
+      'Merchant_Postal_Code': 'Code postal marchand',
+      'device_id': 'ID de l\'appareil',
+      'Device_Id': 'ID de l\'appareil',
+      'tx_time': 'Date et heure de la transaction',
+      'TX_Time': 'Date et heure de la transaction',
+      'ip_address': 'Adresse IP',
+      'ip_adress': 'Adresse IP',
+      'currency': 'Devise',
+      'account_id': 'ID du compte',
+      'Account_Id': 'ID du compte'
     };
 
     return descriptions[name] || name.replace(/_/g, ' ').toLowerCase();
   }
 
-  getRandomImportance(): number {
-    return Math.random() * 0.3 + 0.1;
-  }
-
-  getDefaultFeatures(): FeatureInfo[] {
-    return [
-      { name: 'client_avg_tx_amount', enabled: true, type: 'NUMERIC', description: 'Montant moyen client', category: 'behavioral', importance: 0.32 },
-      { name: 'client_tx_frequency', enabled: true, type: 'NUMERIC', description: 'Fréquence transactions', category: 'behavioral', importance: 0.28 },
-      { name: 'client_risk_score', enabled: true, type: 'NUMERIC', description: 'Score de risque', category: 'behavioral', importance: 0.35 },
-      { name: 'client_unusual_region', enabled: true, type: 'BINARY', description: 'Région inhabituelle', category: 'behavioral', importance: 0.18 },
-      { name: 'hour_of_day', enabled: true, type: 'NUMERIC', description: 'Heure de la journée', category: 'temporal', importance: 0.22 },
-      { name: 'day_of_week', enabled: true, type: 'NUMERIC', description: 'Jour de la semaine', category: 'temporal', importance: 0.15 },
-      { name: 'is_weekend', enabled: true, type: 'BINARY', description: 'Week-end', category: 'temporal', importance: 0.12 },
-      { name: 'is_night', enabled: true, type: 'BINARY', description: 'Transaction nocturne', category: 'temporal', importance: 0.19 },
-      { name: 'tx_amount', enabled: true, type: 'NUMERIC', description: 'Montant', category: 'transaction', importance: 0.42 },
-      { name: 'amount_deviation', enabled: true, type: 'NUMERIC', description: 'Écart au montant moyen', category: 'transaction', importance: 0.38 },
-      { name: 'channel', enabled: true, type: 'CATEGORICAL', description: 'Canal', category: 'categorical', importance: 0.25 },
-      { name: 'category', enabled: true, type: 'CATEGORICAL', description: 'Catégorie', category: 'categorical', importance: 0.21 }
-    ];
+  getDefaultFeatures(): { originalFeatures: FeatureInfo[], clientBehaviorFeatures: string[] } {
+    return {
+      originalFeatures: [
+        { name: 'TX_Amount', enabled: true, type: 'NUMERIC', description: 'Montant de la transaction', category: 'transaction' },
+        { name: 'Channel', enabled: true, type: 'CATEGORICAL', description: 'Canal de transaction', category: 'categorical' },
+        { name: 'category', enabled: true, type: 'CATEGORICAL', description: 'Catégorie marchande', category: 'categorical' },
+        { name: 'Customer_Postal_Code', enabled: true, type: 'CATEGORICAL', description: 'Code postal client', category: 'categorical' },
+        { name: 'Merchant_Postal_Code', enabled: true, type: 'CATEGORICAL', description: 'Code postal marchand', category: 'categorical' },
+        { name: 'Device_Id', enabled: true, type: 'CATEGORICAL', description: 'ID de l\'appareil', category: 'categorical' },
+        { name: 'TX_Time', enabled: true, type: 'DATETIME', description: 'Date et heure de la transaction', category: 'temporal' },
+        { name: 'ip_adress', enabled: true, type: 'CATEGORICAL', description: 'Adresse IP', category: 'categorical' },
+        { name: 'currency', enabled: true, type: 'CATEGORICAL', description: 'Devise', category: 'categorical' },
+        { name: 'Account_Id', enabled: true, type: 'CATEGORICAL', description: 'ID du compte', category: 'categorical' }
+      ],
+      clientBehaviorFeatures: [
+        'client_AVG_TX_Amount', 'client_AVG_TX_PerDay', 'client_amount_deviation',
+        'client_abs_amount_deviation', 'client_amount_max_ratio', 'client_amount_z_score',
+        'client_is_new_max', 'client_is_new_min', 'client_total_transactions',
+        'client_time_since_last_tx', 'client_hours_since_last_tx', 'client_total_days_since_first',
+        'client_usual_region', 'client_is_unusual_region', 'client_region_freq',
+        'client_usual_channel', 'client_is_unusual_channel', 'client_channel_freq',
+        'client_usual_category', 'client_is_unusual_category', 'client_category_freq',
+        'client_risk_score'
+      ]
+    };
   }
 
   getFeaturesByCategory(category: string): FeatureInfo[] {
@@ -380,7 +412,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   getCategoryIcon(category: string): string {
     const icons: Record<string, string> = {
-      'behavioral': 'users',
       'temporal': 'clock',
       'transaction': 'credit-card',
       'categorical': 'tag'
@@ -390,7 +421,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   getCategoryColor(category: string): string {
     const colors: Record<string, string> = {
-      'behavioral': 'text-purple-600 bg-purple-50',
       'temporal': 'text-blue-600 bg-blue-50',
       'transaction': 'text-green-600 bg-green-50',
       'categorical': 'text-amber-600 bg-amber-50'
@@ -400,7 +430,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   getCategoryHeaderBg(category: string): string {
     const colors: Record<string, string> = {
-      'behavioral': 'bg-purple-50/50',
       'temporal': 'bg-blue-50/50',
       'transaction': 'bg-emerald-50/50',
       'categorical': 'bg-amber-50/50'
@@ -410,8 +439,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   testModel(): void {
     const testConfig = { ...this.rfConfig };
-    testConfig.hyperparameters = { ...this.rfConfig.hyperparameters };
-    testConfig.hyperparameters.n_estimators = 50;
+    testConfig.hyperparameters = {
+      ...this.rfConfig.hyperparameters,
+      n_estimators: 50
+    };
     this.startTrainingWithConfig(testConfig);
   }
 
@@ -430,28 +461,38 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Stop any existing polling
+    // Stop any existing polling and progress
     this.stopPolling();
+    this.stopTrainingProgress();
+    this.trainingError = null;
 
-    const enabledFeatures = this.features
+    // Get selected original features from UI
+    const selectedOriginalFeatures = this.features
       .filter(f => f.enabled)
       .map(f => f.name);
+
+    // Combine: selected original features + ALL client behavior features
+    const allFeaturesForTraining = [...selectedOriginalFeatures, ...this.allClientBehaviorFeatures];
+
+    // Build the hyperparameters object
+    const hyperparameters: any = {
+      n_estimators: config.hyperparameters.n_estimators,
+      max_depth: config.hyperparameters.max_depth,
+      selected_original_features: selectedOriginalFeatures,
+      all_features: allFeaturesForTraining,
+      detection_threshold: this.detectionThreshold
+    };
 
     const request: TrainingJobRequest = {
       datasetUuid: this.selectedDatasetUuid,
       jobName: `RF_${new Date().toISOString().slice(0, 10)}_${config.hyperparameters.n_estimators}estimators`,
-      hyperparameters: {
-        ...config.hyperparameters,
-        selected_features: enabledFeatures,
-        detection_threshold: this.detectionThreshold
-      },
+      hyperparameters: hyperparameters,
       testSize: config.testSize,
       randomSeed: config.randomSeed,
       enableHyperparameterTuning: false
     };
 
     this.isTraining = true;
-    this.trainingError = null;
     this.startTrainingProgress();
 
     this.http.post<TrainingJobResponse>(
@@ -461,6 +502,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.lastTrainingResult = response;
         this.isTraining = false;
+        this.stopTrainingProgress();
+        this.trainingProgress = 100;
 
         if (response.status === 'PENDING' || response.status === 'TRAINING') {
           this.pollTrainingStatus(response.modelUuid);
@@ -470,6 +513,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       error: (error) => {
         console.error('Training error:', error);
         this.isTraining = false;
+        this.stopTrainingProgress();
+        this.trainingProgress = 0;
         this.trainingError = error.error?.message || 'Erreur lors de l\'entraînement';
       }
     });
@@ -486,18 +531,25 @@ export class MlModelsComponent implements OnInit, OnDestroy {
             this.loadModelHistory();
 
             if (this.lastTrainingResult) {
-              // Ensure we have all the metrics in the right format
               const f1Score = metrics.f1Score || metrics.f1_score || 0;
               const precision = metrics.precision || 0;
               const recall = metrics.recall || 0;
               const aucRoc = metrics.aucRoc || metrics.auc_roc || 0;
               const accuracy = metrics.accuracy || 0;
 
+              // Get thresholds from metrics if available
+              const thresholds = metrics.thresholds || {
+                fbeta: this.detectionThreshold,
+                fbeta_score: f1Score,
+                cost: this.detectionThreshold,
+                min_cost: 0,
+                final: this.detectionThreshold
+              };
+
               this.lastTrainingResult = {
                 ...this.lastTrainingResult,
                 status: 'COMPLETED',
                 modelUuid: metrics.modelUuid,
-                // For template interpolation
                 metrics: {
                   f1_score: f1Score,
                   precision: precision,
@@ -505,7 +557,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
                   auc_roc: aucRoc,
                   accuracy: accuracy
                 },
-                // For direct access if needed
                 f1Score: f1Score,
                 precision: precision,
                 recall: recall,
@@ -523,13 +574,117 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         },
         error: (error) => {
           console.error('Error polling metrics:', error);
+          this.stopPolling();
         }
       });
     }, 5000);
   }
 
   viewModelDetails(modelUuid: string): void {
-    this.router.navigate(['/dashboard/models', modelUuid]);
+    // Try to find the model in history first
+    const modelFromHistory = this.modelHistory.find(m => m.modelUuid === modelUuid);
+
+    if (modelFromHistory) {
+      // Transform the history data into the format expected by the modal
+      const modelData = this.transformModelDataForModal(modelFromHistory);
+      this.selectedModelForDetails = modelData;
+      this.showModelDetailsModal = true;
+    } else {
+      // If not in history, fetch from API
+      this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${modelUuid}`).subscribe({
+        next: (model) => {
+          const modelData = this.transformModelDataForModal(model);
+          this.selectedModelForDetails = modelData;
+          this.showModelDetailsModal = true;
+        },
+        error: (error) => {
+          console.error('Error loading model details:', error);
+        }
+      });
+    }
+  }
+
+  // Helper method to transform model data for the modal
+  private transformModelDataForModal(model: any): any {
+    // If the model already has the complete structure we need, return it
+    if (model.metrics && model.confusionMatrix && model.thresholds) {
+      return model;
+    }
+
+    // Extract data from nested structures
+    const hyperparameters = model.hyperparameters || {};
+    const trainingResults = hyperparameters._trainingResults || {};
+    const trainingMetadata = hyperparameters._trainingMetadata || {};
+
+    // Get metrics from various possible locations
+    const metrics = model.metrics || trainingResults.metrics || {};
+
+    // Get confusion matrix
+    const confusionMatrix = model.confusionMatrix || trainingResults.confusionMatrix || {
+      true_negatives: 0,
+      false_positives: 0,
+      false_negatives: 0,
+      true_positives: 0
+    };
+
+    // Get thresholds
+    const thresholds = model.thresholds || trainingResults.thresholds || hyperparameters._thresholds || {
+      fbeta: hyperparameters.detection_threshold || 0.5,
+      fbeta_score: metrics.f1_score || model.f1Score || 0,
+      cost: hyperparameters.detection_threshold || 0.5,
+      min_cost: 0,
+      final: hyperparameters.detection_threshold || 0.7
+    };
+
+    // Get selected features
+    const selectedOriginalFeatures = hyperparameters.selected_original_features || [];
+
+    // Get all features
+    const allFeatures = hyperparameters.all_features || [];
+
+    return {
+      modelUuid: model.modelUuid,
+      modelName: model.modelName || 'Random Forest',
+      status: model.status || 'COMPLETED',
+      completedAt: model.completedAt || model.createdAt || trainingResults.completedAt || new Date().toISOString(),
+      durationSeconds: trainingResults.durationSeconds || model.durationSeconds || 0,
+      fraudRate: trainingResults.fraudRate || model.fraudRate || 0,
+      testRows: trainingResults.testRows || model.testRows || 0,
+
+      // Metrics
+      metrics: {
+        f1_score: metrics.f1_score || model.f1Score || metrics.f1Score || 0,
+        precision: metrics.precision || model.precision || 0,
+        recall: metrics.recall || model.recall || 0,
+        auc_roc: metrics.auc_roc || model.aucRoc || metrics.aucRoc || 0,
+        accuracy: metrics.accuracy || 0
+      },
+
+      // Confusion Matrix
+      confusionMatrix: {
+        true_negatives: confusionMatrix.true_negatives || confusionMatrix.trueNegatives || 0,
+        false_positives: confusionMatrix.false_positives || confusionMatrix.falsePositives || 0,
+        false_negatives: confusionMatrix.false_negatives || confusionMatrix.falseNegatives || 0,
+        true_positives: confusionMatrix.true_positives || confusionMatrix.truePositives || 0
+      },
+
+      // Thresholds
+      thresholds: {
+        fbeta: thresholds.fbeta || 0.5,
+        fbeta_score: thresholds.fbeta_score || metrics.f1_score || 0,
+        cost: thresholds.cost || 0.5,
+        min_cost: thresholds.min_cost || 0,
+        final: thresholds.final || hyperparameters.detection_threshold || 0.7
+      },
+
+      // Features
+      selected_original_features: selectedOriginalFeatures,
+      hyperparameters_used: {
+        all_features: allFeatures,
+        n_estimators: hyperparameters.n_estimators || 100,
+        max_depth: hyperparameters.max_depth || 10
+      }
+    };
   }
 
   formatNumber(value: number): string {
@@ -612,41 +767,39 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   }
 
   reactivateModel(model: any): void {
-    // 1. Restore Hyperparameters
     if (model.hyperparameters) {
-      this.rfConfig.hyperparameters = { ...model.hyperparameters };
-      // Remove metadata but keep the actual params
-      delete (this.rfConfig.hyperparameters as any)._trainingMetadata;
-      delete (this.rfConfig.hyperparameters as any)._trainingResults;
-      
+      const restoredParams: any = {};
+      if (model.hyperparameters.n_estimators !== undefined) {
+        restoredParams.n_estimators = model.hyperparameters.n_estimators;
+      }
+      if (model.hyperparameters.max_depth !== undefined) {
+        restoredParams.max_depth = model.hyperparameters.max_depth;
+      }
+
+      this.rfConfig.hyperparameters = restoredParams;
       this.selectedModelType = model.modelType;
-      
-      // 2. Restore Dataset selection if available
+
       const metadata = model.hyperparameters._trainingMetadata;
       if (metadata && metadata.datasetUuid) {
         this.selectedDatasetUuid = metadata.datasetUuid;
-        this.onDatasetSelect(); // Load features for this dataset
+        this.onDatasetSelect();
       }
 
-      // 3. Restore Selected Features
-      const selectedFeatures = model.hyperparameters.selected_features;
+      const selectedFeatures = model.hyperparameters.selected_original_features;
       if (selectedFeatures && Array.isArray(selectedFeatures)) {
-        // We need to wait for features to be loaded from onDatasetSelect()
         setTimeout(() => {
           this.features.forEach(f => {
             f.enabled = selectedFeatures.includes(f.name);
           });
           this.updateSelectedCount();
-        }, 800); 
+        }, 800);
       }
 
-      // 4. Restore Risk Threshold
-      if (model.hyperparameters.detection_threshold) {
+      if (model.hyperparameters.detection_threshold !== undefined) {
         this.detectionThreshold = model.hyperparameters.detection_threshold;
       }
     }
 
-    // 5. Restore Results Section (Green part)
     const results = model.hyperparameters?._trainingResults;
     if (results) {
       this.lastTrainingResult = {
@@ -660,8 +813,23 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       } as any;
     }
 
-    // Scroll to top to see results
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  requestValidation(model: any): void {
+    this.router.navigate(['/dashboard/messages'], {
+      queryParams: {
+        tab: 'validation',
+        modelName: model.modelName,
+        modelUuid: model.modelUuid,
+        version: model.version,
+        auc: model.hyperparameters._trainingResults.metrics.auc_roc,
+        precision: model.precision || 0,
+        recall: model.recall || 0,
+        f1Score: model.f1Score || model.f1_score || 0,
+        modelType: model.modelType,
+        createdAt: model.createdAt || new Date().toISOString()
+      }
+    });
+  }
 }

@@ -1,11 +1,14 @@
-// app.module.ts
-import { NgModule } from '@angular/core';
+import { NgModule, LOCALE_ID } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { HttpClientModule, HttpClientXsrfModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ReactiveFormsModule } from '@angular/forms';
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { AuthInterceptor } from './core/interceptors/auth.interceptor';
+
+import { registerLocaleData } from '@angular/common';
+import localeFr from '@angular/common/locales/fr';
+registerLocaleData(localeFr);
 
 import { FeatherModule } from 'angular-feather';
 import {
@@ -26,12 +29,13 @@ import {
   Check,
   RotateCcw,
 } from 'angular-feather/icons';
+import { ModelDetailsModalComponent } from './shared/modals/models-ml/model-details-modal/model-details-modal.component';
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
   ExternalLink, Settings, LogOut, Bell, X, Mail, Lock, Tag, Calendar, Target, Hash, HardDrive, List,
-  Eye, EyeOff, Users, Database, FileText, Plus, Download, Search, AlertCircle, HelpCircle, TrendingUp, Play, 
+  Eye, EyeOff, Users, Database, FileText, Plus, Download, Search, AlertCircle, HelpCircle, TrendingUp, Play,
   CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader, GitMerge, Zap,
-  AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight ,Layers,
+  AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, Layers,
   CheckSquare, Square, ChevronUp, CreditCard, ChevronDown, Check, RotateCcw
 };
 
@@ -43,7 +47,7 @@ const icons = {
     BrowserModule,
     AppRoutingModule,
     HttpClientModule,
-    ReactiveFormsModule, 
+    ReactiveFormsModule,
     FeatherModule.pick(icons),
 
     HttpClientXsrfModule.withOptions({
@@ -56,7 +60,9 @@ const icons = {
       provide: HTTP_INTERCEPTORS,
       useClass: AuthInterceptor,
       multi: true
-    }
+    },
+    { provide: LOCALE_ID, useValue: 'fr-FR' }
+
   ],
   bootstrap: [AppComponent]
 })

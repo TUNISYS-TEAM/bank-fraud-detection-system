@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export enum DatasetStatus {
@@ -52,6 +52,13 @@ export interface ApiResponse<T> {
 export class DatasetService {
     private http = inject(HttpClient);
     private readonly apiUrl = `${environment.apiUrl}/datasets`;
+
+    private refreshStatsSubject = new Subject<void>();
+    refreshStats$ = this.refreshStatsSubject.asObservable();
+
+    notifyStatsChanged(): void {
+        this.refreshStatsSubject.next();
+    }
 
     list(params: { q?: string; status?: DatasetStatus; type?: DatasetType; visibility?: boolean; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
         let httpParams = new HttpParams();

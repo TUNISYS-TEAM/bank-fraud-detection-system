@@ -4,7 +4,8 @@ export interface Dataset {
   datasetCode: string;
   fileSizeMb: number;
   rowCount: number;
-  status: 'ACTIVE' | 'PROCESSED' | 'INACTIVE';
+  status: 'ACTIVE' | 'PROCESSED' | 'INACTIVE' | 'CLEANED' | null;
+  visibility: boolean;
   importedAt: string;
   filePath?: string;
   featureColumns?: any;
@@ -34,11 +35,6 @@ export interface ModelConfig {
   hyperparameters: {
     n_estimators: number;
     max_depth: number;
-    min_samples_split: number;
-    min_samples_leaf: number;
-    max_features: string;
-    bootstrap: boolean;
-    class_weight?: string;
     [key: string]: any;
   };
   testSize: number;
@@ -68,13 +64,14 @@ export interface TrainingJobResponse {
     f1_score: number;
     auc_roc?: number;
   };
-  // Add these top-level properties
+  // Top-level properties for easy access
   f1Score?: number;
   precision?: number;
   recall?: number;
   aucRoc?: number;
   fraudRate?: number;
   featureImportance?: Record<string, number>;
+  selectedFeatures?: string[];  // Add this
   confusionMatrix?: {
     true_negatives: number;
     false_positives: number;
@@ -84,9 +81,12 @@ export interface TrainingJobResponse {
   trainingRows?: number;
   testRows?: number;
   modelPath?: string;
+  pipelinePath?: string;
+  onnxPath?: string;
   startedAt?: string;
   completedAt?: string;
   durationSeconds?: number;
+  errorMessage?: string;
 }
 
 export interface ModelMetricsResponse {
@@ -100,13 +100,33 @@ export interface ModelMetricsResponse {
   recall?: number;
   f1Score?: number;
   aucRoc?: number;
+  averagePrecision?: number;
   confusionMatrix?: {
     trueNegatives: number;
     falsePositives: number;
     falseNegatives: number;
     truePositives: number;
   };
+  trueNegatives?: number;
+  falsePositives?: number;
+  falseNegatives?: number;
+  truePositives?: number;
+  specificity?: number;
+  falsePositiveRate?: number;
+  falseNegativeRate?: number;
+  prevalence?: number;
   featureImportance?: Record<string, number>;
   topFeatures?: string[];
+  selectedFeatures?: string[];  
   onnxPath?: string;
+}
+
+export interface PageResponse<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+  first: boolean;
+  last: boolean;
 }

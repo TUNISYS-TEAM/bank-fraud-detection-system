@@ -19,7 +19,9 @@ public class MessageMapper {
                 .receiverName(message.getReceiver().getFirstName() + " " + message.getReceiver().getLastName())
                 .subject(message.getSubject())
                 .content(message.getContent())
-                .isRead(message.getIsRead())
+                .messageType(message.getMessageType())
+                .isRead(Boolean.TRUE.equals(message.getIsRead()))
+                .isArchived(Boolean.TRUE.equals(message.getIsArchived()))
                 .readAt(message.getReadAt())
                 .createdAt(message.getCreatedAt())
                 .parentMessageUuid(message.getParentMessage() != null ? 

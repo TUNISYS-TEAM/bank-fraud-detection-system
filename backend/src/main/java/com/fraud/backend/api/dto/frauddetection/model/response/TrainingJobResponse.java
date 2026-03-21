@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -47,6 +48,9 @@ public class TrainingJobResponse {
     private Double recall;
     private Double f1Score;
     private Double aucRoc;
+    
+    // Selected features used for training
+    private List<String> selectedFeatures;  // Add this field
     
     public void extractMetrics() {
         if (metrics != null) {

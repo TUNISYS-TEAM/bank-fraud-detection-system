@@ -4,14 +4,12 @@ import com.fraud.backend.api.dto.frauddetection.dataset.request.DatasetUpdateReq
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetAnalysisResponse;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetCleanResponse;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetPreviewResponse;
-import com.fraud.backend.api.exception.InvalidDatasetColumnsException;
+
 import com.fraud.backend.data.entity.frauddetection.Dataset;
 import com.fraud.backend.data.enums.AccountType;
 import com.fraud.backend.data.enums.datasets.DatasetStatus;
 import com.fraud.backend.data.enums.datasets.DatasetType;
 import com.fraud.backend.data.repository.frauddetection.DatasetRepository;
-import com.fraud.backend.data.repository.corebanking.ClientRepository;
-import com.fraud.backend.data.repository.corebanking.AccountRepository;
 import com.fraud.backend.data.service.storage.StorageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,8 +52,6 @@ public class DatasetService {
     private final DatasetRepository datasetRepository;
     private final StorageService storageService;
     private final DatasetAnalysisPythonService datasetAnalysisPythonService;
-    private final ClientRepository clientRepository;
-    private final AccountRepository accountRepository;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -140,18 +136,8 @@ public class DatasetService {
 
         log.info("Uploading dataset of type: {} with name: {}", type, datasetName);
 
-        // Validation des colonnes selon le type
-        Map<String, String> columnMapping = getColumnMapping(file, type);
-        log.info("Column mapping successful: {}", columnMapping);
 
-        // Gérer la contrainte "un seul actif/existant" pour CLIENTS et ACCOUNTS
-        if (type == DatasetType.CLIENTS || type == DatasetType.ACCOUNTS || type == DatasetType.TRANSACTIONS_VAL) {
-            List<Dataset> existing = datasetRepository.findByType(type, Pageable.unpaged()).getContent();
-            for (Dataset e : existing) {
-                log.info("Deleting existing {} dataset: {}", type, e.getDatasetName());
-                delete(e.getDatasetUuid());
-            }
-        }
+        // On permet désormais plusieurs datasets du même type (ils seront masqués par défaut)
 
         // Créer dataset : status = null, visibility = false par défaut
         Dataset ds = Dataset.builder()
@@ -290,34 +276,8 @@ public class DatasetService {
             }
 
         } catch (Exception e) {
-            log.error("Error during Parquet conversion, falling back to CSV: {}", e.getMessage(), e);
-
-            // Fallback to CSV – use the already saved temp file
-            String folder = type.toString().toLowerCase();
-            finalFilePath = "data/raw/" + folder + "/" + ds.getDatasetUuid() + "/original.csv";
-
-            try (InputStream is = Files.newInputStream(tempCsvFile)) {
-                storageService.upload(finalFilePath, is, Files.size(tempCsvFile),
-                        file.getContentType() != null ? file.getContentType() : "text/csv");
-            }
-
-            rowCount = countCsvRowsFromPath(tempCsvFile);
-            sizeMb = bytesToMb(Files.size(tempCsvFile));
-
-            log.info("Dataset uploaded as CSV (fallback). Row count: {}", rowCount);
-
-            // If container file exists but was not retrieved, try to delete it
-            if (containerOutputFile != null) {
-                try {
-                    execDockerCommand("rm", "-f", containerOutputFile);
-                    log.info("Removed container file after fallback: {}", containerOutputFile);
-                    containerOutputFile = null;
-                } catch (Exception ex) {
-                    log.warn("Failed to remove container file: {}", containerOutputFile, ex);
-                }
-            }
-
-            // Note: parquetFile will be null in this branch, so no need to delete
+            log.error("Fatal error during Parquet conversion for dataset {}: {}", ds.getDatasetUuid(), e.getMessage(), e);
+            throw new RuntimeException("Parquet conversion failed: " + e.getMessage(), e);
         } finally {
             // Clean up any leftover UTF-8 file
             if (utf8File != null && Files.exists(utf8File)) {
@@ -335,36 +295,15 @@ public class DatasetService {
         ds = datasetRepository.save(ds);
         log.info("Dataset metadata updated with file path: {}", finalFilePath);
 
-        // Database import using the temporary CSV file (only for certain types)
+        // Skip DB import: data will only be imported when dataset is activated (visibility=true)
+        // Clean up the temporary CSV file
         if (tempCsvFile != null && Files.exists(tempCsvFile)) {
             try {
-                if (type == DatasetType.CLIENTS || type == DatasetType.ACCOUNTS
-                        || type == DatasetType.TRANSACTIONS_VAL) {
-                    MultipartFile importFile = new FileMultipartFile(
-                            file.getName(),
-                            file.getOriginalFilename(),
-                            file.getContentType(),
-                            tempCsvFile);
-
-                    if (type == DatasetType.CLIENTS) {
-                        importClientsFromCsv(importFile);
-                    } else if (type == DatasetType.ACCOUNTS) {
-                        importAccountsFromCsv(importFile);
-                    } else if (type == DatasetType.TRANSACTIONS_VAL) {
-                        importTransactionsValFromCsv(importFile);
-                    }
-                }
-            } catch (Exception e) {
-                log.error("Error during database import: {}", e.getMessage(), e);
-            } finally {
-                // Always delete the temporary CSV file after we're done with it
-                try {
-                    Files.deleteIfExists(tempCsvFile);
-                    csvDeleted = true;
-                    log.info("Temporary CSV file deleted: {}", tempCsvFile);
-                } catch (Exception ex) {
-                    log.warn("Failed to delete temporary CSV file: {}", ex.getMessage());
-                }
+                Files.deleteIfExists(tempCsvFile);
+                csvDeleted = true;
+                log.info("Temporary CSV file deleted: {}", tempCsvFile);
+            } catch (Exception ex) {
+                log.warn("Failed to delete temporary CSV file: {}", ex.getMessage());
             }
         }
 
@@ -391,75 +330,7 @@ public class DatasetService {
         return ds;
     }
 
-    // Helper to count CSV rows from a Path (without consuming original stream)
-    private long countCsvRowsFromPath(Path csvPath) throws IOException {
-        try (BufferedReader br = Files.newBufferedReader(csvPath, StandardCharsets.UTF_8)) {
-            return br.lines().count() - 1; // subtract header
-        }
-    }
 
-    // Custom MultipartFile implementation to wrap a file on disk
-    private static class FileMultipartFile implements MultipartFile {
-        private final String name;
-        private final String originalFilename;
-        private final String contentType;
-        private final Path filePath;
-
-        public FileMultipartFile(String name, String originalFilename, String contentType, Path filePath) {
-            this.name = name;
-            this.originalFilename = originalFilename;
-            this.contentType = contentType;
-            this.filePath = filePath;
-        }
-
-        @Override
-        public String getName() {
-            return name;
-        }
-
-        @Override
-        public String getOriginalFilename() {
-            return originalFilename;
-        }
-
-        @Override
-        public String getContentType() {
-            return contentType;
-        }
-
-        @Override
-        public boolean isEmpty() {
-            try {
-                return !Files.exists(filePath) || Files.size(filePath) == 0;
-            } catch (IOException e) {
-                return true;
-            }
-        }
-
-        @Override
-        public long getSize() {
-            try {
-                return Files.size(filePath);
-            } catch (IOException e) {
-                return 0;
-            }
-        }
-
-        @Override
-        public byte[] getBytes() throws IOException {
-            return Files.readAllBytes(filePath);
-        }
-
-        @Override
-        public InputStream getInputStream() throws IOException {
-            return Files.newInputStream(filePath);
-        }
-
-        @Override
-        public void transferTo(File dest) throws IOException, IllegalStateException {
-            Files.copy(filePath, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
 
     @Transactional
     public void activate(UUID uuid) {
@@ -467,23 +338,27 @@ public class DatasetService {
 
         // For types that should have only one visible dataset
         if (shouldEnforceSingleVisibility(target.getType())) {
-            // Use findAllVisibleByType which returns List<Dataset>
-            List<Dataset> visibleOfSameType = datasetRepository.findAllVisibleByType(target.getType());
-
-            if (!visibleOfSameType.isEmpty() && !visibleOfSameType.get(0).getDatasetUuid().equals(uuid)) {
-                Dataset other = visibleOfSameType.get(0);
-                // Auto-hide the other one and clear its table
-                other.setVisibility(false);
-                datasetRepository.save(other);
-                clearTableForType(other.getType());
-                log.info("Auto-hidden other {} dataset: {} (visibility=false) and cleared its table",
-                        target.getType(), other.getDatasetUuid());
+            Optional<Dataset> visibleOfSameType = datasetRepository.findVisibleByTypeExcluding(target.getType(), uuid);
+            if (visibleOfSameType.isPresent()) {
+                Dataset other = visibleOfSameType.get();
+                throw new IllegalArgumentException(String.format(
+                        "Un dataset de type %s est déjà visible et persistant en base : <strong>'%s'</strong>. Veuillez changer son statut d'abord.",
+                        target.getType(), other.getDatasetName()));
             }
         }
 
         target.setVisibility(true);
         datasetRepository.save(target);
         log.info("Dataset {} activated (visibility=true)", uuid);
+
+        // Import data into DB tables when making dataset visible
+        if (shouldEnforceSingleVisibility(target.getType())) {
+            try {
+                importDataFromMinioToDb(target);
+            } catch (Exception e) {
+                log.error("Error importing data from MinIO to DB during activation: {}", e.getMessage(), e);
+            }
+        }
 
         // Handle bidirectional sync for training datasets
         if (target.getType() == DatasetType.TRANSACTIONS_TRAIN) {
@@ -565,6 +440,348 @@ public class DatasetService {
         } catch (Exception e) {
             log.error("Error clearing tables for type {}: {}", type, e.getMessage(), e);
             throw new RuntimeException("Failed to clear database tables", e);
+        }
+    }
+
+    /**
+     * Import data from a Parquet file stored in MinIO directly into the appropriate DB table.
+     * Downloads the Parquet, reads it with AvroParquetReader, and batch-inserts via jdbcTemplate.
+     */
+    private void importDataFromMinioToDb(Dataset ds) throws IOException {
+        if (ds.getFilePath() == null || ds.getFilePath().isBlank()) {
+            log.warn("Dataset {} has no file path, skipping DB import", ds.getDatasetUuid());
+            return;
+        }
+
+        log.info("Importing data from MinIO Parquet into DB for dataset {} (type={})",
+                ds.getDatasetUuid(), ds.getType());
+
+        Path tempParquetFile = Files.createTempFile("import_parquet_", ".parquet");
+        try {
+            // 1. Download Parquet from MinIO
+            try (InputStream in = storageService.download(ds.getFilePath())) {
+                Files.copy(in, tempParquetFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+            log.info("Parquet downloaded to temp: {} ({} bytes)", tempParquetFile, Files.size(tempParquetFile));
+
+            // 2. Configure Hadoop for Parquet reading
+            org.apache.hadoop.fs.Path hadoopPath = new org.apache.hadoop.fs.Path(
+                    tempParquetFile.toAbsolutePath().toString());
+            org.apache.hadoop.conf.Configuration conf = new org.apache.hadoop.conf.Configuration();
+            conf.set("fs.defaultFS", "file:///");
+            conf.setBoolean("fs.file.impl.disable.cache", true);
+            conf.set("hadoop.security.authentication", "simple");
+            String tempDir = System.getProperty("java.io.tmpdir");
+            System.setProperty("hadoop.home.dir", tempDir);
+            conf.set("hadoop.home.dir", tempDir);
+
+            // 3. Resolve column names from Parquet schema
+            Map<String, String> columnMapping = resolveParquetColumns(hadoopPath, conf, ds.getType());
+
+            // 4. Read and import based on type
+            switch (ds.getType()) {
+                case CLIENTS:
+                    importClientsFromParquet(hadoopPath, conf, columnMapping);
+                    break;
+                case ACCOUNTS:
+                    importAccountsFromParquet(hadoopPath, conf, columnMapping);
+                    break;
+                case TRANSACTIONS_VAL:
+                    importTransactionsValFromParquet(hadoopPath, conf, columnMapping);
+                    break;
+                default:
+                    log.warn("No DB import defined for type: {}", ds.getType());
+            }
+        } finally {
+            try {
+                Files.deleteIfExists(tempParquetFile);
+                log.info("Temp Parquet file deleted: {}", tempParquetFile);
+            } catch (Exception e) {
+                log.warn("Failed to delete temp Parquet file: {}", e.getMessage());
+            }
+        }
+    }
+
+    private String getStringField(GenericRecord record, String fieldName) {
+        if (fieldName == null) return null;
+        Object val = record.get(fieldName);
+        return val != null ? val.toString() : null;
+    }
+
+    /**
+     * Resolve Parquet column names to our standard keys using the REQUIRED_COLUMNS_BY_TYPE aliases.
+     * Returns a map: standardKey -> actualParquetColumnName
+     */
+    private Map<String, String> resolveParquetColumns(org.apache.hadoop.fs.Path hadoopPath,
+            org.apache.hadoop.conf.Configuration conf, DatasetType type) throws IOException {
+
+        Map<String, List<String>> requiredMap = REQUIRED_COLUMNS_BY_TYPE.get(type);
+        if (requiredMap == null) return Collections.emptyMap();
+
+        // Read schema from Parquet to get actual column names
+        Set<String> parquetColumns = new HashSet<>();
+        try (ParquetReader<GenericRecord> reader = AvroParquetReader
+                .<GenericRecord>builder(hadoopPath).withConf(conf).build()) {
+            GenericRecord first = reader.read();
+            if (first != null) {
+                for (org.apache.avro.Schema.Field f : first.getSchema().getFields()) {
+                    parquetColumns.add(f.name());
+                }
+            }
+        }
+        log.info("Parquet columns detected: {}", parquetColumns);
+
+        Map<String, String> mapping = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : requiredMap.entrySet()) {
+            String standardKey = entry.getKey();
+            for (String alias : entry.getValue()) {
+                String found = parquetColumns.stream()
+                        .filter(c -> c.equalsIgnoreCase(alias))
+                        .findFirst().orElse(null);
+                if (found != null) {
+                    mapping.put(standardKey, found);
+                    break;
+                }
+            }
+            if (!mapping.containsKey(standardKey)) {
+                log.warn("Column '{}' not found in Parquet (tried aliases: {})", standardKey, entry.getValue());
+            }
+        }
+        log.info("Parquet column mapping resolved: {}", mapping);
+        return mapping;
+    }
+
+    private void importClientsFromParquet(org.apache.hadoop.fs.Path hadoopPath,
+            org.apache.hadoop.conf.Configuration conf, Map<String, String> colMap) throws IOException {
+        // Clear existing data
+        jdbcTemplate.execute("DELETE FROM fraud_alert");
+        jdbcTemplate.execute("DELETE FROM client_behavior_history");
+        jdbcTemplate.execute("DELETE FROM client_behavior");
+        jdbcTemplate.execute("DELETE FROM transaction");
+        jdbcTemplate.execute("DELETE FROM account");
+        jdbcTemplate.execute("DELETE FROM client");
+
+        String sql = "INSERT INTO client (client_id, first_name, last_name, date_of_birth, national_id, created_at, updated_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+        try (ParquetReader<GenericRecord> reader = AvroParquetReader
+                .<GenericRecord>builder(hadoopPath).withConf(conf).build()) {
+
+            List<Object[]> batch = new ArrayList<>();
+            int count = 0;
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+            GenericRecord record;
+
+            while ((record = reader.read()) != null) {
+                count++;
+                try {
+                    String fullName = getStringField(record, colMap.get("Full_Name"));
+                    String firstName = "";
+                    String lastName = "";
+                    if (fullName != null && !fullName.isBlank()) {
+                        String[] parts = fullName.split(" ", 2);
+                        firstName = parts[0];
+                        if (parts.length > 1) lastName = parts[1];
+                    }
+
+                    Long clientId = parseLongSafe(getStringField(record, colMap.get("Client_Id")));
+                    LocalDate dob = parseLocalDateSafe(getStringField(record, colMap.get("Date_of_Birth")));
+                    String nationalId = getStringField(record, colMap.get("National_Id"));
+                    LocalDateTime createdAt = parseLocalDateTimeSafe(getStringField(record, colMap.get("Created_At")));
+                    Timestamp tsCreatedAt = (createdAt != null) ? Timestamp.valueOf(createdAt) : now;
+
+                    batch.add(new Object[] {
+                            clientId, firstName, lastName,
+                            dob != null ? java.sql.Date.valueOf(dob) : null,
+                            nationalId, tsCreatedAt, now
+                    });
+
+                    if (batch.size() >= BATCH_SIZE) {
+                        jdbcTemplate.batchUpdate(sql, batch);
+                        batch.clear();
+                    }
+                } catch (Exception e) {
+                    log.error("Error importing client at record {}: {}", count, e.getMessage());
+                }
+            }
+
+            if (!batch.isEmpty()) {
+                jdbcTemplate.batchUpdate(sql, batch);
+            }
+            log.info("Import clients from Parquet done: {} records inserted", count);
+        }
+    }
+
+    private void importAccountsFromParquet(org.apache.hadoop.fs.Path hadoopPath,
+            org.apache.hadoop.conf.Configuration conf, Map<String, String> colMap) throws IOException {
+        // Clear existing accounts
+        jdbcTemplate.execute("DELETE FROM fraud_alert");
+        jdbcTemplate.execute("DELETE FROM client_behavior_history");
+        jdbcTemplate.execute("DELETE FROM client_behavior");
+        jdbcTemplate.execute("DELETE FROM transaction");
+        jdbcTemplate.execute("DELETE FROM account");
+
+        Set<Long> existingClientIds = new HashSet<>(
+                jdbcTemplate.queryForList("SELECT client_id FROM client", Long.class));
+        log.info("Pre-loaded {} client IDs", existingClientIds.size());
+
+        String sql = "INSERT INTO account (account_number, account_type, balance, currency, is_active, risk_level, client_id, created_at, updated_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (ParquetReader<GenericRecord> reader = AvroParquetReader
+                .<GenericRecord>builder(hadoopPath).withConf(conf).build()) {
+
+            List<Object[]> batch = new ArrayList<>();
+            int count = 0;
+            int skipped = 0;
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+            GenericRecord record;
+
+            while ((record = reader.read()) != null) {
+                count++;
+                try {
+                    Long clientNumId = parseLongSafe(getStringField(record, colMap.get("Client_Id")));
+                    if (clientNumId == null || !existingClientIds.contains(clientNumId)) {
+                        skipped++;
+                        continue;
+                    }
+
+                    String statusStr = getStringField(record, colMap.get("Status"));
+                    boolean isActive = statusStr != null && (statusStr.equalsIgnoreCase("active")
+                            || statusStr.equalsIgnoreCase("true") || statusStr.equals("1")
+                            || statusStr.equalsIgnoreCase("actif"));
+
+                    String accountNumber = getStringField(record, colMap.get("Account_Id"));
+                    AccountType accountType = parseAccountType(getStringField(record, colMap.get("Account_Type")));
+                    BigDecimal balance = parseBigDecimalSafe(getStringField(record, colMap.get("Balance")));
+                    LocalDateTime createdAt = parseLocalDateTimeSafe(getStringField(record, colMap.get("Created_At")));
+                    Timestamp tsCreatedAt = (createdAt != null) ? Timestamp.valueOf(createdAt) : now;
+
+                    batch.add(new Object[] {
+                            accountNumber != null ? accountNumber.trim() : null,
+                            accountType.name(), balance, "TND", isActive, "LOW",
+                            clientNumId, tsCreatedAt, now
+                    });
+
+                    if (batch.size() >= BATCH_SIZE) {
+                        jdbcTemplate.batchUpdate(sql, batch);
+                        batch.clear();
+                    }
+                } catch (Exception e) {
+                    log.error("Error importing account at record {}: {}", count, e.getMessage());
+                    skipped++;
+                }
+            }
+
+            if (!batch.isEmpty()) {
+                jdbcTemplate.batchUpdate(sql, batch);
+            }
+            log.info("Import accounts from Parquet done: {} processed, {} inserted, {} skipped",
+                    count, count - skipped, skipped);
+        }
+    }
+
+    private void importTransactionsValFromParquet(org.apache.hadoop.fs.Path hadoopPath,
+            org.apache.hadoop.conf.Configuration conf, Map<String, String> colMap) throws IOException {
+        boolean triggerDisabled = false;
+        try {
+            jdbcTemplate.execute("ALTER TABLE transaction DISABLE TRIGGER after_transaction_insert;");
+            triggerDisabled = true;
+
+            // Clear existing transactions
+            jdbcTemplate.execute("DELETE FROM fraud_alert");
+            jdbcTemplate.execute("DELETE FROM client_behavior_history");
+            jdbcTemplate.execute("DELETE FROM client_behavior");
+            jdbcTemplate.execute("DELETE FROM transaction");
+
+            Map<String, Long> accountNumberToId = jdbcTemplate.query(
+                    "SELECT account_number, id FROM account",
+                    (rs, rowNum) -> Map.entry(rs.getString("account_number"), rs.getLong("id"))).stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            log.info("{} accounts loaded (account_number -> id)", accountNumberToId.size());
+
+            String sql = "INSERT INTO transaction (transaction_uuid, account_id, amount, currency, transaction_date, "
+                    + "merchant_category, channel, status, postal_code_merchant, postal_code_client, device_id, "
+                    + "ip_address, created_at, updated_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+            try (ParquetReader<GenericRecord> reader = AvroParquetReader
+                    .<GenericRecord>builder(hadoopPath).withConf(conf).build()) {
+
+                List<Object[]> batch = new ArrayList<>();
+                Timestamp now = new Timestamp(System.currentTimeMillis());
+                int count = 0;
+                int skipped = 0;
+                GenericRecord record;
+
+                while ((record = reader.read()) != null) {
+                    try {
+                        String rawAccountNumber = getStringField(record, colMap.get("Account_Id"));
+                        if (rawAccountNumber == null || rawAccountNumber.isBlank()) {
+                            skipped++;
+                            continue;
+                        }
+
+                        String accountNumber = cleanStringSafe(rawAccountNumber);
+                        Long accountId = accountNumberToId.get(accountNumber);
+                        if (accountId == null) {
+                            if (skipped < 5) {
+                                log.warn("Account not found for account_number: '{}'", accountNumber);
+                            }
+                            skipped++;
+                            continue;
+                        }
+
+                        BigDecimal amount = parseBigDecimalSafe(
+                                cleanStringSafe(getStringField(record, colMap.get("TX_Amount"))));
+                        LocalDateTime txTime = parseLocalDateTimeSafe(
+                                cleanStringSafe(getStringField(record, colMap.get("TX_Time"))));
+
+                        String category = cleanStringSafe(getStringField(record, colMap.get("category")));
+                        String channel = parseChannelSafe(
+                                cleanStringSafe(getStringField(record, colMap.get("channel"))));
+                        String mPostal = cleanStringSafe(getStringField(record, colMap.get("Merchant_Postal_Code")));
+                        String cPostal = cleanStringSafe(getStringField(record, colMap.get("Customer_Postal_Code")));
+                        String deviceId = cleanStringSafe(getStringField(record, colMap.get("Device_Id")));
+                        String ipAddress = cleanStringSafe(getStringField(record, colMap.get("ip_address")));
+                        String cur = cleanStringSafe(getStringField(record, colMap.get("currency")));
+                        if (cur == null || cur.isBlank()) cur = "TND";
+
+                        batch.add(new Object[] {
+                                UUID.randomUUID(), accountId, amount, cur,
+                                txTime != null ? Timestamp.valueOf(txTime) : now,
+                                category, channel, "COMPLETED",
+                                mPostal, cPostal, deviceId, ipAddress, now, now
+                        });
+
+                        if (batch.size() >= BATCH_SIZE) {
+                            jdbcTemplate.batchUpdate(sql, batch);
+                            batch.clear();
+                        }
+                        count++;
+                    } catch (Exception e) {
+                        log.error("Error importing transaction: {}", e.getMessage());
+                        skipped++;
+                    }
+                }
+
+                if (!batch.isEmpty()) {
+                    jdbcTemplate.batchUpdate(sql, batch);
+                }
+                log.info("Import transactions from Parquet done: {} inserted, {} skipped", count, skipped);
+            }
+        } catch (Exception e) {
+            log.error("Fatal error during TRANSACTIONS_VAL import from Parquet: ", e);
+            throw new IOException("Import failed: " + e.getMessage(), e);
+        } finally {
+            if (triggerDisabled) {
+                try {
+                    jdbcTemplate.execute("ALTER TABLE transaction ENABLE TRIGGER after_transaction_insert;");
+                    log.info("Trigger after_transaction_insert re-enabled");
+                } catch (Exception e) {
+                    log.warn("Error re-enabling trigger: {}", e.getMessage());
+                }
+            }
         }
     }
 
@@ -773,17 +990,12 @@ public class DatasetService {
             if (request.getVisibility() && !oldVisibility) {
                 // For types that should have only one visible dataset
                 if (shouldEnforceSingleVisibility(ds.getType())) {
-                    // Use findAllVisibleByType which returns List<Dataset>
-                    List<Dataset> visibleOfSameType = datasetRepository.findAllVisibleByType(ds.getType());
-
-                    if (!visibleOfSameType.isEmpty() && !visibleOfSameType.get(0).getDatasetUuid().equals(uuid)) {
-                        Dataset other = visibleOfSameType.get(0);
-                        // Auto-hide the other one and clear its table
-                        other.setVisibility(false);
-                        datasetRepository.save(other);
-                        clearTableForType(other.getType());
-                        log.info("Auto-hidden other {} dataset: {} (visibility=false) and cleared its table",
-                                ds.getType(), other.getDatasetUuid());
+                    Optional<Dataset> visibleOfSameType = datasetRepository.findVisibleByTypeExcluding(ds.getType(), uuid);
+                    if (visibleOfSameType.isPresent()) {
+                        Dataset other = visibleOfSameType.get();
+                        throw new IllegalArgumentException(String.format(
+                                "Un dataset de type %s est déjà visible et persistant en base : <strong>'%s'</strong>. Veuillez changer son statut d'abord.",
+                                ds.getType(), other.getDatasetName()));
                     }
                 }
             }
@@ -793,6 +1005,15 @@ public class DatasetService {
         }
 
         ds = datasetRepository.save(ds);
+
+        // If visibility changed to true, import data into DB for business types
+        if (visibilityChanged && ds.getVisibility() && shouldEnforceSingleVisibility(ds.getType())) {
+            try {
+                importDataFromMinioToDb(ds);
+            } catch (Exception e) {
+                log.error("Error importing data from MinIO to DB during update: {}", e.getMessage(), e);
+            }
+        }
 
         // If visibility changed, sync the related dataset for training types
         if (visibilityChanged) {
@@ -1040,37 +1261,89 @@ public class DatasetService {
         if (ds.getFilePath() == null || ds.getFilePath().isBlank()) {
             throw new IllegalStateException("Dataset has no file_path");
         }
-        return storageService.download(ds.getFilePath());
+
+        String filePath = ds.getFilePath();
+        if (filePath.toLowerCase().endsWith(".parquet")) {
+            log.info("Downloading Parquet dataset {} as CSV", uuid);
+            return downloadAsCsv(ds);
+        }
+
+        return storageService.download(filePath);
+    }
+
+    private InputStream downloadAsCsv(Dataset ds) {
+        Path tempParquet = null;
+        Path tempCsv = null;
+        String containerInput = "/app/data/export_" + ds.getDatasetUuid() + ".parquet";
+        String containerOutput = "/app/data/export_" + ds.getDatasetUuid() + ".csv";
+
+        try {
+            // 1. Download Parquet from MinIO to local temp
+            tempParquet = Files.createTempFile("export_in_", ".parquet");
+            try (InputStream in = storageService.download(ds.getFilePath())) {
+                Files.copy(in, tempParquet, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            // 2. Ensure data directory exists in container
+            execDockerCommand("mkdir", "-p", "/app/data");
+
+            // 3. Copy Parquet to container
+            execDockerCopy(tempParquet, containerInput);
+
+            // 4. Convert via Python CLI
+            execDockerCommand("python", "-m", "ml_pipeline.cli.main", "convert-to-csv",
+                    "--input", containerInput,
+                    "--output", containerOutput);
+
+            // 5. Copy CSV back from container
+            tempCsv = Files.createTempFile("export_out_", ".csv");
+            execDockerCopyFromContainer(containerOutput, tempCsv);
+
+            // 6. Clean up container files
+            try {
+                execDockerCommand("rm", "-f", containerInput, containerOutput);
+            } catch (Exception e) {
+                log.warn("Failed to clean up container files after export: {}", e.getMessage());
+            }
+
+            // 7. Read CSV into memory to return stream and delete temp file
+            byte[] csvBytes = Files.readAllBytes(tempCsv);
+            return new ByteArrayInputStream(csvBytes);
+
+        } catch (Exception e) {
+            log.error("Failed to convert Parquet to CSV for export: {}", e.getMessage(), e);
+            throw new RuntimeException("Export failed: " + e.getMessage());
+        } finally {
+            try {
+                if (tempParquet != null)
+                    Files.deleteIfExists(tempParquet);
+                if (tempCsv != null)
+                    Files.deleteIfExists(tempCsv);
+            } catch (IOException e) {
+                log.warn("Failed to delete temp files: {}", e.getMessage());
+            }
+        }
     }
 
     // ==================== STATS ====================
 
-    public long count() {
-        return datasetRepository.count();
-    }
-
     public long count(List<DatasetType> types) {
         List<DatasetType> targetTypes = (types != null && !types.isEmpty()) ? types : ADMIN_KPI_TYPES;
-        return datasetRepository.countByTypeIn(targetTypes);
-    }
-
-    public BigDecimal getTotalSize() {
-        return datasetRepository.sumFileSizeMb();
+        long result = datasetRepository.countByTypeIn(targetTypes);
+        log.info("KPI Count for types {}: {}", targetTypes, result);
+        return result;
     }
 
     public BigDecimal getTotalSize(List<DatasetType> types) {
         List<DatasetType> targetTypes = (types != null && !types.isEmpty()) ? types : ADMIN_KPI_TYPES;
-        return datasetRepository.sumFileSizeMbByTypeIn(targetTypes);
+        BigDecimal result = datasetRepository.sumFileSizeMbByTypeIn(targetTypes);
+        log.info("KPI TotalSize for types {}: {} Mo", targetTypes, result);
+        return result;
     }
 
     // ==================== PRIVATE HELPERS ====================
 
-    private long countCsvRows(MultipartFile file) throws IOException {
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
-            long lines = br.lines().count();
-            return Math.max(0, lines - 1);
-        }
-    }
+
 
     private BigDecimal bytesToMb(long bytes) {
         return BigDecimal.valueOf(bytes)
@@ -1079,387 +1352,6 @@ public class DatasetService {
 
     private String generateCode() {
         return "DS-" + System.currentTimeMillis();
-    }
-
-    private void validateCsvColumns(MultipartFile file, DatasetType type) throws IOException {
-        getColumnMapping(file, type);
-    }
-
-    private Map<String, String> getColumnMapping(MultipartFile file, DatasetType type) throws IOException {
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            br.mark(1024 * 1024);
-            String firstLine = br.readLine();
-            if (firstLine == null || firstLine.isBlank()) {
-                throw new InvalidDatasetColumnsException("Le fichier est vide ou illisible.");
-            }
-            char delimiter = detectDelimiter(firstLine);
-            br.reset();
-
-            CSVParser parser = CSVFormat.DEFAULT.builder()
-                    .setDelimiter(delimiter)
-                    .setHeader()
-                    .setSkipHeaderRecord(true)
-                    .setTrim(true)
-                    .setIgnoreHeaderCase(true)
-                    .build()
-                    .parse(br);
-
-            Map<String, Integer> headerMap = parser.getHeaderMap();
-            if (headerMap == null || headerMap.isEmpty()) {
-                throw new InvalidDatasetColumnsException("Impossible de lire les colonnes.");
-            }
-
-            Set<String> detectedHeaders = headerMap.keySet().stream()
-                    .map(h -> h.replaceAll("[\\p{C}\\p{Z}]", "").trim())
-                    .filter(h -> !h.isEmpty())
-                    .collect(Collectors.toSet());
-
-            Map<String, List<String>> requiredMap = REQUIRED_COLUMNS_BY_TYPE.get(type);
-            Map<String, String> resultMapping = new HashMap<>();
-            List<String> missingColumns = new ArrayList<>();
-
-            for (Map.Entry<String, List<String>> entry : requiredMap.entrySet()) {
-                String baseColumn = entry.getKey();
-                List<String> aliases = entry.getValue();
-                String foundHeader = null;
-
-                for (String alias : aliases) {
-                    foundHeader = detectedHeaders.stream()
-                            .filter(h -> h.equalsIgnoreCase(alias.trim()))
-                            .findFirst()
-                            .orElse(null);
-                    if (foundHeader != null)
-                        break;
-                }
-
-                if (foundHeader == null) {
-                    missingColumns.add(baseColumn);
-                } else {
-                    resultMapping.put(baseColumn, foundHeader);
-                }
-            }
-
-            if (!missingColumns.isEmpty()) {
-                throw new InvalidDatasetColumnsException(
-                        "Colonnes manquantes pour le type " + type + " : " + String.join(", ", missingColumns) +
-                                ". Colonnes détectées : [" + String.join(", ", detectedHeaders) + "]");
-            }
-
-            return resultMapping;
-        }
-    }
-
-    private char detectDelimiter(String line) {
-        char delimiter = ',';
-        String d = line.replace("\uFEFF", "");
-        if (d.contains(";") && !d.contains(",")) {
-            delimiter = ';';
-        } else if (d.contains(";") && d.contains(",")) {
-            long commas = d.chars().filter(ch -> ch == ',').count();
-            long semicolons = d.chars().filter(ch -> ch == ';').count();
-            if (semicolons > commas) {
-                delimiter = ';';
-            }
-        }
-        return delimiter;
-    }
-
-    private char getDelimiterForFile(MultipartFile file) throws IOException {
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            String firstLine = br.readLine();
-            return (firstLine != null) ? detectDelimiter(firstLine) : ',';
-        }
-    }
-
-    // ==================== DATABASE IMPORT METHODS ====================
-
-    private void importClientsFromCsv(MultipartFile file) throws IOException {
-        accountRepository.deleteAllInBatch();
-        clientRepository.deleteAllInBatch();
-
-        Map<String, String> columnMapping = getColumnMapping(file, DatasetType.CLIENTS);
-        char delimiter = getDelimiterForFile(file);
-
-        String sql = "INSERT INTO client (client_id, first_name, last_name, date_of_birth, national_id, created_at, updated_at) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?)";
-
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
-                CSVParser parser = CSVFormat.DEFAULT.builder()
-                        .setDelimiter(delimiter)
-                        .setHeader()
-                        .setSkipHeaderRecord(true)
-                        .setTrim(true)
-                        .setIgnoreHeaderCase(true)
-                        .build()
-                        .parse(br)) {
-
-            List<Object[]> batch = new ArrayList<>();
-            int lineNumber = 0;
-            Timestamp now = new Timestamp(System.currentTimeMillis());
-
-            for (CSVRecord record : parser) {
-                lineNumber++;
-                try {
-                    String fullName = record.get(columnMapping.get("Full_Name"));
-                    String firstName = "";
-                    String lastName = "";
-                    if (fullName != null && !fullName.isBlank()) {
-                        String[] parts = fullName.split(" ", 2);
-                        firstName = parts[0];
-                        if (parts.length > 1) {
-                            lastName = parts[1];
-                        }
-                    }
-
-                    Long clientId = parseLongSafe(record.get(columnMapping.get("Client_Id")));
-                    LocalDate dob = parseLocalDateSafe(record.get(columnMapping.get("Date_of_Birth")));
-                    String nationalId = record.get(columnMapping.get("National_Id"));
-                    LocalDateTime createdAt = parseLocalDateTimeSafe(record.get(columnMapping.get("Created_At")));
-                    Timestamp tsCreatedAt = (createdAt != null) ? Timestamp.valueOf(createdAt) : now;
-
-                    batch.add(new Object[] {
-                            clientId, firstName, lastName,
-                            dob != null ? java.sql.Date.valueOf(dob) : null,
-                            nationalId,
-                            tsCreatedAt,
-                            now
-                    });
-
-                    if (batch.size() >= BATCH_SIZE) {
-                        jdbcTemplate.batchUpdate(sql, batch);
-                        batch.clear();
-                    }
-                } catch (Exception e) {
-                    throw new RuntimeException("Erreur à la ligne " + lineNumber + " (Client): " + e.getMessage());
-                }
-            }
-
-            if (!batch.isEmpty()) {
-                jdbcTemplate.batchUpdate(sql, batch);
-            }
-            log.info("Import clients terminé : {} lignes insérées via JDBC batch", lineNumber);
-        }
-    }
-
-    private void importAccountsFromCsv(MultipartFile file) throws IOException {
-        accountRepository.deleteAllInBatch();
-
-        Map<String, String> columnMapping = getColumnMapping(file, DatasetType.ACCOUNTS);
-        char delimiter = getDelimiterForFile(file);
-
-        Set<Long> existingClientIds = new HashSet<>(
-                jdbcTemplate.queryForList("SELECT client_id FROM client", Long.class));
-        log.info("Pré-chargement de {} IDs clients terminé", existingClientIds.size());
-
-        String sql = "INSERT INTO account (account_number, account_type, balance, currency, is_active, risk_level, client_id, created_at, updated_at) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
-                CSVParser parser = CSVFormat.DEFAULT.builder()
-                        .setDelimiter(delimiter)
-                        .setHeader()
-                        .setSkipHeaderRecord(true)
-                        .setTrim(true)
-                        .setIgnoreHeaderCase(true)
-                        .build()
-                        .parse(br)) {
-
-            List<Object[]> batch = new ArrayList<>();
-            int lineNumber = 0;
-            int skipped = 0;
-            Timestamp now = new Timestamp(System.currentTimeMillis());
-
-            for (CSVRecord record : parser) {
-                lineNumber++;
-                try {
-                    Long clientNumId = parseLongSafe(record.get(columnMapping.get("Client_Id")));
-
-                    if (clientNumId == null || !existingClientIds.contains(clientNumId)) {
-                        if (skipped < 10) {
-                            log.warn(
-                                    "Ligne {}: Client non trouvé pour ID '{}'",
-                                    lineNumber, record.get(columnMapping.get("Client_Id")));
-                        }
-                        skipped++;
-                        continue;
-                    }
-
-                    String statusStr = record.get(columnMapping.get("Status")).toLowerCase();
-                    boolean isActive = statusStr.equals("active") || statusStr.equals("true") || statusStr.equals("1")
-                            || statusStr.equals("actif");
-
-                    String accountNumberStr = record.get(columnMapping.get("Account_Id"));
-                    AccountType accountType = parseAccountType(record.get(columnMapping.get("Account_Type")));
-                    BigDecimal balance = parseBigDecimalSafe(record.get(columnMapping.get("Balance")));
-                    LocalDateTime createdAt = parseLocalDateTimeSafe(record.get(columnMapping.get("Created_At")));
-                    Timestamp tsCreatedAt = (createdAt != null) ? Timestamp.valueOf(createdAt) : now;
-
-                    batch.add(new Object[] {
-                            accountNumberStr != null ? accountNumberStr.trim() : null,
-                            accountType.name(),
-                            balance,
-                            "TND",
-                            isActive,
-                            "LOW",
-                            clientNumId,
-                            tsCreatedAt,
-                            now
-                    });
-
-                    if (batch.size() >= BATCH_SIZE) {
-                        jdbcTemplate.batchUpdate(sql, batch);
-                        batch.clear();
-                    }
-                } catch (Exception e) {
-                    throw new RuntimeException("Erreur à la ligne " + lineNumber + " (Compte): " + e.getMessage());
-                }
-            }
-
-            if (!batch.isEmpty()) {
-                jdbcTemplate.batchUpdate(sql, batch);
-            }
-            log.info("Import accounts terminé : {} lignes traitées, {} insérées, {} ignorées",
-                    lineNumber, lineNumber - skipped, skipped);
-        }
-    }
-
-    private void importTransactionsValFromCsv(MultipartFile file) throws IOException {
-        boolean triggerDisabled = false;
-        try {
-            // Disable trigger for performance during bulk insert
-            jdbcTemplate.execute("ALTER TABLE transaction DISABLE TRIGGER after_transaction_insert;");
-            triggerDisabled = true;
-
-            Map<String, String> columnMapping = getColumnMapping(file, DatasetType.TRANSACTIONS_VAL);
-            char delimiter = getDelimiterForFile(file);
-            log.info("Début import TRANSACTIONS_VAL. Colonnes trouvées: {}. Délimiteur: {}", columnMapping, delimiter);
-
-            // Get account mappings - account table uses 'id' as primary key
-            // The CSV has Account_Id which maps to account.account_number, then we need the
-            // account.id
-            Map<String, Long> accountNumberToId = jdbcTemplate.query(
-                    "SELECT account_number, id FROM account",
-                    (rs, rowNum) -> Map.entry(rs.getString("account_number"), rs.getLong("id"))).stream()
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            log.info("{} comptes chargés depuis la base (account_number -> id)", accountNumberToId.size());
-
-            String sql = "INSERT INTO transaction (transaction_uuid, account_id, amount, currency, transaction_date, " +
-                    "merchant_category, channel, status, postal_code_merchant, postal_code_client, device_id, " +
-                    "ip_address, created_at, updated_at) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-            try (BufferedReader br = new BufferedReader(
-                    new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
-                    CSVParser parser = CSVFormat.DEFAULT.builder()
-                            .setDelimiter(delimiter)
-                            .setHeader()
-                            .setSkipHeaderRecord(true)
-                            .setTrim(true)
-                            .setIgnoreHeaderCase(true)
-                            .build()
-                            .parse(br)) {
-
-                List<Object[]> batch = new ArrayList<>();
-                Timestamp now = new Timestamp(System.currentTimeMillis());
-                int count = 0;
-                int skipped = 0;
-
-                for (CSVRecord record : parser) {
-                    try {
-                        // Get the mapped column name for Account_Id from the CSV
-                        String accountNumberHeader = columnMapping.get("Account_Id");
-                        if (accountNumberHeader == null) {
-                            log.error("Colonne Account_Id manquante dans le mapping!");
-                            break;
-                        }
-
-                        String rawAccountNumber = record.get(accountNumberHeader);
-                        if (rawAccountNumber == null || rawAccountNumber.isBlank()) {
-                            skipped++;
-                            continue;
-                        }
-
-                        // Clean the account number to match the format in the database
-                        String accountNumber = cleanStringSafe(rawAccountNumber);
-
-                        // Get the account.id from the account_number
-                        Long accountId = accountNumberToId.get(accountNumber);
-                        if (accountId == null) {
-                            if (skipped < 5) {
-                                log.warn("Compte non trouvé pour account_number: '{}' (nettoyé: '{}'). " +
-                                        "Vérifiez que ce compte existe dans la table account",
-                                        rawAccountNumber, accountNumber);
-                            }
-                            skipped++;
-                            continue;
-                        }
-
-                        BigDecimal amount = parseBigDecimalSafe(
-                                cleanStringSafe(record.get(columnMapping.get("TX_Amount"))));
-                        LocalDateTime txTime = parseLocalDateTimeSafe(
-                                cleanStringSafe(record.get(columnMapping.get("TX_Time"))));
-
-                        String category = cleanStringSafe(record.get(columnMapping.get("category")));
-                        String channel = parseChannelSafe(cleanStringSafe(record.get(columnMapping.get("channel"))));
-                        String mPostal = cleanStringSafe(record.get(columnMapping.get("Merchant_Postal_Code")));
-                        String cPostal = cleanStringSafe(record.get(columnMapping.get("Customer_Postal_Code")));
-                        String deviceId = cleanStringSafe(record.get(columnMapping.get("Device_Id")));
-                        String ipAddress = cleanStringSafe(record.get(columnMapping.get("ip_address")));
-                        String cur = cleanStringSafe(record.get(columnMapping.get("currency")));
-                        if (cur.isBlank())
-                            cur = "TND";
-
-                        batch.add(new Object[] {
-                                UUID.randomUUID(),
-                                accountId,
-                                amount,
-                                cur,
-                                txTime != null ? Timestamp.valueOf(txTime) : now,
-                                category,
-                                channel,
-                                "COMPLETED",
-                                mPostal,
-                                cPostal,
-                                deviceId,
-                                ipAddress,
-                                now,
-                                now
-                        });
-
-                        if (batch.size() >= BATCH_SIZE) {
-                            jdbcTemplate.batchUpdate(sql, batch);
-                            batch.clear();
-                        }
-                        count++;
-                    } catch (Exception e) {
-                        log.error("Erreur ligne {}: {}", record.getRecordNumber(), e.getMessage());
-                        skipped++;
-                    }
-                }
-
-                if (!batch.isEmpty()) {
-                    jdbcTemplate.batchUpdate(sql, batch);
-                }
-                log.info("Import terminé: {} transactions insérées, {} ignorées.", count, skipped);
-            }
-        } catch (Exception e) {
-            log.error("Erreur fatale lors de l'import TRANSACTIONS_VAL: ", e);
-            throw new IOException("Echec de l'importation: " + e.getMessage(), e);
-        } finally {
-            // Re-enable the trigger
-            if (triggerDisabled) {
-                try {
-                    jdbcTemplate.execute("ALTER TABLE transaction ENABLE TRIGGER after_transaction_insert;");
-                    log.info("Trigger after_transaction_insert réactivé");
-                } catch (Exception e) {
-                    log.warn("Erreur lors de la réactivation du trigger: {}", e.getMessage());
-                }
-            }
-        }
     }
 
     // ==================== PARSING UTILITIES ====================
@@ -1890,22 +1782,6 @@ public class DatasetService {
             throw new RuntimeException("Docker copy from container failed: " + output);
     }
 
-    private void cleanup(Path tempFile, String containerFileName) {
-        if (containerFileName != null) {
-            try {
-                execDockerCommand("rm", "-f", containerFileName);
-            } catch (Exception e) {
-                log.warn("Nettoyage conteneur échoué: {}", e.getMessage());
-            }
-        }
-        if (tempFile != null) {
-            try {
-                Files.deleteIfExists(tempFile);
-            } catch (Exception e) {
-                log.warn("Suppression fichier temporaire échouée: {}", e.getMessage());
-            }
-        }
-    }
 
     private String readStream(InputStream stream) throws IOException {
         StringBuilder sb = new StringBuilder();

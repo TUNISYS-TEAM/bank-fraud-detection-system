@@ -3,9 +3,15 @@ package com.fraud.backend.data.service.frauddetection;
 import com.fraud.backend.api.dto.frauddetection.model.request.TrainingJobRequest;
 import com.fraud.backend.api.dto.frauddetection.model.response.ModelMetricsResponse;
 import com.fraud.backend.api.dto.frauddetection.model.response.TrainingJobResponse;
+import com.fraud.backend.api.dto.messaging.request.ModelValidationActionDTO;
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
+import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
 import com.fraud.backend.data.entity.frauddetection.Dataset;
 import com.fraud.backend.data.entity.frauddetection.ModelML;
 import com.fraud.backend.data.enums.datasets.DatasetStatus;
+import com.fraud.backend.data.repository.frauddetection.CommentRepository;
+import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
+import com.fraud.backend.data.entity.frauddetection.Comment;
 import com.fraud.backend.data.repository.frauddetection.DatasetRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
 import com.fraud.backend.data.service.storage.StorageService;
@@ -34,10 +40,12 @@ public class ModelTrainingService {
 
     private final DatasetRepository datasetRepository;
     private final ModelMLRepository modelMLRepository;
+    private final CommentRepository commentRepository;
+    private final KeycloakMappingRepository keycloakMappingRepository;
     private final StorageService storageService;
     private final ObjectMapper objectMapper;
 
-     public List<ModelML> getModelHistory() {
+    public List<ModelML> getModelHistory() {
         return modelMLRepository.findAllByOrderByCreatedAtDesc();
     }
 
@@ -48,30 +56,94 @@ public class ModelTrainingService {
     @Transactional
     public void deleteModel(UUID modelUuid) {
         ModelML model = modelMLRepository.findByModelUuid(modelUuid)
-            .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
+                .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
+
+        // Get file paths from hyperparameters before deleting the model
+        String modelPath = null;
+        String pipelinePath = null;
+        String onnxPath = null;
+
+        if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingResults")) {
+            Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters()
+                    .get("_trainingResults");
+
+            if (trainingResults.containsKey("modelPath")) {
+                modelPath = (String) trainingResults.get("modelPath");
+            }
+            if (trainingResults.containsKey("pipelinePath")) {
+                pipelinePath = (String) trainingResults.get("pipelinePath");
+            }
+            if (trainingResults.containsKey("onnxPath")) {
+                onnxPath = (String) trainingResults.get("onnxPath");
+            }
+        }
+
+        // Also check root level if not found in trainingResults
+        if (modelPath == null && model.getHyperparameters() != null
+                && model.getHyperparameters().containsKey("modelPath")) {
+            modelPath = (String) model.getHyperparameters().get("modelPath");
+        }
+        if (pipelinePath == null && model.getHyperparameters() != null
+                && model.getHyperparameters().containsKey("pipelinePath")) {
+            pipelinePath = (String) model.getHyperparameters().get("pipelinePath");
+        }
+        if (onnxPath == null && model.getHyperparameters() != null
+                && model.getHyperparameters().containsKey("onnxPath")) {
+            onnxPath = (String) model.getHyperparameters().get("onnxPath");
+        }
+
+        // Delete files from MinIO
+        if (modelPath != null && !modelPath.isBlank()) {
+            try {
+                storageService.delete(modelPath);
+                log.info("Deleted model file from MinIO: {}", modelPath);
+            } catch (Exception e) {
+                log.warn("Failed to delete model file from MinIO: {}", e.getMessage());
+            }
+        }
+
+        if (pipelinePath != null && !pipelinePath.isBlank()) {
+            try {
+                storageService.delete(pipelinePath);
+                log.info("Deleted pipeline file from MinIO: {}", pipelinePath);
+            } catch (Exception e) {
+                log.warn("Failed to delete pipeline file from MinIO: {}", e.getMessage());
+            }
+        }
+
+        if (onnxPath != null && !onnxPath.isBlank()) {
+            try {
+                storageService.delete(onnxPath);
+                log.info("Deleted ONNX file from MinIO: {}", onnxPath);
+            } catch (Exception e) {
+                log.warn("Failed to delete ONNX file from MinIO: {}", e.getMessage());
+            }
+        }
+
+        // Delete the model from database
         modelMLRepository.delete(model);
+        log.info("Deleted model from database: {}", modelUuid);
     }
 
     @Transactional
     public void updateModelName(UUID modelUuid, String newName) {
         ModelML model = modelMLRepository.findByModelUuid(modelUuid)
-            .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
+                .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
         model.setModelName(newName);
         model.setUpdatedAt(LocalDateTime.now());
         modelMLRepository.save(model);
     }
 
     private static final Map<String, Object> DEFAULT_RANDOM_FOREST_PARAMS = Map.of(
-        "n_estimators", 100,
-        "max_depth", 10,
-        "min_samples_split", 2,
-        "min_samples_leaf", 1,
-        "max_features", "sqrt",
-        "bootstrap", true,
-        "oob_score", false,
-        "random_state", 42,
-        "n_jobs", -1
-    );
+            "n_estimators", 100,
+            "max_depth", 10,
+            "min_samples_split", 2,
+            "min_samples_leaf", 1,
+            "max_features", "sqrt",
+            "bootstrap", true,
+            "oob_score", false,
+            "random_state", 42,
+            "n_jobs", -1);
 
     @Transactional
     public TrainingJobResponse trainRandomForest(TrainingJobRequest request) throws Exception {
@@ -79,10 +151,11 @@ public class ModelTrainingService {
 
         // 1. Get dataset and validate
         Dataset dataset = datasetRepository.findByDatasetUuid(request.getDatasetUuid())
-            .orElseThrow(() -> new IllegalArgumentException("Dataset not found: " + request.getDatasetUuid()));
+                .orElseThrow(() -> new IllegalArgumentException("Dataset not found: " + request.getDatasetUuid()));
 
         if (dataset.getStatus() != DatasetStatus.PROCESSED) {
-            throw new IllegalStateException("Dataset must be PROCESSED before training. Current status: " + dataset.getStatus());
+            throw new IllegalStateException(
+                    "Dataset must be PROCESSED before training. Current status: " + dataset.getStatus());
         }
 
         // 2. Prepare hyperparameters (merge defaults with user provided)
@@ -109,13 +182,12 @@ public class ModelTrainingService {
 
         // 4. Launch training in Python container
         TrainingJobResponse response = launchTraining(
-            dataset.getFilePath(),
-            dataset.getDatasetUuid(),
-            model.getModelUuid(),
-            hyperparameters,
-            request.getTestSize(),
-            request.getRandomSeed()
-        );
+                dataset.getFilePath(),
+                dataset.getDatasetUuid(),
+                model.getModelUuid(),
+                hyperparameters,
+                request.getTestSize(),
+                request.getRandomSeed());
 
         // 5. Update model with results
         updateModelWithResults(model, response);
@@ -127,19 +199,19 @@ public class ModelTrainingService {
         // If modelUuid is provided, use existing model
         if (request.getModelUuid() != null) {
             return modelMLRepository.findByModelUuid(request.getModelUuid())
-                .orElseThrow(() -> new IllegalArgumentException("Model not found: " + request.getModelUuid()));
+                    .orElseThrow(() -> new IllegalArgumentException("Model not found: " + request.getModelUuid()));
         }
 
         // Create new model
         ModelML model = ModelML.builder()
-            .modelUuid(UUID.randomUUID())
-            .modelName(request.getJobName())
-            .modelType("RANDOM_FOREST")
-            .version(generateVersion())
-            .hyperparameters(hyperparameters)
-            .status("Draft")
-            .createdAt(LocalDateTime.now())
-            .build();
+                .modelUuid(UUID.randomUUID())
+                .modelName(request.getJobName())
+                .modelType("RANDOM_FOREST")
+                .version(generateVersion())
+                .hyperparameters(hyperparameters)
+                .status("Draft")
+                .createdAt(LocalDateTime.now())
+                .build();
 
         return modelMLRepository.save(model);
     }
@@ -149,13 +221,12 @@ public class ModelTrainingService {
     }
 
     private TrainingJobResponse launchTraining(
-        String datasetPath,
-        UUID datasetId,
-        UUID modelId,
-        Map<String, Object> hyperparameters,
-        Double testSize,
-        Integer randomSeed
-    ) throws Exception {
+            String datasetPath,
+            UUID datasetId,
+            UUID modelId,
+            Map<String, Object> hyperparameters,
+            Double testSize,
+            Integer randomSeed) throws Exception {
 
         Path tempDataset = null;
         Path tempHyperparams = null;
@@ -170,7 +241,7 @@ public class ModelTrainingService {
             // 1. Download dataset from MinIO to temp file
             tempDataset = Files.createTempFile("train_dataset_", ".parquet");
             try (var in = storageService.download(datasetPath);
-                 var out = Files.newOutputStream(tempDataset)) {
+                    var out = Files.newOutputStream(tempDataset)) {
                 in.transferTo(out);
             }
 
@@ -188,21 +259,21 @@ public class ModelTrainingService {
             // 4. Prepare command for training
             UUID jobUuid = UUID.randomUUID();
             List<String> command = new ArrayList<>(List.of(
-                "docker", "exec", "fraud-ml-pipeline",
-                "python", "/app/scripts/train_random_forest.py",
-                "--dataset-path", containerDatasetPath,
-                "--dataset-id", datasetId.toString(),
-                "--job-id", jobUuid.toString(),
-                "--hyperparameters", containerHyperparamsPath,
-                "--test-size", String.valueOf(testSize),
-                "--random-seed", String.valueOf(randomSeed)
-            ));
+                    "docker", "exec", "fraud-ml-pipeline",
+                    "python", "/app/scripts/train_random_forest.py",
+                    "--dataset-path", containerDatasetPath,
+                    "--dataset-id", datasetId.toString(),
+                    "--job-id", jobUuid.toString(),
+                    "--hyperparameters", containerHyperparamsPath,
+                    "--test-size", String.valueOf(testSize),
+                    "--random-seed", String.valueOf(randomSeed)));
 
             log.info("Executing command: {}", String.join(" ", command));
 
             // 5. Run training.
             // IMPORTANT: do NOT use redirectErrorStream(true).
-            // The Python script writes all logging to stderr and only the final JSON to stdout.
+            // The Python script writes all logging to stderr and only the final JSON to
+            // stdout.
             // Merging the streams causes log lines (which may contain '{' from dict reprs)
             // to pollute stdout and break JSON parsing.
             ProcessBuilder pb = new ProcessBuilder(command);
@@ -243,7 +314,7 @@ public class ModelTrainingService {
             }
 
             log.debug("Training stdout (first 500 chars): {}",
-                result.length() > 500 ? result.substring(0, 500) : result);
+                    result.length() > 500 ? result.substring(0, 500) : result);
 
             // 6. Parse JSON result — stdout should contain exactly one JSON line
             JsonNode root = extractJsonFromOutput(result);
@@ -285,7 +356,8 @@ public class ModelTrainingService {
             }
 
             // 10. Upload ONNX model to MinIO if the training script exported it.
-            //     The Python script runs to_onnx() inline and sets onnx_path in the JSON result.
+            // The Python script runs to_onnx() inline and sets onnx_path in the JSON
+            // result.
             JsonNode onnxPathNode = root.get("onnx_path");
             if (onnxPathNode != null && !onnxPathNode.isNull()) {
                 String containerOnnxPath = onnxPathNode.asText();
@@ -300,7 +372,10 @@ public class ModelTrainingService {
                     response.setOnnxPath(onnxKey);
                     log.info("ONNX model uploaded to MinIO: {}", onnxKey);
                     // cleanup container onnx file
-                    try { execDockerCommand("rm", "-f", containerOnnxPath); } catch (Exception e) { /* best effort */ }
+                    try {
+                        execDockerCommand("rm", "-f", containerOnnxPath);
+                    } catch (Exception e) {
+                        /* best effort */ }
                 } catch (Exception e) {
                     log.warn("Could not upload ONNX model (non-fatal): {}", e.getMessage());
                 } finally {
@@ -314,33 +389,47 @@ public class ModelTrainingService {
 
         } finally {
             // Cleanup temp files
-            if (tempDataset != null) Files.deleteIfExists(tempDataset);
-            if (tempHyperparams != null) Files.deleteIfExists(tempHyperparams);
-            if (tempModel != null) Files.deleteIfExists(tempModel);
-            if (tempPipeline != null) Files.deleteIfExists(tempPipeline);
+            if (tempDataset != null)
+                Files.deleteIfExists(tempDataset);
+            if (tempHyperparams != null)
+                Files.deleteIfExists(tempHyperparams);
+            if (tempModel != null)
+                Files.deleteIfExists(tempModel);
+            if (tempPipeline != null)
+                Files.deleteIfExists(tempPipeline);
 
             if (containerDatasetPath != null) {
-                try { execDockerCommand("rm", "-f", containerDatasetPath); } catch (Exception e) { /* best effort */ }
+                try {
+                    execDockerCommand("rm", "-f", containerDatasetPath);
+                } catch (Exception e) {
+                    /* best effort */ }
             }
             if (containerHyperparamsPath != null) {
-                try { execDockerCommand("rm", "-f", containerHyperparamsPath); } catch (Exception e) { /* best effort */ }
+                try {
+                    execDockerCommand("rm", "-f", containerHyperparamsPath);
+                } catch (Exception e) {
+                    /* best effort */ }
             }
             if (containerModelPath != null) {
-                try { execDockerCommand("rm", "-f", containerModelPath); } catch (Exception e) { /* best effort */ }
+                try {
+                    execDockerCommand("rm", "-f", containerModelPath);
+                } catch (Exception e) {
+                    /* best effort */ }
             }
             if (containerPipelinePath != null) {
-                try { execDockerCommand("rm", "-f", containerPipelinePath); } catch (Exception e) { /* best effort */ }
+                try {
+                    execDockerCommand("rm", "-f", containerPipelinePath);
+                } catch (Exception e) {
+                    /* best effort */ }
             }
         }
     }
 
-
     private void execDockerCopyFromContainer(String containerPath, Path localPath) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
-            "docker", "cp",
-            "fraud-ml-pipeline:" + containerPath,
-            localPath.toAbsolutePath().toString()
-        );
+                "docker", "cp",
+                "fraud-ml-pipeline:" + containerPath,
+                localPath.toAbsolutePath().toString());
         Process process = pb.start();
         int exitCode = process.waitFor();
         if (exitCode != 0) {
@@ -351,43 +440,79 @@ public class ModelTrainingService {
     private TrainingJobResponse buildTrainingResponse(JsonNode root, UUID datasetId, UUID modelId, UUID jobUuid) {
         JsonNode metrics = root.get("metrics");
         JsonNode confusionMatrix = root.get("confusion_matrix");
-        JsonNode featureImportance = root.get("feature_importance");
         JsonNode trainingStats = root.get("training_stats");
+        JsonNode thresholds = root.get("thresholds");
+        JsonNode hyperparametersUsed = root.get("hyperparameters_used");
+        JsonNode selectedFeatures = root.get("selected_original_features");
 
         Map<String, Object> metricsMap = new HashMap<>();
         if (metrics != null) {
-            metricsMap = objectMapper.convertValue(metrics, new TypeReference<Map<String, Object>>() {});
+            metricsMap = objectMapper.convertValue(metrics, new TypeReference<Map<String, Object>>() {
+            });
         }
 
         Map<String, Object> confusionMap = new HashMap<>();
         if (confusionMatrix != null) {
-            confusionMap = objectMapper.convertValue(confusionMatrix, new TypeReference<Map<String, Object>>() {});
+            confusionMap = objectMapper.convertValue(confusionMatrix, new TypeReference<Map<String, Object>>() {
+            });
         }
 
-        Map<String, Object> importanceMap = new HashMap<>();
-        if (featureImportance != null) {
-            importanceMap = objectMapper.convertValue(featureImportance, new TypeReference<Map<String, Object>>() {});
+        Map<String, Object> hyperparamsMap = new HashMap<>();
+        if (hyperparametersUsed != null) {
+            hyperparamsMap = objectMapper.convertValue(hyperparametersUsed, new TypeReference<Map<String, Object>>() {
+            });
+        }
+
+        List<String> selectedFeaturesList = new ArrayList<>();
+        if (selectedFeatures != null && selectedFeatures.isArray()) {
+            for (JsonNode feature : selectedFeatures) {
+                selectedFeaturesList.add(feature.asText());
+            }
+        }
+
+        Double fbetaThreshold = null;
+        Double fbetaScore = null;
+        Double costThreshold = null;
+        Double minCost = null;
+        Double finalThreshold = null;
+
+        if (thresholds != null) {
+            if (thresholds.has("fbeta"))
+                fbetaThreshold = thresholds.get("fbeta").asDouble();
+            if (thresholds.has("fbeta_score"))
+                fbetaScore = thresholds.get("fbeta_score").asDouble();
+            if (thresholds.has("cost"))
+                costThreshold = thresholds.get("cost").asDouble();
+            if (thresholds.has("min_cost"))
+                minCost = thresholds.get("min_cost").asDouble();
+            if (thresholds.has("final"))
+                finalThreshold = thresholds.get("final").asDouble();
         }
 
         TrainingJobResponse response = TrainingJobResponse.builder()
-            .jobUuid(jobUuid)
-            .jobName("Random Forest Training")
-            .status(root.get("status").asText())
-            .datasetUuid(datasetId)
-            .modelUuid(modelId)
-            .hyperparameters(objectMapper.convertValue(root.get("hyperparameters_used"), new TypeReference<Map<String, Object>>() {}))
-            .metrics(metricsMap)
-            .featureImportance(importanceMap)
-            .confusionMatrix(confusionMap)
-            .startedAt(LocalDateTime.parse(root.get("start_time").asText()))
-            .completedAt(LocalDateTime.parse(root.get("end_time").asText()))
-            .durationSeconds(root.get("duration_seconds").asInt())
-            .build();
+                .jobUuid(jobUuid)
+                .jobName("Random Forest Training")
+                .status(root.has("status") ? root.get("status").asText() : "UNKNOWN")
+                .datasetUuid(datasetId)
+                .modelUuid(modelId)
+                .hyperparameters(hyperparamsMap)
+                .metrics(metricsMap)
+                .confusionMatrix(confusionMap)
+                .selectedFeatures(selectedFeaturesList)
+                .modelPath(root.has("model_path") ? root.get("model_path").asText() : null)
+                .onnxPath(root.has("onnx_path") ? root.get("onnx_path").asText() : null)
+                .startedAt(root.has("start_time") ? LocalDateTime.parse(root.get("start_time").asText()) : null)
+                .completedAt(root.has("end_time") ? LocalDateTime.parse(root.get("end_time").asText()) : null)
+                .durationSeconds(root.has("duration_seconds") ? root.get("duration_seconds").asInt() : null)
+                .build();
 
         if (trainingStats != null) {
-            response.setTrainingRows(trainingStats.get("train_rows").asInt());
-            response.setTestRows(trainingStats.get("test_rows").asInt());
-            response.setFraudRate(trainingStats.get("fraud_rate_test").asDouble());
+            if (trainingStats.has("train_rows"))
+                response.setTrainingRows(trainingStats.get("train_rows").asInt());
+            if (trainingStats.has("test_rows"))
+                response.setTestRows(trainingStats.get("test_rows").asInt());
+            if (trainingStats.has("fraud_rate_test"))
+                response.setFraudRate(trainingStats.get("fraud_rate_test").asDouble());
         }
 
         // Extract metrics for easy access
@@ -437,19 +562,20 @@ public class ModelTrainingService {
 
     public ModelMetricsResponse getModelMetrics(UUID modelUuid) {
         ModelML model = modelMLRepository.findByModelUuid(modelUuid)
-            .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
+                .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
 
         // Extract confusion matrix from hyperparameters
         Map<String, Long> confusionMatrix = new HashMap<>();
         String onnxPath = null;
 
         if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingResults")) {
-            Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters().get("_trainingResults");
+            Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters()
+                    .get("_trainingResults");
             if (trainingResults.containsKey("confusionMatrix")) {
                 confusionMatrix = objectMapper.convertValue(
-                    trainingResults.get("confusionMatrix"),
-                    new TypeReference<Map<String, Long>>() {}
-                );
+                        trainingResults.get("confusionMatrix"),
+                        new TypeReference<Map<String, Long>>() {
+                        });
             }
             if (trainingResults.containsKey("onnxPath")) {
                 onnxPath = (String) trainingResults.get("onnxPath");
@@ -460,37 +586,40 @@ public class ModelTrainingService {
         Map<String, Double> importance = new HashMap<>();
         if (model.getFeatureImportance() != null) {
             importance = objectMapper.convertValue(
-                model.getFeatureImportance(),
-                new TypeReference<Map<String, Double>>() {}
-            );
+                    model.getFeatureImportance(),
+                    new TypeReference<Map<String, Double>>() {
+                    });
         }
 
         List<String> topFeatures = importance.entrySet().stream()
-            .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-            .limit(10)
-            .map(Map.Entry::getKey)
-            .toList();
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .limit(10)
+                .map(Map.Entry::getKey)
+                .toList();
 
         ModelMetricsResponse response = ModelMetricsResponse.builder()
-            .modelUuid(modelUuid)
-            .modelName(model.getModelName())
-            .modelType(model.getModelType())
-            .version(model.getVersion())
-            .status(model.getStatus())
-            .accuracy(null)
-            .precision(model.getPrecision())
-            .recall(model.getRecall())
-            .f1Score(model.getF1Score())
-            .aucRoc(model.getAuc())
-            .confusionMatrix(confusionMatrix)
-            .trueNegatives(confusionMatrix.getOrDefault("true_negatives", 0L))
-            .falsePositives(confusionMatrix.getOrDefault("false_positives", 0L))
-            .falseNegatives(confusionMatrix.getOrDefault("false_negatives", 0L))
-            .truePositives(confusionMatrix.getOrDefault("true_positives", 0L))
-            .featureImportance(importance)
-            .topFeatures(topFeatures)
-            .onnxPath(onnxPath)
-            .build();
+                .modelUuid(modelUuid)
+                .modelName(model.getModelName())
+                .modelType(model.getModelType())
+                .version(model.getVersion())
+                .status(model.getStatus())
+                .accuracy(null)
+                .precision(model.getPrecision())
+                .recall(model.getRecall())
+                .f1Score(model.getF1Score())
+                .aucRoc(model.getAuc())
+                .confusionMatrix(confusionMatrix)
+                .trueNegatives(confusionMatrix.getOrDefault("true_negatives", 0L))
+                .falsePositives(confusionMatrix.getOrDefault("false_positives", 0L))
+                .falseNegatives(confusionMatrix.getOrDefault("false_negatives", 0L))
+                .truePositives(confusionMatrix.getOrDefault("true_positives", 0L))
+                .featureImportance(importance)
+                .topFeatures(topFeatures)
+                .onnxPath(onnxPath)
+                .validationComment(commentRepository.findFirstByModelModelUuidAndObjectOrderByCreatedAtDesc(modelUuid, "Model Validation")
+                .map(Comment::getContent)
+                .orElse(null))
+                .build();
 
         response.calculateDerivedMetrics();
         return response;
@@ -498,9 +627,8 @@ public class ModelTrainingService {
 
     private void execDockerCopy(Path source, String destination) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
-            "docker", "cp", source.toAbsolutePath().toString(),
-            "fraud-ml-pipeline:" + destination
-        );
+                "docker", "cp", source.toAbsolutePath().toString(),
+                "fraud-ml-pipeline:" + destination);
         Process process = pb.start();
         int exitCode = process.waitFor();
         if (exitCode != 0) {
@@ -544,5 +672,39 @@ public class ModelTrainingService {
             }
         }
         return null;
+    }
+
+    // ================================ Validation modèle
+    // ========================================
+
+    @Transactional
+    public void validateModel(ModelValidationActionDTO action, String managerKeycloakId) {
+        ModelML model = modelMLRepository.findByModelUuid(action.getModelUuid())
+                .orElseThrow(() -> new IllegalArgumentException("Model not found: " + action.getModelUuid()));
+
+        AppUser manager = keycloakMappingRepository.findByKeycloakId(managerKeycloakId)
+                .map(KeycloakMapping::getUser)
+                .orElseThrow(() -> new IllegalArgumentException("Manager not found: " + managerKeycloakId));
+
+        // Update model status and validation details
+        model.setStatus(action.getStatus());
+        model.setValidatedBy(manager);
+        model.setUpdatedAt(LocalDateTime.now());
+        modelMLRepository.save(model);
+
+        // Save optional comment
+        if (action.getComment() != null && !action.getComment().trim().isEmpty()) {
+            Comment comment = Comment.builder()
+                    .object("Model Validation")
+                    .content(action.getComment())
+                    .status(action.getStatus())
+                    .author(manager)
+                    .model(model)
+                    .build();
+            commentRepository.save(comment);
+        }
+
+        log.info("Model {} validated with status {} by manager {}", model.getModelUuid(), action.getStatus(),
+                manager.getEmail());
     }
 }

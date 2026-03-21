@@ -7,12 +7,13 @@
         [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()" (click)="$event.stopPropagation()">
 
         <!-- Header -->
-        <div class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50">
+        <div
+            class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50">
             <div class="flex items-center space-x-4">
                 <div class="p-3 bg-indigo-100 rounded-xl">
                     <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
                 </div>
                 <div>
@@ -20,8 +21,8 @@
                     <p class="text-sm text-gray-500 mt-1">Mettre à jour les informations du dataset</p>
                 </div>
             </div>
-            <button (click)="closeModal()" 
-                    class="text-gray-400 hover:text-gray-600 hover:bg-white/50 p-2 rounded-lg transition-colors">
+            <button (click)="closeModal()"
+                class="text-gray-400 hover:text-gray-600 hover:bg-white/50 p-2 rounded-lg transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -30,21 +31,14 @@
 
         <!-- Body -->
         <div class="px-8 py-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-            @if (errorMessage()) {
-                <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-3">
-                    <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                    </svg>
-                    <p class="text-sm text-red-700">{{ errorMessage() }}</p>
-                </div>
-            }
 
             <form [formGroup]="datasetForm" (ngSubmit)="onSubmit()" class="space-y-6">
                 <!-- Nom du dataset -->
                 <div class="space-y-2">
                     <label class="flex items-center text-sm font-semibold text-gray-700">
                         <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                         </svg>
                         Nom du Dataset
                     </label>
@@ -70,29 +64,49 @@
                             [class.bg-indigo-600]="datasetForm.get('visibility')?.value"
                             [class.bg-gray-200]="!datasetForm.get('visibility')?.value">
                             <span class="sr-only">Basculer la visibilité</span>
-                            <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform"
-                                  [class.translate-x-5]="datasetForm.get('visibility')?.value"
-                                  [class.translate-x-0.5]="!datasetForm.get('visibility')?.value">
+                            <span
+                                class="inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform"
+                                [class.translate-x-5]="datasetForm.get('visibility')?.value"
+                                [class.translate-x-0.5]="!datasetForm.get('visibility')?.value">
                             </span>
                         </button>
                         <span class="text-sm text-gray-600">Visible</span>
                     </div>
                     <p class="mt-3 text-xs text-gray-400">
                         @if (datasetForm.get('visibility')?.value) {
-                            Le dataset est visible dans les listes et utilisable
+                        Le dataset est visible dans les listes et utilisable
                         } @else {
-                            Le dataset est masqué et non disponible pour utilisation
+                        Le dataset est masqué et non disponible pour utilisation
                         }
                     </p>
                 </div>
+
+                <!-- Alerte de conflit -->
+                @if (errorMessage()) {
+                <div
+                    class="p-4 bg-red-50/80 border border-red-100 rounded-xl flex items-start space-x-3 animate-message shadow-sm">
+                    <div class="flex-shrink-0 mt-0.5">
+                        <div
+                            class="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-sm shadow-red-200">
+                            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                    d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-xs text-red-900 leading-relaxed conflict-text" [innerHTML]="errorMessage()"></p>
+                    </div>
+                </div>
+                }
 
                 <!-- Info note -->
                 <div class="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
                     <div class="flex items-start space-x-3">
                         <div class="p-1 bg-indigo-100 rounded-lg flex-shrink-0">
                             <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                         </div>
                         <p class="text-xs text-indigo-800 leading-relaxed">
@@ -110,13 +124,15 @@
                     <button type="submit" [disabled]="datasetForm.invalid || isLoading()"
                         class="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all text-sm font-medium shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
                         @if (isLoading()) {
-                            <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                            <span>Mise à jour...</span>
+                        <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                                fill="none" />
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span>Mise à jour...</span>
                         } @else {
-                            <span>Enregistrer</span>
+                        <span>Enregistrer</span>
                         }
                     </button>
                 </div>

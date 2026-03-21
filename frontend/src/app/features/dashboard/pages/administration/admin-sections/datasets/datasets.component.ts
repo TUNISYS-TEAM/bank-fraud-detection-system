@@ -172,6 +172,7 @@ export class DatasetsComponent implements OnInit {
   }
 
   onDatasetUploaded(): void {
+    this.datasetService.notifyStatsChanged();
     this.loadDatasets();
     this.closeCreateModal();
   }
@@ -197,6 +198,7 @@ export class DatasetsComponent implements OnInit {
   }
 
   onDatasetDeleted(): void {
+    this.datasetService.notifyStatsChanged();
     this.loadDatasets();
     this.closeDeleteModal();
   }
@@ -212,6 +214,7 @@ export class DatasetsComponent implements OnInit {
   }
 
   onDatasetUpdated(): void {
+    this.datasetService.notifyStatsChanged();
     this.loadDatasets();
     this.closeUpdateModal();
   }

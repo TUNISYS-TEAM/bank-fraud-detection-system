@@ -16,6 +16,8 @@ public class ModelMetricsResponse {
     private String modelType;
     private String version;
     private String status;
+    private String validationComment;
+
     
     // Classification metrics
     private Double accuracy;

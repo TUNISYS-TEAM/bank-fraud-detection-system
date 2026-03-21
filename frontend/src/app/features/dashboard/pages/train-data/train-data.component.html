@@ -72,12 +72,32 @@
     @if (!isLoading()) {
     <div class="overflow-x-auto">
       <div class="min-w-[1100px] divide-y divide-gray-100">
+        <!-- En-têtes de colonnes -->
+        <div class="px-8 py-3 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
+          <div class="flex items-center gap-4 flex-1">
+            <!-- Icon placeholder -->
+            <div class="w-6 flex-shrink-0"></div>
+            <!-- Grid -->
+            <div class="flex-1 grid grid-cols-8 gap-6 text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+              <div class="col-span-1">ID (Code)</div>
+              <div class="col-span-2">Nom du Dataset</div>
+              <div class="col-span-1">Statut</div>
+              <div class="col-span-1">Visibilité</div>
+              <div class="col-span-1 text-center">Taille</div>
+              <div class="col-span-1">Importation</div>
+              <div class="col-span-1">Nb Lignes</div>
+            </div>
+          </div>
+          <!-- Actions placeholder - exact width of the actions div in rows -->
+          <div class="flex items-center space-x-2 w-28 flex-shrink-0"></div>
+        </div>
+
         @for (dataset of datasets(); track dataset.datasetUuid) {
         <div class="hover:bg-gray-50/80 transition-colors group">
           <!-- Dataset Header (Click to expand) -->
           <div class="px-8 py-5 flex items-center justify-between cursor-pointer"
             (click)="toggleDataset(dataset.datasetUuid)">
-            <div class="flex items-center space-x-4 flex-1">
+            <div class="flex items-center gap-4 flex-1">
               <!-- Expand/Collapse Icon -->
               <div
                 class="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg bg-gray-100 group-hover:bg-white transition-colors">
@@ -88,16 +108,15 @@
                 </svg>
               </div>
 
-              <!-- Dataset Info - 7 columns (added visibility) -->
-              <div class="flex-1 grid grid-cols-7 gap-6 items-center">
+              <!-- Dataset Info - Grid Columns -->
+              <div class="flex-1 grid grid-cols-8 gap-6 items-center">
                 <!-- Code column -->
-                <div class="col-span-1">
-                  <span class="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">{{ dataset.datasetCode
-                    }}</span>
+                <div class="col-span-1 text-left">
+                  <span class="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">{{ dataset.datasetCode }}</span>
                 </div>
 
                 <!-- Name column -->
-                <div class="col-span-1">
+                <div class="col-span-2">
                   <div class="flex items-center space-x-2">
                     <div
                       class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center flex-shrink-0">
@@ -106,43 +125,19 @@
                           d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                       </svg>
                     </div>
-                    <p class="text-sm font-semibold text-gray-900 truncate max-w-[150px]"
+                    <p class="text-sm font-semibold text-gray-900 leading-snug break-words"
                       [title]="dataset.datasetName">{{ dataset.datasetName }}</p>
-                  </div>
-                </div>
-
-                <!-- Size column -->
-                <div class="col-span-1">
-                  <span class="text-sm text-gray-600 font-mono whitespace-nowrap">{{ formatSize(dataset.fileSizeMb)
-                    }}</span>
-                </div>
-
-                <!-- Rows column -->
-                <div class="col-span-1">
-                  <span class="text-sm text-gray-600 font-mono whitespace-nowrap">{{ formatNumber(dataset.rowCount) }}
-                    lignes</span>
-                </div>
-
-                <!-- Date column -->
-                <div class="col-span-1">
-                  <div class="flex items-center text-sm text-gray-600 whitespace-nowrap">
-                    <svg class="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor"
-                      viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span>{{ formatDate(dataset.importedAt) }}</span>
                   </div>
                 </div>
 
                 <!-- Status column -->
                 <div class="col-span-1">
                   <span
-                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap"
+                    class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider border whitespace-nowrap"
                     [ngClass]="getStatusClass(dataset.status)">
                     <span class="w-1.5 h-1.5 rounded-full mr-1.5 flex-shrink-0"
                       [class.bg-blue-500]="dataset.status === 'PROCESSED'"
-                      [class.bg-purple-500]="dataset.status === 'CLEANED'"
+                      [class.bg-purple-400]="dataset.status === 'CLEANED'"
                       [class.bg-gray-400]="!dataset.status"></span>
                     <span>{{ getStatusLabel(dataset.status) }}</span>
                   </span>
@@ -151,13 +146,35 @@
                 <!-- Visibility column -->
                 <div class="col-span-1">
                   <span
-                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap"
+                    class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider border whitespace-nowrap"
                     [ngClass]="getVisibilityClass(dataset.visibility)">
                     <span class="w-1.5 h-1.5 rounded-full mr-1.5 flex-shrink-0"
                       [class.bg-green-500]="dataset.visibility"
                       [class.bg-gray-400]="!dataset.visibility"></span>
                     <span>{{ getVisibilityLabel(dataset.visibility) }}</span>
                   </span>
+                </div>
+
+                <!-- Size column -->
+                <div class="col-span-1 text-center font-mono">
+                  <span class="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">{{ formatSize(dataset.fileSizeMb) }}</span>
+                </div>
+
+                <!-- Date column -->
+                <div class="col-span-1">
+                  <div class="flex items-center text-xs text-gray-500 whitespace-nowrap">
+                    <svg class="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>{{ formatDate(dataset.importedAt) }}</span>
+                  </div>
+                </div>
+
+                <!-- Rows column -->
+                <div class="col-span-1">
+                  <span class="text-sm text-gray-700 font-mono whitespace-nowrap">{{ formatNumber(dataset.rowCount) }}</span>
+                  <span class="text-[10px] text-gray-400 ml-1">lignes</span>
                 </div>
               </div>
             </div>
