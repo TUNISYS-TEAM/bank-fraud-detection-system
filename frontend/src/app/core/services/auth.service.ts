@@ -8,22 +8,9 @@ import {
   UserInfo,
   AuthUser,
   UserRole,
-  Permission
+  Permission,
+  RoleResponse
 } from '../models/auth.model';
-
-// Shape returned by GET /api/auth/me
-interface MeResponse {
-  sub: string;
-  email: string;
-  email_verified?: boolean;
-  name: string;
-  preferred_username: string;
-  given_name?: string;
-  family_name?: string;
-  realm_access?: {
-    roles: string[];
-  };
-}
 
 // Shape returned by login endpoint
 interface LoginResponse {
@@ -37,6 +24,20 @@ interface RefreshResponse {
   expires_in?: number;
 }
 
+// Shape returned by user profile endpoint (from Keycloak)
+interface UserInfoResponse {
+  sub: string;
+  email: string;
+  email_verified?: boolean;
+  name: string;
+  preferred_username: string;
+  given_name?: string;
+  family_name?: string;
+  realm_access?: {
+    roles: string[];
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private currentUser: AuthUser | null = null;
@@ -45,52 +46,9 @@ export class AuthService {
   private refreshInProgress: boolean = false;
   private refreshSubject: Observable<any> | null = null;
   private http = inject(HttpClient);
-
-  // Simple role to permission mapping
-  private rolePermissions: Record<string, Permission[]> = {
-    'ADMIN': [
-      { id: 1, name: 'ACCESS_OVERVIEW', description: 'Access Dashboard', action: '/dashboard/overview' },
-      { id: 2, name: 'ACCESS_ADMINISTRATION', description: 'Access Administration', action: '/dashboard/administration' },
-      { id: 3, name: 'ACCESS_IMPORT_DATA', description: 'Access Import Data', action: '/dashboard/import-data' },
-      { id: 4, name: 'ACCESS_ML_MODELS', description: 'Access ML Models', action: '/dashboard/ml-models' },
-      { id: 5, name: 'ACCESS_ALERTS', description: 'Access Alerts', action: '/dashboard/alerts' },
-      { id: 6, name: 'ACCESS_PERFORMANCE', description: 'Access Performance', action: '/dashboard/performance' },
-      { id: 7, name: 'ACCESS_SIMULATION', description: 'Access Simulation', action: '/dashboard/simulation' },
-      { id: 8, name: 'ACCESS_MESSAGES', description: 'Access Messages', action: '/dashboard/messages' },
-      { id: 9, name: 'MANAGE_USERS', description: 'Manage Users', action: '/dashboard/administration/users' },
-      { id: 10, name: 'MANAGE_ROLES', description: 'Manage Roles', action: '/dashboard/administration/roles' },
-      { id: 11, name: 'MANAGE_SESSIONS', description: 'Manage Sessions', action: '/dashboard/administration/sessions' },
-      { id: 12, name: 'MANAGE_ML_MODELS', description: 'Manage ML Models', action: '/dashboard/ml-models/manage' },
-      { id: 13, name: 'MANAGE_ALERTS', description: 'Manage Alerts', action: '/dashboard/alerts/manage' },
-      { id: 14, name: 'IMPORT_DATA', description: 'Import Data', action: '/dashboard/import-data/advanced' },
-      { id: 15, name: 'RUN_SIMULATION', description: 'Run Simulation', action: '/dashboard/simulation/run' },
-      { id: 16, name: 'MANAGE_LOGS', description: 'Manage Logs', action: '/dashboard/administration/logs' },
-      { id: 17, name: 'MANAGE_SETTINGS', description: 'Manage Settings', action: '/dashboard/administration/settings' },
-      { id: 18, name: 'MANAGE_DATASETS', description: 'Manage Datasets', action: '/dashboard/administration/datasets' },
-      { id: 19, name: 'MANAGE_CLIENTS_ACCOUNTS', description: 'Gérer les clients et leurs comptes (consultation, détails)', action: '/dashboard/administration/clients-accounts' },
-      { id: 20, name: 'ACCESS_TRAINING_DATA', description: 'Accès à la gestion des datasets d\'entraînement', action: '/dashboard/training-data' }
-    ],
-    'MANAGER': [
-      { id: 1, name: 'ACCESS_OVERVIEW', description: 'Access Dashboard', action: '/dashboard/overview' },
-      { id: 2, name: 'ACCESS_IMPORT_DATA', description: 'Access Import Data', action: '/dashboard/import-data' },
-      { id: 3, name: 'ACCESS_ML_MODELS', description: 'Access ML Models', action: '/dashboard/ml-models' },
-      { id: 4, name: 'ACCESS_ALERTS', description: 'Access Alerts', action: '/dashboard/alerts' },
-      { id: 5, name: 'ACCESS_PERFORMANCE', description: 'Access Performance', action: '/dashboard/performance' },
-      { id: 6, name: 'ACCESS_SIMULATION', description: 'Access Simulation', action: '/dashboard/simulation' },
-      { id: 7, name: 'ACCESS_MESSAGES', description: 'Access Messages', action: '/dashboard/messages' },
-      { id: 8, name: 'IMPORT_DATA', description: 'Import Data', action: '/dashboard/import-data/advanced' },
-      { id: 9, name: 'RUN_SIMULATION', description: 'Run Simulation', action: '/dashboard/simulation/run' }
-    ],
-    'ANALYST': [
-      { id: 1, name: 'ACCESS_OVERVIEW', description: 'Access Dashboard', action: '/dashboard/overview' },
-      { id: 2, name: 'ACCESS_IMPORT_DATA', description: 'Access Import Data', action: '/dashboard/import-data' },
-      { id: 3, name: 'ACCESS_ML_MODELS', description: 'Access ML Models', action: '/dashboard/ml-models' },
-      { id: 4, name: 'ACCESS_ALERTS', description: 'Access Alerts', action: '/dashboard/alerts' },
-      { id: 5, name: 'ACCESS_PERFORMANCE', description: 'Access Performance', action: '/dashboard/performance' },
-      { id: 6, name: 'ACCESS_SIMULATION', description: 'Access Simulation', action: '/dashboard/simulation' },
-      { id: 7, name: 'ACCESS_MESSAGES', description: 'Access Messages', action: '/dashboard/messages' }
-    ]
-  };
+  
+  // Cache for user profile
+  private userProfileCache = new BehaviorSubject<AuthUser | null>(null);
 
   // ──────────────────────────────────────────────────────────────────────────
   // LOGIN
@@ -111,51 +69,132 @@ export class AuthService {
         }
       }),
       map(response => response.body),
-      switchMap((body) => of(body).pipe(
-        delay(500),
-        switchMap(() => this.loadUserProfile(credentials.email))
-      )),
+      switchMap(() => this.loadUserProfile().pipe(delay(500))),
       map(user => ({ user })),
       catchError(err => this.handleError(err))
     );
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // LOAD USER PROFILE
+  // LOAD USER PROFILE FROM KEYCLOAK
   // ──────────────────────────────────────────────────────────────────────────
-  loadUserProfile(email?: string): Observable<AuthUser> {
-    if (this.currentUser && (!email || this.currentUser.email === email)) {
+  loadUserProfile(): Observable<AuthUser> {
+    // Return cached user if available
+    if (this.currentUser) {
       return of(this.currentUser);
     }
 
-    return this.http.get<MeResponse>(
+    return this.http.get<UserInfoResponse>(
       `${environment.apiUrl}/auth/me`,
       { withCredentials: true }
     ).pipe(
-      map(me => {
-        const resolvedEmail = email || me.email || me.preferred_username;
-        const roles = me.realm_access?.roles || [];
-        const role = this.extractRoleFromList(roles);
-        const permissions = this.getPermissionsForRole(role);
-        
-        const user: AuthUser = {
-          id: me.sub,
-          email: resolvedEmail,
-          name: me.name || resolvedEmail,
-          firstName: me.given_name || resolvedEmail.split('@')[0],
-          lastName: me.family_name || '',
-          role: role,
-          permissions: permissions,
-          userId: 0,
-          roleId: this.getRoleIdFromRole(role)
-        };
-        
+      tap(me => {
+        console.debug('User profile loaded:', me);
+      }),
+      map(me => this.mapFromKeycloak(me)),
+      tap(user => {
         this.currentUser = user;
-        return user;
+        this.userProfileCache.next(user);
+        // After loading user, load their permissions based on role
+        this.loadUserPermissions().subscribe();
       }),
       catchError(err => {
         console.error('Failed to load user profile:', err);
         return throwError(() => err);
+      })
+    );
+  }
+
+  /**
+   * Map Keycloak response to AuthUser
+   */
+  private mapFromKeycloak(me: UserInfoResponse): AuthUser {
+    const roles = me.realm_access?.roles || [];
+    const role = this.extractRoleFromList(roles);
+    const roleId = this.getRoleIdFromRole(role);
+    
+    return {
+      id: me.sub,
+      email: me.email || me.preferred_username,
+      name: me.name || me.preferred_username,
+      firstName: me.given_name || me.preferred_username.split('@')[0],
+      lastName: me.family_name || '',
+      role: role,
+      roleId: roleId,
+      permissions: [],
+      userId: 0
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ROLE & PERMISSION METHODS
+  // ──────────────────────────────────────────────────────────────────────────
+  
+  /**
+   * Get role by ID - this should return the role with its permissions
+   */
+  getRoleById(roleId: number): Observable<RoleResponse> {
+    return this.http.get<RoleResponse>(
+      `${environment.apiUrl}/roles/${roleId}`,
+      { withCredentials: true }
+    ).pipe(
+      catchError(err => {
+        console.error(`Error fetching role ${roleId}:`, err);
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
+   * Get role by name
+   */
+  getRoleByName(name: string): Observable<RoleResponse> {
+    return this.http.get<RoleResponse>(
+      `${environment.apiUrl}/api/roles/name/${name}`,
+      { withCredentials: true }
+    ).pipe(
+      catchError(err => {
+        console.error(`Error fetching role ${name}:`, err);
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
+   * Get permissions for a specific role
+   */
+  getPermissionsByRoleId(roleId: number): Observable<Permission[]> {
+    return this.getRoleById(roleId).pipe(
+      map(role => {
+        console.log(`Role data for ${roleId}:`, role);
+        // The role should already have its permissions
+        return role.permissions || [];
+      }),
+      catchError(err => {
+        console.error(`Error fetching permissions for role ${roleId}:`, err);
+        return of([]);
+      })
+    );
+  }
+
+  /**
+   * Load current user's permissions based on their role
+   */
+  loadUserPermissions(): Observable<Permission[]> {
+    if (!this.currentUser?.roleId) {
+      console.log('No roleId found for user:', this.currentUser);
+      return of([]);
+    }
+    
+    console.log('Loading permissions for roleId:', this.currentUser.roleId);
+    
+    return this.getPermissionsByRoleId(this.currentUser.roleId).pipe(
+      tap(permissions => {
+        console.log('Permissions loaded for user:', permissions);
+        if (this.currentUser) {
+          this.currentUser.permissions = permissions;
+          this.userProfileCache.next(this.currentUser);
+        }
       })
     );
   }
@@ -208,7 +247,7 @@ export class AuthService {
   // CHECK SESSION
   // ──────────────────────────────────────────────────────────────────────────
   checkSession(): Observable<boolean> {
-    return this.http.get<MeResponse>(
+    return this.http.get<UserInfoResponse>(
       `${environment.apiUrl}/auth/me`,
       { withCredentials: true }
     ).pipe(
@@ -251,6 +290,55 @@ export class AuthService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // PERMISSION CHECK METHODS
+  // ──────────────────────────────────────────────────────────────────────────
+  
+  /**
+   * Check if the current user has a specific permission
+   */
+  hasPermission(permissionName: string): boolean {
+    if (!this.currentUser?.permissions) return false;
+    return this.currentUser.permissions.some(p => p.name === permissionName);
+  }
+
+  /**
+   * Check if the current user has any of the given permissions
+   */
+  hasAnyPermission(permissionNames: string[]): boolean {
+    if (!this.currentUser?.permissions) return false;
+    return permissionNames.some(name => 
+      this.currentUser!.permissions.some(p => p.name === name)
+    );
+  }
+
+  /**
+   * Check if the current user has all of the given permissions
+   */
+  hasAllPermissions(permissionNames: string[]): boolean {
+    if (!this.currentUser?.permissions) return false;
+    return permissionNames.every(name => 
+      this.currentUser!.permissions.some(p => p.name === name)
+    );
+  }
+
+  /**
+   * Get all permissions for the current user
+   */
+  getUserPermissions(): Permission[] {
+    return this.currentUser?.permissions || [];
+  }
+
+  /**
+   * Check if user can access a specific route/action
+   */
+  canAccess(action: string): boolean {
+    if (!this.currentUser?.permissions) return false;
+    return this.currentUser.permissions.some(p => 
+      p.action === action || p.name === action
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // STATE ACCESSORS
   // ──────────────────────────────────────────────────────────────────────────
   isLoggedIn(): boolean {
@@ -264,6 +352,22 @@ export class AuthService {
 
   getCurrentUser(): AuthUser | null {
     return this.currentUser;
+  }
+
+  getUserRole(): UserRole | null {
+    return this.currentUser?.role || null;
+  }
+
+  getUserRoleId(): number | null {
+    return this.currentUser?.roleId || null;
+  }
+
+  getUserId(): number | null {
+    return this.currentUser?.userId || null;
+  }
+
+  getUserEmail(): string | null {
+    return this.currentUser?.email || null;
   }
 
   getSessionId(): string | null {
@@ -318,10 +422,6 @@ export class AuthService {
     return 'ANALYST';
   }
 
-  private getPermissionsForRole(role: UserRole): Permission[] {
-    return this.rolePermissions[role] || this.rolePermissions['ANALYST'];
-  }
-
   private getRoleIdFromRole(role: UserRole): number {
     switch(role) {
       case 'ADMIN': return 1;
@@ -337,6 +437,7 @@ export class AuthService {
     this.tokenExpiresAt = 0;
     this.refreshInProgress = false;
     this.refreshSubject = null;
+    this.userProfileCache.next(null);
   }
 
   private handleError(error: any): Observable<never> {
@@ -366,21 +467,12 @@ export class AuthService {
       }
     }
 
-    console.error('Auth error:', { status: error.status, message });
+    console.error('Auth error:', error);
     return throwError(() => new Error(message));
   }
 
-  // Deprecated methods kept for backward compatibility
+  // Legacy method for backward compatibility
   getUserByEmail(email: string): Observable<any> {
     return of(null);
-  }
-
-  getPermissionsByRoleId(roleId: number): Observable<Permission[]> {
-    if (!this.currentUser) return of([]);
-    return of(this.getPermissionsForRole(this.currentUser.role));
-  }
-
-  getRoleById(roleId: number): Observable<any> {
-    return of({ id: roleId, name: this.currentUser?.role || 'ANALYST' });
   }
 }

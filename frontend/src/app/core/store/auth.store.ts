@@ -253,8 +253,6 @@ export const AuthStore = signalStore(
     // ──────────────────────────────────────────────────────────────────────
     // RESTORE SESSION
     // ──────────────────────────────────────────────────────────────────────
-    // In auth.store.ts - update the restoreSession method:
-
     restoreSession(): Observable<boolean> {
       return authService.checkSession().pipe(
         switchMap((isValid) => {
@@ -360,18 +358,12 @@ export const AuthStore = signalStore(
     },
 
     // ──────────────────────────────────────────────────────────────────────
-    // REFRESH USER PROFILE - UPDATED TO USE NEW SERVICE METHODS
+    // REFRESH USER PROFILE - FIXED (removed email parameter)
     // ──────────────────────────────────────────────────────────────────────
     refreshUserProfile(): void {
-      const email = store.userEmail();
-      if (!email) {
-        return;
-      }
-
       patchState(store, { loading: true });
 
-      // Use the new simplified methods from AuthService
-      authService.loadUserProfile(email).subscribe({
+      authService.loadUserProfile().subscribe({
         next: (user) => {
           patchState(store, {
             user,
