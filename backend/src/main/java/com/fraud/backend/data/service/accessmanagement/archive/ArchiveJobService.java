@@ -117,21 +117,7 @@ public class ArchiveJobService {
         ao = archiveObjectRepository.save(ao);
 
         try {
-            byte[] gz = toJsonlGz(rows);
-
-            storageService.upload(
-                    objectKey,
-                    new ByteArrayInputStream(gz),
-                    gz.length,
-                    "application/gzip");
-
-            jdbcTemplate.update(
-                    String.format("DELETE FROM %s WHERE %s < ?", tableName, timestampColumn),
-                    Timestamp.valueOf(cutoff));
-
-            ao.setStatus(ArchiveStatus.CREATED);
-            ao = archiveObjectRepository.save(ao);
-
+            performArchiving(ao, rows, tableName, timestampColumn);
             log.info("{} archived: id={}, key={}, rows={}", type, ao.getId(), objectKey, rows.size());
             return ao;
 
@@ -143,19 +129,68 @@ public class ArchiveJobService {
         }
     }
 
+    private void performArchiving(ArchiveObject ao, List<Map<String, Object>> rows, String tableName, String timestampColumn) throws IOException {
+        byte[] gz = toJsonlGz(rows);
+
+        storageService.upload(
+                ao.getObjectKey(),
+                new ByteArrayInputStream(gz),
+                gz.length,
+                "application/gzip");
+
+        // Suppression précise basée sur la plage de l'archive pour éviter de supprimer des données hors périmètre
+        jdbcTemplate.update(
+                String.format("DELETE FROM %s WHERE %s >= ? AND %s <= ?", tableName, timestampColumn, timestampColumn),
+                Timestamp.valueOf(ao.getStartAt()),
+                Timestamp.valueOf(ao.getEndAt()));
+
+        ao.setStatus(ArchiveStatus.CREATED);
+        archiveObjectRepository.save(ao);
+    }
+
     // Restoration des archives
+    @Transactional
     public void restoreFromArchive(Long archiveId) {
         ArchiveObject ao = archiveObjectRepository.findById(archiveId)
                 .orElseThrow(() -> new IllegalArgumentException("Archive not found: " + archiveId));
 
-        if (ao.getStatus() != ArchiveStatus.CREATED && ao.getStatus() != ArchiveStatus.RESTORED) {
-            throw new IllegalStateException("Archive is not in a restorable status (CREATED or RESTORED)");
-        }
-
         String tableName = ao.getType() == ArchiveType.AUDIT_LOG ? "audit_log" : "user_session";
+        String timestampColumn = ao.getType() == ArchiveType.AUDIT_LOG ? "action_timestamp" : "login_time";
         String columns = ao.getType() == ArchiveType.AUDIT_LOG
                 ? "id, session_id, action, action_type, action_timestamp, level"
                 : "id, user_id, session_id, keycloak_session_id, ip_address, user_agent, login_time, last_activity, logout_time, is_active, created_at";
+
+        // Logic de bascule (Toggle)
+        if (ao.getStatus() == ArchiveStatus.RESTORED) {
+            log.info("Re-archiving archive {} (status was RESTORED)", archiveId);
+            try {
+                List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                        String.format("SELECT %s FROM %s WHERE %s >= ? AND %s <= ? ORDER BY %s ASC",
+                                columns, tableName, timestampColumn, timestampColumn, timestampColumn),
+                        Timestamp.valueOf(ao.getStartAt()),
+                        Timestamp.valueOf(ao.getEndAt()));
+
+                if (rows.isEmpty()) {
+                    log.warn("No data found in DB for re-archiving archive {}. Setting status to CREATED anyway as it's logically archived.", archiveId);
+                    ao.setStatus(ArchiveStatus.CREATED);
+                    archiveObjectRepository.save(ao);
+                    return;
+                }
+
+                performArchiving(ao, rows, tableName, timestampColumn);
+                log.info("Re-archiving completed for archive {}", archiveId);
+                return;
+            } catch (Exception e) {
+                log.error("Failed to re-archive archive {}: {}", archiveId, e.getMessage());
+                throw new RuntimeException("Re-archiving failed", e);
+            }
+        }
+
+        if (ao.getStatus() != ArchiveStatus.CREATED) {
+            throw new IllegalStateException(
+                    "Archive cannot be restored. Current status: " + ao.getStatus()
+                            + ". Only archives with CREATED or RESTORED (for re-archiving) status can be processed.");
+        }
 
         int columnCount = columns.split(",").length;
         String placeholders = String.join(", ", Collections.nCopies(columnCount, "?"));
@@ -170,6 +205,9 @@ public class ArchiveJobService {
                 GZIPInputStream gzis = new GZIPInputStream(is);
                 InputStreamReader isr = new InputStreamReader(gzis, StandardCharsets.UTF_8);
                 BufferedReader reader = new BufferedReader(isr)) {
+
+            // Disable FK constraints temporarily for the target table
+            jdbcTemplate.execute("ALTER TABLE " + tableName + " DISABLE TRIGGER ALL");
 
             String line;
             String sql = String.format("INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (id) DO NOTHING",
@@ -195,6 +233,9 @@ public class ArchiveJobService {
                 jdbcTemplate.batchUpdate(sql, batchArgs);
             }
 
+            // Re-enable FK constraints
+            jdbcTemplate.execute("ALTER TABLE " + tableName + " ENABLE TRIGGER ALL");
+
             // Update status using JPA repository for proper Enum handling
             ao.setStatus(ArchiveStatus.RESTORED);
             archiveObjectRepository.save(ao);
@@ -214,6 +255,13 @@ public class ArchiveJobService {
             }
 
         } catch (Throwable e) {
+            // Re-enable triggers even on failure
+            try {
+                jdbcTemplate.execute("ALTER TABLE " + tableName + " ENABLE TRIGGER ALL");
+            } catch (Exception triggerEx) {
+                log.error("Failed to re-enable triggers on {}", tableName, triggerEx);
+            }
+
             log.error("CATASTROPHIC failure restoring archive {}: {}", archiveId, e.getMessage());
             e.printStackTrace();
             // We set status to FAILED via JPA

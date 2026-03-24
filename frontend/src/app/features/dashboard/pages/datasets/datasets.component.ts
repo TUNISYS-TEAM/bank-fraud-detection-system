@@ -1,15 +1,42 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { DatasetService, Dataset, ApiResponse, DatasetType, DatasetStatus } from '../../../../../../core/services/dataset.service';
-import { AuthStore } from '../../../../../../core/store/auth.store';
+import { Component, OnInit, inject, signal, computed, OnDestroy } from '@angular/core';
+import { DatasetService, Dataset, ApiResponse, DatasetType, DatasetStatus } from '../../../../core/services/dataset.service';
+import { AuthStore } from '../../../../core/store/auth.store';
+import { KpiCard } from '../../../../shared/cards/cards.component';
+import { forkJoin, of, Subscription } from 'rxjs';
+import { catchError } from 'rxjs/operators';
+import { StatsService } from '../../../../core/services/stats.service';
 
 @Component({
   selector: 'app-datasets',
   templateUrl: './datasets.component.html',
   styleUrl: './datasets.component.css'
 })
-export class DatasetsComponent implements OnInit {
+export class DatasetsComponent implements OnInit, OnDestroy {
   private datasetService = inject(DatasetService);
+  private statsService = inject(StatsService);
   authStore = inject(AuthStore);
+  private statsSubscription?: Subscription;
+
+  kpiCards = signal<KpiCard[]>([
+    {
+      label: 'Datasets Stockés',
+      value: '...',
+      icon: 'database',
+      color: '#a855f7'
+    },
+    {
+      label: 'Espace Utilisé',
+      value: '...',
+      icon: 'file-text',
+      color: '#22c55e'
+    },
+    {
+      label: 'Dernier Import',
+      value: '...',
+      icon: 'calendar',
+      color: '#f59e0b'
+    }
+  ]);
 
   // States using signals
   datasets = signal<Dataset[]>([]);
@@ -51,6 +78,33 @@ export class DatasetsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadDatasets();
+    this.loadStats();
+
+    this.statsSubscription = this.statsService.refreshStats$.subscribe(() => {
+      this.loadStats();
+    });
+  }
+
+  ngOnDestroy(): void {
+    if (this.statsSubscription) {
+      this.statsSubscription.unsubscribe();
+    }
+  }
+
+  loadStats(): void {
+    forkJoin({
+      count: this.datasetService.count().pipe(catchError(() => of(0))),
+      size: this.datasetService.getTotalSize().pipe(catchError(() => of(0))),
+      latestDate: this.datasetService.getLatestImportDate().pipe(catchError(() => of(null)))
+    }).subscribe(({ count, size, latestDate }) => {
+      this.kpiCards.update(cards => {
+        const newCards = [...cards];
+        newCards[0].value = count;
+        newCards[1].value = (size ? size.toFixed(2) : '0') + ' Mo';
+        newCards[2].value = latestDate ? this.formatDate(latestDate) : 'Aucun';
+        return newCards;
+      });
+    });
   }
 
   loadDatasets(): void {
@@ -172,7 +226,7 @@ export class DatasetsComponent implements OnInit {
   }
 
   onDatasetUploaded(): void {
-    this.datasetService.notifyStatsChanged();
+    this.statsService.notifyStatsChanged();
     this.loadDatasets();
     this.closeCreateModal();
   }
@@ -198,7 +252,7 @@ export class DatasetsComponent implements OnInit {
   }
 
   onDatasetDeleted(): void {
-    this.datasetService.notifyStatsChanged();
+    this.statsService.notifyStatsChanged();
     this.loadDatasets();
     this.closeDeleteModal();
   }
@@ -214,7 +268,7 @@ export class DatasetsComponent implements OnInit {
   }
 
   onDatasetUpdated(): void {
-    this.datasetService.notifyStatsChanged();
+    this.statsService.notifyStatsChanged();
     this.loadDatasets();
     this.closeUpdateModal();
   }

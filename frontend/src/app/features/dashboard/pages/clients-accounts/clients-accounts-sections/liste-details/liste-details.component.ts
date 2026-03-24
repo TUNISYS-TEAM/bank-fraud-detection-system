@@ -1,15 +1,13 @@
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { ClientService, ClientSummary, PageResponse } from '../../../../../../core/services/client.service';
-import { AuthStore } from '../../../../../../core/store/auth.store';
 
 @Component({
-  selector: 'app-clients-accounts',
-  templateUrl: './clients-accounts.component.html',
-  styleUrl: './clients-accounts.component.css'
+  selector: 'app-liste-details',
+  templateUrl: './liste-details.component.html',
+  styleUrls: ['./liste-details.component.css']
 })
-export class ClientsAccountsComponent implements OnInit {
+export class ListeDetailsComponent implements OnInit {
   private clientService = inject(ClientService);
-  authStore = inject(AuthStore);
 
   clients = signal<ClientSummary[]>([]);
   isLoading = signal(false);
@@ -20,8 +18,9 @@ export class ClientsAccountsComponent implements OnInit {
   totalPages = signal(0);
   pageSize = 20;
 
-  // Search
+  // Search & Filter
   searchQuery = signal('');
+  accountCountFilter = signal<number | null>(null);
 
   // Modals
   showViewModal = signal(false);
@@ -33,15 +32,15 @@ export class ClientsAccountsComponent implements OnInit {
 
   loadClients(): void {
     this.isLoading.set(true);
-    if (this.searchQuery()) {
-      this.clientService.searchClients(this.searchQuery(), this.currentPage(), this.pageSize).subscribe({
+    if (this.searchQuery() || this.accountCountFilter() !== null) {
+      this.clientService.searchClients(this.searchQuery(), this.accountCountFilter() ?? undefined, this.currentPage(), this.pageSize).subscribe({
         next: (response: PageResponse<ClientSummary>) => {
           this.clients.set(response.content);
           this.totalElements.set(response.totalElements);
           this.totalPages.set(response.totalPages);
           this.isLoading.set(false);
         },
-        error: (err: Error) => {
+        error: (err: any) => {
           console.error('Error searching clients:', err);
           this.isLoading.set(false);
         }
@@ -54,7 +53,7 @@ export class ClientsAccountsComponent implements OnInit {
           this.totalPages.set(response.totalPages);
           this.isLoading.set(false);
         },
-        error: (err: Error) => {
+        error: (err: any) => {
           console.error('Error loading clients:', err);
           this.isLoading.set(false);
         }
@@ -65,6 +64,14 @@ export class ClientsAccountsComponent implements OnInit {
   onSearch(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.searchQuery.set(input.value);
+    this.currentPage.set(0);
+    this.loadClients();
+  }
+
+  onFilterChange(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const value = select.value;
+    this.accountCountFilter.set(value === 'ALL' ? null : parseInt(value));
     this.currentPage.set(0);
     this.loadClients();
   }

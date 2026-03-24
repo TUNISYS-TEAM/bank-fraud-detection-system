@@ -29,11 +29,9 @@ public class ClientService {
                 .orElseThrow(() -> new EntityNotFoundException("Client non trouvé: " + id));
     }
 
-    public Page<Client> searchByName(String search, Pageable pageable) {
-        if (search == null || search.isBlank()) {
-            return clientRepository.findAll(pageable);
-        }
-        return clientRepository.searchByName(search.trim(), pageable);
+    public Page<Client> searchByName(String search, Integer accountCount, Pageable pageable) {
+        String searchQuery = (search == null) ? "" : search.trim();
+        return clientRepository.searchClients(searchQuery, accountCount, pageable);
     }
 
     public long getAccountCount(Long clientId) {

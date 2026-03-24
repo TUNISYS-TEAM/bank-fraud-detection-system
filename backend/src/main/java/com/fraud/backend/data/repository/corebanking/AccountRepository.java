@@ -39,4 +39,8 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Query("SELECT COUNT(a) FROM Account a WHERE a.client.clientId = :clientId")
     long countByClientId(@Param("clientId") Long clientId);
 
+    long countByIsActiveTrue();
+
+    @Query("SELECT COALESCE(SUM(a.balance), 0) FROM Account a")
+    BigDecimal sumAllBalances();
 }

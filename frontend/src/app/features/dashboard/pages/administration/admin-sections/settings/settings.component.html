@@ -317,7 +317,7 @@
                 <div class="space-y-3">
                     <p class="text-sm font-medium text-gray-700">Points de restauration disponibles</p>
 
-                    <div class="space-y-2">
+                    <div class="space-y-2 max-h-[400px] overflow-y-auto pr-2 gray-scrollbar">
                         @for (archive of archives(); track archive.id) {
                         <div [class.bg-orange-50]="archive.status === 'RESTORED'"
                             class="p-4 rounded-2xl border border-gray-100 hover:border-indigo-200 transition-all group relative">

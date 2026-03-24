@@ -55,11 +55,20 @@ export class ClientService {
     return this.http.get<ClientDetail>(`${this.apiUrl}/${id}`);
   }
 
-  searchClients(query: string, page: number = 0, size: number = 20): Observable<PageResponse<ClientSummary>> {
-    const params = new HttpParams()
+  searchClients(query: string, accountCount?: number, page: number = 0, size: number = 20): Observable<PageResponse<ClientSummary>> {
+    let params = new HttpParams()
       .set('search', query)
       .set('page', page.toString())
       .set('size', size.toString());
+
+    if (accountCount !== undefined && accountCount !== null) {
+      params = params.set('accountCount', accountCount.toString());
+    }
+
     return this.http.get<PageResponse<ClientSummary>>(`${this.apiUrl}/search`, { params });
+  }
+
+  getTotalCount(): Observable<number> {
+    return this.http.get<number>(`${this.apiUrl}/count`);
   }
 }

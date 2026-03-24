@@ -24,8 +24,8 @@ const PERMISSION_ICONS: Record<string, string> = {
   'RUN_SIMULATION': 'play',
   'MANAGE_LOGS': 'file-text',
   'MANAGE_SETTINGS': 'sliders',
-  'MANAGE_DATASETS': 'database',
-  'MANAGE_CLIENTS_ACCOUNTS': 'users',
+  'ACCESS_DATASETS': 'database',
+  'ACCESS_CLIENTS_ACCOUNTS': 'users',
   'ACCESS_TRAINING_DATA': 'database'
 };
 
@@ -47,8 +47,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   'RUN_SIMULATION': 'Lancer Simulation',
   'MANAGE_LOGS': 'Journaux',
   'MANAGE_SETTINGS': 'Paramètres',
-  'MANAGE_DATASETS': 'Datasets',
-  'MANAGE_CLIENTS_ACCOUNTS': 'Clients & Comptes',
+  'ACCESS_DATASETS': 'Datasets',
+  'ACCESS_CLIENTS_ACCOUNTS': 'Clients & Comptes',
   'ACCESS_TRAINING_DATA': 'Données d\'Entraînement'
 };
 
@@ -56,18 +56,19 @@ const PERMISSION_ORDER: Record<string, number> = {
   'ACCESS_OVERVIEW': 5,
   'ACCESS_IMPORT_DATA': 10,
   'ACCESS_ML_MODELS': 20,
-  'ACCESS_ALERTS': 30,
-  'ACCESS_PERFORMANCE': 40,
-  'ACCESS_SIMULATION': 50,
-  'ACCESS_TRAINING_DATA': 55,
+  'ACCESS_TRAINING_DATA': 30,
+  'ACCESS_ALERTS': 40,
+  'ACCESS_PERFORMANCE': 50,
+  'ACCESS_SIMULATION': 55,
+
   'ACCESS_MESSAGES': 60,
+  'ACCESS_DATASETS': 61,
+  'ACCESS_CLIENTS_ACCOUNTS': 62,
   'ACCESS_ADMINISTRATION': 70,
   'MANAGE_USERS': 71,
   'MANAGE_ROLES': 72,
   'MANAGE_SESSIONS': 73,
   'MANAGE_LOGS': 74,
-  'MANAGE_DATASETS': 75,
-  'MANAGE_CLIENTS_ACCOUNTS': 75.5,
   'MANAGE_SETTINGS': 76,
   'MANAGE_ML_MODELS': 111,
   'MANAGE_ALERTS': 112,
@@ -81,8 +82,6 @@ const PARENT_PAGES: Record<string, { parentRoute: string; relativeRoute: string 
   'MANAGE_SESSIONS': { parentRoute: '/dashboard/administration', relativeRoute: 'sessions' },
   'MANAGE_LOGS': { parentRoute: '/dashboard/administration', relativeRoute: 'logs' },
   'MANAGE_SETTINGS': { parentRoute: '/dashboard/administration', relativeRoute: 'settings' },
-  'MANAGE_DATASETS': { parentRoute: '/dashboard/administration', relativeRoute: 'datasets' },
-  'MANAGE_CLIENTS_ACCOUNTS': { parentRoute: '/dashboard/administration', relativeRoute: 'clients-accounts' },
   'MANAGE_ML_MODELS': { parentRoute: '/dashboard/ml-models', relativeRoute: 'manage' },
   'MANAGE_ALERTS': { parentRoute: '/dashboard/alerts', relativeRoute: 'manage' },
   'IMPORT_DATA': { parentRoute: '/dashboard/import-data', relativeRoute: 'advanced' },
@@ -212,6 +211,11 @@ export const AuthStore = signalStore(
       alertsTabs: computed(() => tabsByParentPage()['/dashboard/alerts'] || []),
       importDataTabs: computed(() => tabsByParentPage()['/dashboard/import-data'] || []),
       simulationTabs: computed(() => tabsByParentPage()['/dashboard/simulation'] || []),
+      clientsTabs: computed(() => [
+        { id: 101, label: 'Liste des Clients', route: 'liste-details', icon: 'list', order: 1, permissionName: 'ACCESS_CLIENTS_ACCOUNTS' },
+        { id: 102, label: 'Stats Clients', route: 'clients', icon: 'users', order: 2, permissionName: 'ACCESS_CLIENTS_ACCOUNTS' },
+        { id: 103, label: 'Stats Comptes', route: 'accounts', icon: 'credit-card', order: 3, permissionName: 'ACCESS_CLIENTS_ACCOUNTS' }
+      ]),
     };
   }),
 

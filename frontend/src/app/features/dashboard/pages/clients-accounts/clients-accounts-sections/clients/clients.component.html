@@ -1,0 +1,93 @@
+<div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fadeIn">
+    <!-- Header -->
+    <div class="px-8 py-6 border-b border-gray-200 bg-gray-50">
+        <div class="flex items-center space-x-3 text-left">
+            <div>
+                <h3 class="text-2xl font-bold text-gray-900 tracking-tight">Analytique Clients</h3>
+                <p class="text-sm text-gray-500 mt-1">Segmentation et indicateurs de performance démographique</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="p-8 space-y-10">
+        <!-- Charts Grid 2×2 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Chart 1: Répartition par Portefeuille -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">Répartition par Portefeuille</h3>
+                        <p class="text-sm text-gray-500 text-left">Distribution des clients selon le nombre de comptes possédés</p>
+                    </div>
+                    <div class="p-2 bg-indigo-50 rounded-xl">
+                        <i-feather name="pie-chart" class="w-5 h-5 text-indigo-600"></i-feather>
+                    </div>
+                </div>
+                <div id="accountDistributionChart" style="height: 300px; width: 100%;"></div>
+            </div>
+
+            <!-- Chart 2: Acquisition Clients -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">Acquisition Clients</h3>
+                        <p class="text-sm text-gray-500 text-left">Évolution mensuelle des nouveaux clients (6 derniers mois)</p>
+                    </div>
+                    <div class="p-2 bg-emerald-50 rounded-xl">
+                        <i-feather name="trending-up" class="w-5 h-5 text-emerald-600"></i-feather>
+                    </div>
+                </div>
+                <div id="clientGrowthChart" style="height: 300px; width: 100%;"></div>
+            </div>
+
+            <!-- Chart 3: Répartition par Tranche d'Âge -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">Répartition par Tranche d'Âge</h3>
+                        <p class="text-sm text-gray-500 text-left">Distribution démographique des clients par groupe d'âge</p>
+                    </div>
+                    <div class="p-2 bg-violet-50 rounded-xl">
+                        <i-feather name="users" class="w-5 h-5 text-violet-600"></i-feather>
+                    </div>
+                </div>
+                <div id="ageDistributionChart" style="height: 300px; width: 100%;"></div>
+            </div>
+
+            <!-- Chart 4: Distribution par Niveau de Risque -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">Profil de Risque Clients</h3>
+                        <p class="text-sm text-gray-500 text-left">Répartition des clients selon leur niveau de risque dominant</p>
+                    </div>
+                    <div class="p-2 bg-rose-50 rounded-xl">
+                        <i-feather name="shield" class="w-5 h-5 text-rose-600"></i-feather>
+                    </div>
+                </div>
+                <div id="riskLevelChart" style="height: 300px; width: 100%;"></div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Insight Note -->
+        <div class="relative overflow-hidden bg-gradient-to-r from-indigo-50/50 to-white rounded-3xl p-6 border border-indigo-100/50 shadow-sm flex items-start gap-6 group hover:shadow-md transition-all duration-300">
+            <!-- Vertical Accent Bar -->
+            <div class="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-l-3xl"></div>
+
+            <div class="p-3 bg-white rounded-2xl shadow-sm border border-indigo-50 shrink-0 group-hover:scale-110 transition-transform duration-500">
+                <i-feather name="info" class="w-5 h-5 text-indigo-500"></i-feather>
+            </div>
+
+            <div class="space-y-1.5 text-left">
+                <h4 class="text-xs font-black text-indigo-900 uppercase tracking-[0.2em]">Note Démographique</h4>
+                <p class="text-gray-600 leading-relaxed text-[15px]">
+                    La majorité des clients possèdent entre <span class="font-bold text-gray-900">1 et 2 comptes</span>.
+                    Les clients à risque <span class="text-rose-600 font-bold">MOYEN</span> ou <span class="text-red-600 font-bold">ÉLEVÉ</span>
+                    nécessitent une surveillance consolidée. Les graphiques 3 et 4 sont basés sur un échantillon de 100 clients.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

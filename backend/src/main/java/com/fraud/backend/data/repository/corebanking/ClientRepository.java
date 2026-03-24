@@ -19,10 +19,13 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     @Query("""
             SELECT c FROM Client c
-            WHERE LOWER(c.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
-                OR LOWER(c.lastName) LIKE LOWER(CONCAT('%', :search, '%'))
+            WHERE (LOWER(CONCAT(c.firstName, ' ', c.lastName)) LIKE LOWER(CONCAT('%', :search, '%'))
+                OR LOWER(CONCAT(c.lastName, ' ', c.firstName)) LIKE LOWER(CONCAT('%', :search, '%'))
+                OR LOWER(c.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
+                OR LOWER(c.lastName) LIKE LOWER(CONCAT('%', :search, '%')))
+            AND (:accountCount IS NULL OR SIZE(c.accounts) = :accountCount)
             """)
-    Page<Client> searchByName(@Param("search") String search, Pageable pageable);
+    Page<Client> searchClients(@Param("search") String search, @Param("accountCount") Integer accountCount, Pageable pageable);
 
     List<Client> findByLastNameContainingIgnoreCase(String lastName);
 

@@ -1,10 +1,11 @@
 import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { forkJoin, of } from 'rxjs';
+import { forkJoin, of, Subscription } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { environment } from '../../../../../environments/environment';
 import { DatasetService, Dataset, ApiResponse, DatasetType, DatasetStatus } from '../../../../core/services/dataset.service';
 import { AuthStore } from '../../../../core/store/auth.store';
+import { StatsService } from '../../../../core/services/stats.service';
 import { KpiCard } from '../../../../shared/cards/cards.component';
 
 // Extended Dataset interface with additional properties
@@ -90,7 +91,9 @@ export interface ExtractBehaviorResponse {
 export class TrainDataComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private datasetService = inject(DatasetService);
+  private statsService = inject(StatsService);
   authStore = inject(AuthStore);
+  private statsSubscription?: Subscription;
   public datasetType = DatasetType;
   public datasetStatus = DatasetStatus;
 
@@ -182,12 +185,19 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadStats();
     this.loadDatasets();
+
+    this.statsSubscription = this.statsService.refreshStats$.subscribe(() => {
+      this.loadStats();
+    });
   }
 
   ngOnDestroy(): void {
     this.clearAnalysisProgressInterval();
     this.clearCleaningProgressInterval();
     this.clearExtractingProgressInterval();
+    if (this.statsSubscription) {
+      this.statsSubscription.unsubscribe();
+    }
   }
 
   // ── KPIs ──────────────────────────────────────────────────────────────

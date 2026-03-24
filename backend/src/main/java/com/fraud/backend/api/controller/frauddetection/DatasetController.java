@@ -169,17 +169,24 @@ public class DatasetController {
     // ==================== STATISTIQUES ADMIN ====================
 
     @GetMapping("/count")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('MANAGER')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<Long> count(@RequestParam(required = false) List<DatasetType> types) {
         long count = datasetService.count(types);
         return ResponseEntity.ok(count);
     }
 
     @GetMapping("/total-size")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('MANAGER')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<BigDecimal> getTotalSize(@RequestParam(required = false) List<DatasetType> types) {
         BigDecimal totalSize = datasetService.getTotalSize(types);
         return ResponseEntity.ok(totalSize);
+    }
+
+    @GetMapping("/latest-import")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<java.time.LocalDateTime> getLatestImportDate(@RequestParam(required = false) List<DatasetType> types) {
+        java.time.LocalDateTime latestImport = datasetService.getLatestImportDate(types);
+        return ResponseEntity.ok(latestImport);
     }
 
     // ==================== VISIBILITY CONTROLS ====================

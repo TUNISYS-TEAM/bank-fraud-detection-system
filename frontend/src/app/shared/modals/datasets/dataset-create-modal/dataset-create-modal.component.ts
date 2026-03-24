@@ -1,8 +1,8 @@
 import { Component, EventEmitter, Output, Input, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { DatasetService, DatasetType } from '../../../../../core/services/dataset.service';
-import { AuthStore } from '../../../../../core/store/auth.store';
+import { DatasetService, DatasetType } from '../../../../core/services/dataset.service';
+import { AuthStore } from '../../../../core/store/auth.store';
 import { FeatherModule } from 'angular-feather';
 import { switchMap, of, take } from 'rxjs';
 

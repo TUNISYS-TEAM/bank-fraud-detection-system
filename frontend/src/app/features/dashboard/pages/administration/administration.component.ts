@@ -6,6 +6,7 @@ import { environment } from '../../../../../environments/environment';
 import { AuthStore } from '../../../../core/store/auth.store';
 import { KpiCard } from '../../../../shared/cards/cards.component';
 import { DatasetService } from '../../../../core/services/dataset.service';
+import { StatsService } from '../../../../core/services/stats.service';
 
 @Component({
   selector: 'app-administration',
@@ -15,7 +16,7 @@ import { DatasetService } from '../../../../core/services/dataset.service';
 export class AdministrationComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   authStore = inject(AuthStore);
-  private datasetService = inject(DatasetService);
+  private statsService = inject(StatsService);
   private statsSubscription?: Subscription;
 
   tabs = this.authStore.administrationTabs;
@@ -24,25 +25,25 @@ export class AdministrationComponent implements OnInit, OnDestroy {
     {
       label: 'Utilisateurs Actifs',
       value: '...',
-      icon: 'users',
+      icon: 'user-check',
       color: '#4f46e5'
     },
     {
-      label: 'Datasets Stockés',
+      label: 'Rôles Système',
       value: '...',
-      icon: 'database',
-      color: '#a855f7'
+      icon: 'shield',
+      color: '#06b6d4'
     },
     {
-      label: 'Espace Utilisé',
+      label: 'Sessions Aujourd\'hui',
       value: '...',
-      icon: 'file-text',
-      color: '#22c55e'
+      icon: 'activity',
+      color: '#8b5cf6'
     },
     {
       label: 'Logs Aujourd\'hui',
       value: '...',
-      icon: 'settings',
+      icon: 'file-text',
       color: '#f97316'
     }
   ]);
@@ -51,7 +52,7 @@ export class AdministrationComponent implements OnInit, OnDestroy {
     this.loadStats();
 
     // S'abonner aux notifications de changement de stats
-    this.statsSubscription = this.datasetService.refreshStats$.subscribe(() => {
+    this.statsSubscription = this.statsService.refreshStats$.subscribe(() => {
       this.loadStats();
     });
   }
@@ -64,22 +65,22 @@ export class AdministrationComponent implements OnInit, OnDestroy {
 
   private loadStats(): void {
     const activeUsers$ = this.http.get<number>(`${environment.apiUrl}/users/count/active`).pipe(catchError(() => of(0)));
-    const datasetCount$ = this.http.get<number>(`${environment.apiUrl}/datasets/count`).pipe(catchError(() => of(0)));
-    const totalSize$ = this.http.get<number>(`${environment.apiUrl}/datasets/total-size`).pipe(catchError(() => of(0)));
+    const sessionStats$ = this.http.get<any>(`${environment.apiUrl}/sessions/statistics`).pipe(catchError(() => of({ sessionsToday: 0 })));
+    const roleCount$ = this.http.get<number>(`${environment.apiUrl}/roles/count`).pipe(catchError(() => of(0)));
     const logsToday$ = this.http.get<number>(`${environment.apiUrl}/logs/count/today`).pipe(catchError(() => of(0)));
 
     forkJoin({
       activeUsers: activeUsers$,
-      datasetCount: datasetCount$,
-      totalSize: totalSize$,
+      sessionStats: sessionStats$,
+      roleCount: roleCount$,
       logsToday: logsToday$
     }).subscribe({
       next: (stats) => {
         this.kpiCards.update(cards => {
           const newCards = [...cards];
           newCards[0].value = stats.activeUsers ?? 0;
-          newCards[1].value = stats.datasetCount ?? 0;
-          newCards[2].value = (stats.totalSize ? stats.totalSize.toFixed(2) : '0') + ' Mo';
+          newCards[1].value = stats.roleCount ?? 0;
+          newCards[2].value = stats.sessionStats?.sessionsToday ?? 0;
           newCards[3].value = stats.logsToday ?? 0;
           return newCards;
         });

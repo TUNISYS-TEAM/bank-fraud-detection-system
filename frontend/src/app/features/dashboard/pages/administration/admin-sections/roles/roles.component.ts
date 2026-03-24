@@ -4,8 +4,9 @@ import { environment } from '../../../../../../../environments/environment';
 import { AuthStore } from '../../../../../../core/store/auth.store';
 import { CreateRoleData } from '../../../../../../shared/modals/admin-sections/roles/role-create-modal/role-create-modal.component';
 import { UpdateRoleData } from '../../../../../../shared/modals/admin-sections/roles/role-update-modal/role-update-modal.component';
-import { DeleteRoleData } from '../../../../../../shared/modals/admin-sections/roles/role-delete-modal/role-delete-modal.component'; // IMPORT AJOUTÉ
-
+import { DeleteRoleData } from '../../../../../../shared/modals/admin-sections/roles/role-delete-modal/role-delete-modal.component'; 
+import { DatasetService } from '../../../../../../core/services/dataset.service';
+import { StatsService } from '../../../../../../core/services/stats.service';
 interface Role {
   id: number;
   name: string;
@@ -33,6 +34,7 @@ interface RoleWithPermissions extends Role {
 export class RolesComponent implements OnInit {
   private http = inject(HttpClient);
   authStore = inject(AuthStore);
+  private statsService = inject(StatsService);
 
   // State
   roles = signal<RoleWithPermissions[]>([]);
@@ -121,6 +123,7 @@ export class RolesComponent implements OnInit {
 
   onRoleCreated(roleData: CreateRoleData): void {
     console.log('Role created:', roleData);
+    this.statsService.notifyStatsChanged();
     this.loadRoles();
     this.closeCreateModal();
   }
@@ -138,6 +141,7 @@ export class RolesComponent implements OnInit {
 
   onRoleUpdated(updatedData: UpdateRoleData): void {
     console.log('Role updated:', updatedData);
+    this.statsService.notifyStatsChanged();
     this.loadRoles();
     this.closeUpdateModal();
   }
@@ -167,6 +171,7 @@ export class RolesComponent implements OnInit {
 
   onRoleDeleted(roleId: number): void {
     console.log('Role deleted:', roleId);
+    this.statsService.notifyStatsChanged();
     this.loadRoles();
     this.closeDeleteModal();
   }

@@ -10,6 +10,7 @@ export interface KpiCard {
   trendUp?: boolean;
   description?: string;
   color?: string;
+  isCurrency?: boolean;
 }
 
 @Component({

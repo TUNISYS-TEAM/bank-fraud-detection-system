@@ -1341,6 +1341,13 @@ public class DatasetService {
         return result;
     }
 
+    public LocalDateTime getLatestImportDate(List<DatasetType> types) {
+        List<DatasetType> targetTypes = (types != null && !types.isEmpty()) ? types : ADMIN_KPI_TYPES;
+        LocalDateTime result = datasetRepository.findLatestImportedAtByTypeIn(targetTypes);
+        log.info("KPI LatestImportDate for types {}: {}", targetTypes, result);
+        return result;
+    }
+
     // ==================== PRIVATE HELPERS ====================
 
 

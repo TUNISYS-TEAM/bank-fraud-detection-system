@@ -1,6 +1,6 @@
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DatasetService, Dataset } from '../../../../../core/services/dataset.service';
+import { DatasetService, Dataset } from '../../../../core/services/dataset.service';
 import { FeatherModule } from 'angular-feather';
 
 @Component({

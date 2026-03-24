@@ -155,6 +155,13 @@ public class RoleController {
         return ResponseEntity.noContent().build();
     }
 
+    // GET /api/roles/count - Total number of roles
+    @GetMapping("/count")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Long> getRoleCount() {
+        return ResponseEntity.ok((long) roleService.getAllRoles().size());
+    }
+
     // POST /api/roles/sync - Synchroniser avec Keycloak
     @PostMapping("/sync")
     @PreAuthorize("hasRole('ADMIN')")

@@ -1,5 +1,7 @@
 package com.fraud.backend.data.service.corebanking;
 
+import java.math.BigDecimal;
+
 import com.fraud.backend.data.entity.corebanking.Account;
 import com.fraud.backend.data.repository.corebanking.AccountRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -50,4 +52,15 @@ public class AccountService {
         return accountRepository.findByClientIdAndIsActiveTrue(clientId, pageable);
     }
 
+    public long getTotalCount() {
+        return accountRepository.count();
+    }
+
+    public long getActiveAccountCount() {
+        return accountRepository.countByIsActiveTrue();
+    }
+
+    public BigDecimal getTotalBalance() {
+        return accountRepository.sumAllBalances();
+    }
 }

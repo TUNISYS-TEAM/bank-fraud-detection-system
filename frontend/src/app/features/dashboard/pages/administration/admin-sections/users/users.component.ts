@@ -4,6 +4,8 @@ import { environment } from '../../../../../../../environments/environment';
 import { AuthStore } from '../../../../../../core/store/auth.store';
 import { CreateUserData } from '../../../../../../shared/modals/admin-sections/users/user-create-modal/user-create-modal.component';
 import { DeleteUserData } from '../../../../../../shared/modals/admin-sections/users/user-delete-modal/user-delete-modal.component';
+import { DatasetService } from '../../../../../../core/services/dataset.service';
+import { StatsService } from '../../../../../../core/services/stats.service';
 
 interface User {
   id: number;
@@ -38,6 +40,7 @@ interface Role {
 export class UsersComponent implements OnInit {
   private http = inject(HttpClient);
   authStore = inject(AuthStore);
+  private statsService = inject(StatsService);
 
   // Signaux pour l'état local
   users = signal<User[]>([]);
@@ -159,6 +162,7 @@ export class UsersComponent implements OnInit {
 
   onUserCreated(userData: CreateUserData): void {
     console.log('User created:', userData);
+    this.statsService.notifyStatsChanged();
     this.loadUsers();
     this.closeCreateModal();
   }
@@ -181,6 +185,7 @@ export class UsersComponent implements OnInit {
 
   onUserDeleted(userId: number): void {
     console.log('User deleted:', userId);
+    this.statsService.notifyStatsChanged();
     this.loadUsers();
     this.closeDeleteModal();
   }
@@ -208,6 +213,7 @@ export class UsersComponent implements OnInit {
   }
 
   onUserUpdated(updatedUser: User): void {
+    this.statsService.notifyStatsChanged();
     this.loadUsers();
     this.closeUpdateModal();
   }

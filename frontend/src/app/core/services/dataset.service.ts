@@ -26,7 +26,7 @@ export interface Dataset {
     status: DatasetStatus | null;
     type: DatasetType;
     importedAt: string;
-    visibility: boolean; 
+    visibility: boolean;
 }
 
 export interface DatasetPreviewResponse {
@@ -36,6 +36,27 @@ export interface DatasetPreviewResponse {
     rows: Record<string, string>[];
     returnedRows: number;
     limit: number;
+}
+
+export interface ColumnInfo {
+    name: string;
+    type: string; // NUMERIC, CATEGORICAL, DATE, BINARY, TEXT
+    uniqueCount: number;
+    nullRatio: number;
+    stats: Record<string, any>;
+    isTarget: boolean;
+}
+
+export interface DatasetAnalysisResponse {
+    datasetUuid: string;
+    datasetName: string;
+    status: string;
+    columns: ColumnInfo[];
+    statistics: Record<string, any>;
+    suggestedFeatures: string[];
+    suggestedTarget: string;
+    sampleRows?: number;
+    preview?: Record<string, any>[];
 }
 
 export interface ApiResponse<T> {
@@ -52,13 +73,6 @@ export interface ApiResponse<T> {
 export class DatasetService {
     private http = inject(HttpClient);
     private readonly apiUrl = `${environment.apiUrl}/datasets`;
-
-    private refreshStatsSubject = new Subject<void>();
-    refreshStats$ = this.refreshStatsSubject.asObservable();
-
-    notifyStatsChanged(): void {
-        this.refreshStatsSubject.next();
-    }
 
     list(params: { q?: string; status?: DatasetStatus; type?: DatasetType; visibility?: boolean; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
         let httpParams = new HttpParams();
@@ -82,6 +96,14 @@ export class DatasetService {
         });
     }
 
+    analyze(uuid: string): Observable<DatasetAnalysisResponse> {
+        return this.http.post<DatasetAnalysisResponse>(`${this.apiUrl}/${uuid}/analyze`, {});
+    }
+
+    getAnalysis(uuid: string): Observable<DatasetAnalysisResponse> {
+        return this.http.get<DatasetAnalysisResponse>(`${this.apiUrl}/${uuid}/analysis`);
+    }
+
     upload(file: File, datasetName: string, type: DatasetType): Observable<Dataset> {
         const formData = new FormData();
         formData.append('file', file);
@@ -100,5 +122,17 @@ export class DatasetService {
 
     download(uuid: string): Observable<Blob> {
         return this.http.get(`${this.apiUrl}/${uuid}/download`, { responseType: 'blob' });
+    }
+
+    count(): Observable<number> {
+        return this.http.get<number>(`${this.apiUrl}/count`);
+    }
+
+    getTotalSize(): Observable<number> {
+        return this.http.get<number>(`${this.apiUrl}/total-size`);
+    }
+
+    getLatestImportDate(): Observable<string> {
+        return this.http.get<string>(`${this.apiUrl}/latest-import`);
     }
 }

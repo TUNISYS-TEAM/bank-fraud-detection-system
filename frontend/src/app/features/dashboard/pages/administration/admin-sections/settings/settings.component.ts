@@ -106,7 +106,7 @@ export class SettingsComponent implements OnInit {
     });
 
     // Charger les archives pour le rollback
-    this.http.get<ArchivePageResponse>(`${environment.apiUrl}/archives?size=5`).subscribe({
+    this.http.get<ArchivePageResponse>(`${environment.apiUrl}/archives?size=100`).subscribe({
       next: (response) => {
         this.archives.set(response.content);
       },
@@ -246,7 +246,7 @@ export class SettingsComponent implements OnInit {
 
     if (confirm('Êtes-vous sûr de vouloir restaurer cette version ? Cette action peut entraîner une perte de données récentes.')) {
       this.saving.set(true);
-      this.http.post(`${environment.apiUrl}/archives/${id}/restore`, {}).subscribe({
+      this.http.post<any>(`${environment.apiUrl}/archives/${id}/restore`, {}).subscribe({
         next: () => {
           this.saving.set(false);
           alert('Restauration réussie !');
@@ -255,7 +255,8 @@ export class SettingsComponent implements OnInit {
         error: (error) => {
           console.error('Error executing rollback:', error);
           this.saving.set(false);
-          alert('Erreur lors de la restauration.');
+          const msg = error?.error?.error || 'Erreur inconnue lors de la restauration.';
+          alert('Erreur lors de la restauration: ' + msg);
         }
       });
     }

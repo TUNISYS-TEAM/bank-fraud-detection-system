@@ -1,5 +1,7 @@
 package com.fraud.backend.api.controller.corebanking;
 
+import java.math.BigDecimal;
+
 import com.fraud.backend.api.dto.corebanking.account.AccountMapper;
 import com.fraud.backend.api.dto.corebanking.account.response.AccountResponse;
 import com.fraud.backend.api.dto.corebanking.account.response.AccountSummaryResponse;
@@ -82,4 +84,18 @@ public class AccountController {
                                 accountService.getActiveAccountsByClient(clientId, pageable)
                                                 .map(accountMapper::toSummaryResponse));
         }
+    @GetMapping("/count")
+    public ResponseEntity<Long> getCount() {
+        return ResponseEntity.ok(accountService.getTotalCount());
+    }
+
+    @GetMapping("/active/count")
+    public ResponseEntity<Long> getActiveCount() {
+        return ResponseEntity.ok(accountService.getActiveAccountCount());
+    }
+
+    @GetMapping("/balance/total")
+    public ResponseEntity<BigDecimal> getTotalBalance() {
+        return ResponseEntity.ok(accountService.getTotalBalance());
+    }
 }
