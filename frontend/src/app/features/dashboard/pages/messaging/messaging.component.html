@@ -542,11 +542,17 @@
                                     <select [(ngModel)]="newMessage().receiverId"
                                         class="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all">
                                         <option [ngValue]="null" disabled>Sélectionner un manager</option>
-                                        @for (user of managers(); track user.id) {
+                                        <!-- FIX: Changed from managers() to availableManagers() -->
+                                        @for (user of availableManagers(); track user.id) {
                                         <option [ngValue]="user.id">{{user.firstName}} {{user.lastName}}
                                             ({{user.email}})</option>
                                         }
                                     </select>
+                                    @if (isAnalyst() && availableManagers().length === 1) {
+                                    <p class="mt-2 text-xs text-gray-500">
+                                        Seul votre manager peut valider vos modèles.
+                                    </p>
+                                    }
                                 </div>
 
                                 <div>

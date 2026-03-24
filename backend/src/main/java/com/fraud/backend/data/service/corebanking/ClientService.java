@@ -11,6 +11,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+import java.util.stream.Collectors;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -36,5 +39,35 @@ public class ClientService {
 
     public long getAccountCount(Long clientId) {
         return accountRepository.countByClientId(clientId);
+    }
+
+    public Map<String, Long> getAccountDistribution() {
+        Map<String, Long> distribution = new java.util.HashMap<>();
+        distribution.put("1 compte", 0L);
+        distribution.put("2 comptes", 0L);
+        distribution.put("3+ comptes", 0L);
+
+        clientRepository.getRawAccountCounts().forEach(row -> {
+            int count = ((Number) row[0]).intValue();
+            long clientCount = ((Number) row[1]).longValue();
+            
+            if (count == 1) {
+                distribution.put("1 compte", clientCount);
+            } else if (count == 2) {
+                distribution.put("2 comptes", clientCount);
+            } else if (count > 2) {
+                distribution.put("3+ comptes", distribution.get("3+ comptes") + clientCount);
+            }
+        });
+        
+        return distribution;
+    }
+
+    public Map<String, Long> getAgeDistribution() {
+        return clientRepository.getAgeDistribution().stream()
+                .collect(Collectors.toMap(
+                        row -> (String) row[0],
+                        row -> (Long) row[1]
+                ));
     }
 }

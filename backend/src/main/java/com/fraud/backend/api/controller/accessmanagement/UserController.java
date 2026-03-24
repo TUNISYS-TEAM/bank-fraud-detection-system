@@ -33,7 +33,6 @@ public class UserController {
 
     // GET /api/users
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<UserSummaryResponse>> getAll(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {

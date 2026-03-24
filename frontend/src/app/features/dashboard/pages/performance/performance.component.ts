@@ -261,19 +261,27 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   });
 
   constructor() {
+    // FIX: Use effect with manual initialization instead of writing to signals
     effect(() => {
       const selected = this.selectedModels();
-      if (selected.length > 0) {
-        setTimeout(() => this.initCharts(), 100);
-      } else {
-        this.disposeCharts();
-      }
+      // Use setTimeout to avoid signal writes during effect execution
+      setTimeout(() => {
+        if (selected.length > 0) {
+          this.initCharts();
+        } else {
+          this.disposeCharts();
+        }
+      }, 0);
     });
 
+    // FIX: For drift tracking - use effect without writing to signals directly
     effect(() => {
       const deployedModel = this.activeDeployedModel();
       if (this.isManager() && deployedModel) {
-        this.loadModelDriftData();
+        // Use setTimeout to avoid signal writes during effect
+        setTimeout(() => {
+          this.loadModelDriftData();
+        }, 0);
       }
     });
   }

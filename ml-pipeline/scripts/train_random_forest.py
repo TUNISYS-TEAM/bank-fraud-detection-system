@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Train a Random Forest model with fixed hyperparameters.
 Shows only original features in UI but automatically includes ALL client behavior features.
@@ -382,7 +381,16 @@ def main():
         logger.info(f"  F1: {f1:.4f}")
         logger.info(f"  AUC-ROC: {auc_roc:.4f}")
 
-        # 18. Create full pipeline (preprocessor + model)
+        # 18. Get feature importance
+        importances = rf_model.feature_importances_
+        feature_importance_map = {}
+        for name, importance in zip(feature_names, importances):
+            feature_importance_map[name] = float(importance)
+        
+        # Sort by importance descending
+        feature_importance_map = dict(sorted(feature_importance_map.items(), key=lambda item: item[1], reverse=True))
+
+        # 19. Create full pipeline (preprocessor + model)
         full_pipeline = Pipeline([
             ('preprocessor', preprocessor),
             ('classifier', rf_model)
@@ -426,6 +434,7 @@ def main():
                 'onnx_path': onnx_path,
                 'model_path': model_path,
                 'selected_original_features': selected_original_features,
+                'feature_importance': feature_importance_map,
                 'hyperparameters_used': rf_params,
                 'metrics': {
                     'accuracy': accuracy,

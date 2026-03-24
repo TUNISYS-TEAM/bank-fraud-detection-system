@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/accounts")
@@ -97,5 +98,20 @@ public class AccountController {
     @GetMapping("/balance/total")
     public ResponseEntity<BigDecimal> getTotalBalance() {
         return ResponseEntity.ok(accountService.getTotalBalance());
+    }
+
+    @GetMapping("/stats/volume-by-type")
+    public ResponseEntity<Map<String, BigDecimal>> getVolumeByAccountType() {
+        return ResponseEntity.ok(accountService.getVolumeByAccountType());
+    }
+
+    @GetMapping("/stats/risk-distribution")
+    public ResponseEntity<Map<String, Long>> getRiskDistribution() {
+        return ResponseEntity.ok(accountService.getRiskDistribution());
+    }
+
+    @GetMapping("/stats/creation-evolution")
+    public ResponseEntity<Map<String, Long>> getCreationEvolution() {
+        return ResponseEntity.ok(accountService.getCreationEvolution());
     }
 }

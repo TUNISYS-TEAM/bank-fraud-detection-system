@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, OnDestroy, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, OnDestroy, computed, effect } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { MessageService } from '../../../../core/services/message.service';
@@ -14,6 +14,9 @@ export interface User {
   firstName: string;
   lastName: string;
   roleId: number;
+  roleName: string;
+  managerId?: number;
+  managerName?: string;
   isActive: boolean;
 }
 
@@ -70,9 +73,23 @@ export class MessagesComponent implements OnInit, OnDestroy {
   users = signal<User[]>([]);
   loadingUsers = signal(false);
 
-  // Mapping sur les managers
-  managers = computed(() => this.users().filter(u => u.roleId === 2));
+  // Managers filtered by the analyst's own manager
+  availableManagers = signal<User[]>([]);
+  analystManager = signal<User | null>(null);
+  
   isManager = computed(() => this.authStore.isManager());
+  isAnalyst = computed(() => this.authStore.isAnalyst());
+  currentUser = computed(() => this.authStore.user());
+  currentUserId = computed(() => this.authStore.userId());
+  currentUserManagerId = computed(() => {
+    const user = this.currentUser();
+    // Try to get managerId from the user object
+    // This depends on how your AuthUser is structured
+    return (user as any)?.managerId || null;
+  });
+  
+  // For manager view: all managers (for dropdown)
+  allManagers = signal<User[]>([]);
 
   private wsSubscription: Subscription;
 
@@ -89,7 +106,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
         }
       }
       if (event?.type === 'UNREAD_COUNT') {
-        // Rediriger vers loadUnreadCount pour recalculer les deux compteurs
         this.loadUnreadCount();
       }
     });
@@ -148,13 +164,11 @@ export class MessagesComponent implements OnInit, OnDestroy {
         this.markValidationAsRead();
       }
     } else {
-      // Clear validation model if switching to other tabs
       this.validationModel.set(null);
     }
   }
 
   private markValidationAsRead(): void {
-    // Collect all unread validation messages and mark them as read
     const unreadUuids = this.validationMessages()
       .filter(m => !m.isRead && (m.receiverEmail === this.authStore.userEmail() || m.receiverId === this.authStore.userId()))
       .map(m => m.messageUuid);
@@ -163,7 +177,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
       unreadUuids.forEach(uuid => {
         this.messageService.markAsRead(uuid).subscribe();
       });
-      // Update local state
       this.validationMessages.update(msgs =>
         msgs.map(m => unreadUuids.includes(m.messageUuid) ? { ...m, isRead: true } : m)
       );
@@ -214,7 +227,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
   }
 
   toggleSidebar(): void {
-    // Désormais ce bouton sert uniquement à FERMER la conversation ouverte
     this.selectedMessage.set(null);
     this.showReplyInput = false;
     this.replyContent.set('');
@@ -223,12 +235,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   // ─── Ribbon actions ───────────────────────────────────────────
   deleteSelected(): void {
     if (this.selectedMessages().size === 0) return;
-    // TODO: appeler l'API de suppression pour chaque UUID sélectionné
-    // Exemple avec un endpoint delete (à implémenter côté backend) :
-    // const uuids = Array.from(this.selectedMessages());
-    // this.messageService.deleteMessages(uuids).subscribe(() => { ... });
     console.log('Supprimer:', Array.from(this.selectedMessages()));
-    // Pour l'instant on retire de la liste locale
     if (this.currentTab() === 'inbox') {
       this.inbox.update(msgs => msgs.filter(m => !this.selectedMessages().has(m.messageUuid)));
     } else {
@@ -243,7 +250,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
     const uuids = Array.from(this.selectedMessages());
 
     if (this.currentTab() === 'archived') {
-      // Restaurer
       this.messageService.restoreMessages(uuids).subscribe({
         next: () => {
           this.archived.update(msgs => msgs.filter(m => !this.selectedMessages().has(m.messageUuid)));
@@ -255,10 +261,8 @@ export class MessagesComponent implements OnInit, OnDestroy {
         error: (err) => console.error('Erreur lors de la restauration:', err)
       });
     } else {
-      // Archiver
       this.messageService.archiveMessages(uuids).subscribe({
         next: () => {
-          // Retirer de la liste courante
           if (this.currentTab() === 'inbox') {
             this.inbox.update(msgs => msgs.filter(m => !this.selectedMessages().has(m.messageUuid)));
           } else if (this.currentTab() === 'sent') {
@@ -276,17 +280,14 @@ export class MessagesComponent implements OnInit, OnDestroy {
   toggleReadSelected(): void {
     if (this.selectedMessages().size === 0) return;
     const uuids = Array.from(this.selectedMessages());
-    // Détermine si on marque comme lu ou non lu selon l'état majoritaire
     const selectedList = this.inbox().filter(m => uuids.includes(m.messageUuid));
     const allRead = selectedList.every(m => m.isRead);
 
     if (allRead) {
-      // TODO: marquer comme non lu via API
       this.inbox.update(msgs => msgs.map(m =>
         uuids.includes(m.messageUuid) ? { ...m, isRead: false } : m
       ));
     } else {
-      // Marquer comme lu
       uuids.forEach(uuid => {
         this.messageService.markAsRead(uuid).subscribe();
       });
@@ -303,7 +304,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.messageService.getInbox(this.inboxPage(), 10).subscribe({
       next: (response) => {
-        // Filter out VALIDATION messages from inbox
         this.inbox.set(response.content.filter((m: Message) => m.messageType !== 'VALIDATION'));
         this.inboxTotalPages.set(response.totalPages);
         this.loading.set(false);
@@ -316,7 +316,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.messageService.getSent(this.sentPage(), 10).subscribe({
       next: (response) => {
-        // Analysts SHOULD see their sent validation requests in the Sent tab
         this.sent.set(response.content);
         this.sentTotalPages.set(response.totalPages);
         this.loading.set(false);
@@ -345,7 +344,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
       this.unreadCount.set(unread);
     });
 
-    // Fetch validation messages and count unread
     this.messageService.getValidationMessages(0, 100).subscribe(response => {
       const validationMsgs: Message[] = response.content;
       const unread = validationMsgs.filter(m => !m.isRead).length;
@@ -363,11 +361,46 @@ export class MessagesComponent implements OnInit, OnDestroy {
   }
 
   loadUsers(): void {
-    if (!this.authStore.isAdmin()) return;
     this.loadingUsers.set(true);
     this.http.get<any>(`${environment.apiUrl}/users?page=0&size=100`).subscribe({
-      next: (response) => { this.users.set(response.content || []); this.loadingUsers.set(false); },
-      error: (err) => { console.error(err); this.loadingUsers.set(false); }
+      next: (response) => {
+        const allUsers = response.content || [];
+        this.users.set(allUsers);
+        
+        // Filter managers (roleId = 2 for MANAGER)
+        const managersList = allUsers.filter((u: User) => u.roleId === 2 && u.isActive);
+        this.allManagers.set(managersList);
+        
+        // For analyst: find their manager using currentUserManagerId
+        if (this.isAnalyst()) {
+          const managerId = this.currentUserManagerId();
+          if (managerId) {
+            const manager = managersList.find((m: User) => m.id === managerId);
+            if (manager) {
+              this.analystManager.set(manager);
+              // Only show the analyst's own manager in the dropdown
+              this.availableManagers.set([manager]);
+            } else {
+              this.availableManagers.set([]);
+            }
+          } else {
+            // Analyst without assigned manager - show all managers (fallback)
+            this.availableManagers.set(managersList);
+          }
+        } else if (this.isManager()) {
+          // For managers: show all managers (including themselves if needed)
+          this.availableManagers.set(managersList);
+        } else {
+          // For admin or other roles: show all managers
+          this.availableManagers.set(managersList);
+        }
+        
+        this.loadingUsers.set(false);
+      },
+      error: (err) => { 
+        console.error(err); 
+        this.loadingUsers.set(false); 
+      }
     });
   }
 
@@ -388,7 +421,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   selectValidation(msg: Message): void {
     this.selectedValidation.set(msg);
     this.selectedModelStatus.set(null); 
-    this.selectedModelComment.set(null); // Reset before fetch
+    this.selectedModelComment.set(null);
 
     const details = this.parseValidationContent(msg.content);
     if (details && details.modelUuid) {
@@ -401,16 +434,13 @@ export class MessagesComponent implements OnInit, OnDestroy {
       });
     }
 
-    // Use email check as userId() may be 0 due to OIDC mapping
     if (!msg.isRead && (msg.receiverEmail === this.authStore.userEmail() || msg.receiverId === this.authStore.userId())) {
-      // Mark as read immediately in local state for better UX
       this.validationMessages.update(msgs =>
         msgs.map(m => m.messageUuid === msg.messageUuid ? { ...m, isRead: true } : m)
       );
       this.validationUnreadCount.update(c => Math.max(0, c - 1));
 
       this.messageService.markAsRead(msg.messageUuid).subscribe(() => {
-        // Refresh counts from server to stay in sync
         this.loadUnreadCount();
       });
     }
@@ -432,6 +462,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
       modelType: model.modelType,
       createdAt: model.createdAt,
       analystName: this.authStore.userName(),
+      analystId: this.currentUserId(),
       requestDate: new Date().toISOString()
     });
 
@@ -447,7 +478,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
         this.loading.set(false);
         this.validationModel.set(null);
         this.switchTab('sent');
-        // Reset compose fields
         this.newMessage.set({ receiverId: null, subject: '', content: '' });
       },
       error: (err) => {
@@ -461,7 +491,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   selectMessage(message: Message): void {
     this.selectedMessage.set(message);
     this.selectedModelStatus.set(null);
-    this.selectedModelComment.set(null); // Reset before fetch
+    this.selectedModelComment.set(null);
     this.showReplyInput = false;
     this.replyContent.set('');
 
@@ -595,7 +625,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
         this.loading.set(false);
         this.selectedValidation.set(null);
         this.loadValidationMessages();
-        // Optional: Notify success
       },
       error: (err) => {
         console.error('Error rejecting model:', err);
@@ -647,7 +676,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
         this.selectedModelStatus.set(status === 'Validated' ? 'Validated' : 'Rejected');
         this.selectedModelComment.set(this.validationComment());
         this.validationComment.set('');
-        // We don't clear selection so user can see the "new" result card
         this.loadValidationMessages();
         this.loadUnreadCount();
       },

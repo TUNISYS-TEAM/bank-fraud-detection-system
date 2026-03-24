@@ -141,7 +141,6 @@ public class ModelTrainingService {
     /**
      * Convert ModelML entity to TrainingJobResponse DTO
      */
-    // In ModelTrainingService.java, update the toTrainingJobResponse method
 
     private TrainingJobResponse toTrainingJobResponse(ModelML model) {
         if (model == null)
@@ -652,6 +651,7 @@ public class ModelTrainingService {
         JsonNode thresholds = root.get("thresholds");
         JsonNode hyperparametersUsed = root.get("hyperparameters_used");
         JsonNode selectedFeatures = root.get("selected_original_features");
+        JsonNode featureImportance = root.get("feature_importance");
 
         Map<String, Object> metricsMap = new HashMap<>();
         if (metrics != null) {
@@ -676,6 +676,12 @@ public class ModelTrainingService {
             for (JsonNode feature : selectedFeatures) {
                 selectedFeaturesList.add(feature.asText());
             }
+        }
+
+        Map<String, Object> featureImportanceMap = new HashMap<>();
+        if (featureImportance != null) {
+            featureImportanceMap = objectMapper.convertValue(featureImportance, new TypeReference<Map<String, Object>>() {
+            });
         }
 
         Double fbetaThreshold = null;
@@ -706,6 +712,7 @@ public class ModelTrainingService {
                 .hyperparameters(hyperparamsMap)
                 .metrics(metricsMap)
                 .confusionMatrix(confusionMap)
+                .featureImportance(featureImportanceMap)
                 .selectedFeatures(selectedFeaturesList)
                 .modelPath(root.has("model_path") ? root.get("model_path").asText() : null)
                 .onnxPath(root.has("onnx_path") ? root.get("onnx_path").asText() : null)

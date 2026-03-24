@@ -29,4 +29,16 @@ export class AccountService {
   getAccountById(id: number): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/${id}`);
   }
+
+  getVolumeByType(): Observable<Record<string, number>> {
+    return this.http.get<Record<string, number>>(`${this.apiUrl}/stats/volume-by-type`);
+  }
+
+  getRiskDistribution(): Observable<Record<string, number>> {
+    return this.http.get<Record<string, number>>(`${this.apiUrl}/stats/risk-distribution`);
+  }
+
+  getCreationEvolution(): Observable<Record<string, number>> {
+    return this.http.get<Record<string, number>>(`${this.apiUrl}/stats/creation-evolution`);
+  }
 }

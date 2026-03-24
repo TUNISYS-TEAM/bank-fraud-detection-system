@@ -27,7 +27,27 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
             """)
     Page<Client> searchClients(@Param("search") String search, @Param("accountCount") Integer accountCount, Pageable pageable);
 
-    List<Client> findByLastNameContainingIgnoreCase(String lastName);
-
     List<Client> findByFirstNameContainingIgnoreCase(String firstName);
+    
+    @Query(value = "SELECT account_count, COUNT(*) FROM (" +
+           "  SELECT c.client_id, COUNT(a.id) as account_count " +
+           "  FROM client c " +
+           "  LEFT JOIN account a ON c.client_id = a.client_id " +
+           "  GROUP BY c.client_id" +
+           ") sub " +
+           "GROUP BY account_count", nativeQuery = true)
+    List<Object[]> getRawAccountCounts();
+
+    @Query("SELECT " +
+           "CASE WHEN (YEAR(CURRENT_DATE) - YEAR(c.dateOfBirth)) < 30 THEN 'Moins de 30 ans' " +
+           "     WHEN (YEAR(CURRENT_DATE) - YEAR(c.dateOfBirth)) <= 45 THEN '30 – 45 ans' " +
+           "     WHEN (YEAR(CURRENT_DATE) - YEAR(c.dateOfBirth)) <= 60 THEN '46 – 60 ans' " +
+           "     ELSE 'Plus de 60 ans' END, " +
+           "COUNT(c) " +
+           "FROM Client c " +
+           "GROUP BY CASE WHEN (YEAR(CURRENT_DATE) - YEAR(c.dateOfBirth)) < 30 THEN 'Moins de 30 ans' " +
+           "              WHEN (YEAR(CURRENT_DATE) - YEAR(c.dateOfBirth)) <= 45 THEN '30 – 45 ans' " +
+           "              WHEN (YEAR(CURRENT_DATE) - YEAR(c.dateOfBirth)) <= 60 THEN '46 – 60 ans' " +
+           "              ELSE 'Plus de 60 ans' END")
+    List<Object[]> getAgeDistribution();
 }

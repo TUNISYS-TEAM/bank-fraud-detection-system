@@ -71,4 +71,12 @@ export class ClientService {
   getTotalCount(): Observable<number> {
     return this.http.get<number>(`${this.apiUrl}/count`);
   }
+
+  getAccountDistribution(): Observable<Record<string, number>> {
+    return this.http.get<Record<string, number>>(`${this.apiUrl}/stats/account-distribution`);
+  }
+
+  getAgeDistribution(): Observable<Record<string, number>> {
+    return this.http.get<Record<string, number>>(`${this.apiUrl}/stats/age-distribution`);
+  }
 }

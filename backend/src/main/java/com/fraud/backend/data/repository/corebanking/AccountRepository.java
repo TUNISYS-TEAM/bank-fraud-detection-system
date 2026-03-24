@@ -43,4 +43,13 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
 
     @Query("SELECT COALESCE(SUM(a.balance), 0) FROM Account a")
     BigDecimal sumAllBalances();
+
+    @Query("SELECT a.accountType, SUM(a.balance) FROM Account a GROUP BY a.accountType")
+    List<Object[]> getVolumeByAccountType();
+
+    @Query("SELECT a.riskLevel, COUNT(a) FROM Account a GROUP BY a.riskLevel")
+    List<Object[]> getRiskDistribution();
+
+    @Query("SELECT CAST(YEAR(a.createdAt) AS string), COUNT(a) FROM Account a GROUP BY YEAR(a.createdAt) ORDER BY YEAR(a.createdAt) ASC")
+    List<Object[]> getCreationEvolution();
 }

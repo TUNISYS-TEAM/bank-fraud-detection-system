@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -62,5 +64,29 @@ public class AccountService {
 
     public BigDecimal getTotalBalance() {
         return accountRepository.sumAllBalances();
+    }
+
+    public Map<String, BigDecimal> getVolumeByAccountType() {
+        return accountRepository.getVolumeByAccountType().stream()
+                .collect(Collectors.toMap(
+                        row -> row[0].toString(),
+                        row -> (BigDecimal) row[1]
+                ));
+    }
+
+    public Map<String, Long> getRiskDistribution() {
+        return accountRepository.getRiskDistribution().stream()
+                .collect(Collectors.toMap(
+                        row -> (String) row[0],
+                        row -> (Long) row[1]
+                ));
+    }
+
+    public Map<String, Long> getCreationEvolution() {
+        return accountRepository.getCreationEvolution().stream()
+                .collect(Collectors.toMap(
+                        row -> (String) row[0],
+                        row -> (Long) row[1]
+                ));
     }
 }

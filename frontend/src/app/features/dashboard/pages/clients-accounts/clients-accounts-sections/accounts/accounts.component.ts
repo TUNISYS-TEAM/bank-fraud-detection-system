@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, AfterViewInit, inject, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, inject, NgZone, signal } from '@angular/core';
 import * as echarts from 'echarts';
 import { AccountService } from '../../../../../../core/services/account.service';
 import { forkJoin, of } from 'rxjs';
@@ -17,6 +17,10 @@ export class AccountsComponent implements OnInit, OnDestroy, AfterViewInit {
   private valueChart: any = null;
   private evolutionChart: any = null;
   private riskChart: any = null;
+
+  // ── Signals ──────────────────────────────────────────────────────────
+  loadingStatusChart = signal(true);
+  loadingDataCharts = signal(true);
 
   ngOnInit(): void {}
 
@@ -42,7 +46,7 @@ export class AccountsComponent implements OnInit, OnDestroy, AfterViewInit {
   private initCharts(): void {
     this.ngZone.runOutsideAngular(() => {
       this.initStatusChart();
-      this.initDataCharts();
+      this.initDataAggregationCharts();
     });
     window.addEventListener('resize', this.onResize);
   }
@@ -58,6 +62,7 @@ export class AccountsComponent implements OnInit, OnDestroy, AfterViewInit {
       active: this.accountService.getActiveCount().pipe(catchError(() => of(0)))
     }).subscribe(({ total, active }) => {
       const inactive = total - active;
+      this.loadingStatusChart.set(false);
       this.statusChart.setOption({
         tooltip: { trigger: 'item', formatter: '{b}: <strong>{c} ({d}%)</strong>' },
         legend: { bottom: '0%', left: 'center', icon: 'circle', textStyle: { color: '#6b7280' } },
@@ -75,8 +80,8 @@ export class AccountsComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
-  // ─── Shared Fetching ────────────────────────────────────────────────────────
-  private initDataCharts(): void {
+  // ─── Shared Aggregation Fetching ───────────────────────────────────────────
+  private initDataAggregationCharts(): void {
     const valueDom = document.getElementById('accountValueChart');
     const evolDom = document.getElementById('accountEvolutionChart');
     const riskDom = document.getElementById('accountRiskChart');
@@ -88,77 +93,56 @@ export class AccountsComponent implements OnInit, OnDestroy, AfterViewInit {
 
     [this.valueChart, this.evolutionChart, this.riskChart].forEach(c => c.showLoading({ text: 'Chargement...', color: '#6366f1' }));
 
-    // Request 1: 400 Summaries for Volume & Risk (Fast)
-    this.accountService.getAccounts(0, 400).subscribe({
-      next: (page) => {
-        const summaries = page.content;
-        this.renderValueChart(summaries);
-        this.renderRiskChart(summaries);
-        this.valueChart.hideLoading();
-        this.riskChart.hideLoading();
-
-        // Request 2: Parallel fetch for Details of 60 accounts to extract years (Real Dated Analysis)
-        const sampleIds = summaries.slice(0, 60).map((s: any) => s.id);
+    forkJoin({
+      volumeDist: this.accountService.getVolumeByType().pipe(catchError(() => of({}))),
+      riskDist: this.accountService.getRiskDistribution().pipe(catchError(() => of({}))),
+      evolDist: this.accountService.getCreationEvolution().pipe(catchError(() => of({})))
+    }).subscribe({
+      next: ({ volumeDist, riskDist, evolDist }) => {
+        this.loadingDataCharts.set(false);
+        this.renderValueChart(volumeDist);
+        this.renderRiskChart(riskDist);
+        this.renderEvolutionChart(evolDist);
         
-        forkJoin(
-          sampleIds.map((id: number) => this.accountService.getAccountById(id).pipe(catchError(() => of(null))))
-        ).subscribe({
-          next: (details) => {
-            const valid = (details as any[]).filter(d => d && d.createdAt);
-            this.renderEvolutionChart(valid);
-            this.evolutionChart.hideLoading();
-          },
-          error: () => this.evolutionChart.hideLoading()
-        });
+        [this.valueChart, this.evolutionChart, this.riskChart].forEach(c => c.hideLoading());
       },
-      error: () => [this.valueChart, this.evolutionChart, this.riskChart].forEach(c => c.hideLoading())
+      error: () => {
+        this.loadingDataCharts.set(false);
+        [this.valueChart, this.evolutionChart, this.riskChart].forEach(c => c.hideLoading());
+      }
     });
   }
 
-  private renderValueChart(accounts: any[]): void {
-    const sums: Record<string, number> = { 'COURANT': 0, 'EPARGNE': 0, 'DEVISE': 0, 'BLOQUE': 0 };
-    accounts.forEach(acc => {
-      const type = (acc.accountType || 'COURANT').toUpperCase();
-      if (sums[type] !== undefined) sums[type] += acc.balance || 0;
-    });
+  private renderValueChart(sums: Record<string, number>): void {
     const labelsMap: Record<string, string> = { 'COURANT': 'Courant', 'EPARGNE': 'Épargne', 'DEVISE': 'Devise', 'BLOQUE': 'Bloquée' };
+    const categories = Object.keys(labelsMap);
+    
     this.valueChart.setOption({
       grid: { left: '3%', right: '8%', bottom: '3%', top: '10%', containLabel: true },
       xAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { type: 'dashed', color: '#f3f4f6' } }, axisLabel: { formatter: (v: number) => (v / 1000).toLocaleString() + 'k TND' } },
-      yAxis: { type: 'category', data: Object.keys(sums).map(k => labelsMap[k]), axisLabel: { fontWeight: '500' } },
+      yAxis: { type: 'category', data: categories.map(k => labelsMap[k]), axisLabel: { fontWeight: '500' } },
       tooltip: { trigger: 'axis', formatter: (p: any) => `<div class="p-1"><span class="text-xs font-bold uppercase">${p[0].name}</span><br/><span class="text-lg font-black text-indigo-600">${Math.round(p[0].value).toLocaleString()} TND</span></div>` },
-      series: [{ name: 'Volume', type: 'bar', data: Object.values(sums), itemStyle: { color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#C7D2FE' }, { offset: 1, color: '#818CF8' }]), borderRadius: [0, 8, 8, 0] }, barWidth: '40%' }]
+      series: [{ name: 'Volume', type: 'bar', data: categories.map(k => sums[k] || 0), itemStyle: { color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#C7D2FE' }, { offset: 1, color: '#818CF8' }]), borderRadius: [0, 8, 8, 0] }, barWidth: '40%' }]
     });
   }
 
-  private renderRiskChart(accounts: any[]): void {
-    const risks: Record<string, number> = { 'LOW': 0, 'MEDIUM': 0, 'HIGH': 0 };
-    accounts.forEach(acc => {
-      const level = (acc.riskLevel || 'LOW').toUpperCase();
-      if (risks[level] !== undefined) risks[level]++;
-    });
+  private renderRiskChart(risks: Record<string, number>): void {
     this.riskChart.setOption({
-      tooltip: { trigger: 'item', formatter: '{b}: <strong>{D}%</strong>' },
+      tooltip: { trigger: 'item', formatter: '{b}: <strong>{d}%</strong>' },
       legend: { bottom: '0%', left: 'center', icon: 'circle' },
       series: [{
         name: 'Risque', type: 'pie', roseType: 'area', radius: ['20%', '70%'], center: ['50%', '45%'],
         itemStyle: { borderRadius: 8, borderColor: '#fff' },
         data: [
-          { value: risks['LOW'], name: 'Risque Faible', itemStyle: { color: '#6EE7B7' } },
-          { value: risks['MEDIUM'], name: 'Risque Moyen', itemStyle: { color: '#FCD34D' } },
-          { value: risks['HIGH'], name: 'Risque Élevé', itemStyle: { color: '#FCA5A5' } }
+          { value: risks['LOW'] || risks['low'] || 0, name: 'Risque Faible', itemStyle: { color: '#6EE7B7' } },
+          { value: risks['MEDIUM'] || risks['medium'] || 0, name: 'Risque Moyen', itemStyle: { color: '#FCD34D' } },
+          { value: risks['HIGH'] || risks['high'] || 0, name: 'Risque Élevé', itemStyle: { color: '#FCA5A5' } }
         ]
       }]
     });
   }
 
-  // ─── Real Dynamic Data Analysis ─────────────────────────────────────────────
-  private renderEvolutionChart(accounts: any[]): void {
-    const yearCount: Record<string, number> = {};
-    accounts.forEach(acc => {
-      const year = new Date(acc.createdAt).getFullYear().toString();
-      yearCount[year] = (yearCount[year] || 0) + 1;
-    });
+  private renderEvolutionChart(yearCount: Record<string, number>): void {
     const sortedYears = Object.keys(yearCount).sort();
     const counts = sortedYears.map(y => yearCount[y]);
 

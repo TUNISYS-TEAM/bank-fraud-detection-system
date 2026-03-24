@@ -12,6 +12,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/clients")
 @RequiredArgsConstructor
@@ -53,5 +55,15 @@ public class ClientController {
     @GetMapping("/count")
     public ResponseEntity<Long> getCount() {
         return ResponseEntity.ok(clientService.searchByName("", null, PageRequest.of(0, 1)).getTotalElements());
+    }
+
+    @GetMapping("/stats/account-distribution")
+    public ResponseEntity<Map<String, Long>> getAccountDistribution() {
+        return ResponseEntity.ok(clientService.getAccountDistribution());
+    }
+
+    @GetMapping("/stats/age-distribution")
+    public ResponseEntity<Map<String, Long>> getAgeDistribution() {
+        return ResponseEntity.ok(clientService.getAgeDistribution());
     }
 }
