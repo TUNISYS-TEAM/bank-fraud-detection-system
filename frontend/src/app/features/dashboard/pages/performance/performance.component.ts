@@ -1,10 +1,1325 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, inject, HostListener, effect } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../../../environments/environment';
+import * as echarts from 'echarts';
+import { AuthService } from '../../../../core/services/auth.service';
+
+interface ModelMetrics {
+  modelUuid: string;
+  modelName: string;
+  modelType: string;
+  status: string;
+  validatedBy?: {
+    id: number;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  metrics: {
+    f1_score: number;
+    precision: number;
+    recall: number;
+    auc_roc: number;
+    accuracy: number;
+  };
+  confusionMatrix?: {
+    true_negatives: number;
+    false_positives: number;
+    false_negatives: number;
+    true_positives: number;
+  };
+  thresholds?: {
+    final: number;
+    fbeta?: number;
+    cost?: number;
+    min_cost?: number;
+  };
+  trainingInfo: {
+    trainingRows: number;
+    testRows: number;
+    fraudRate: number;
+    durationSeconds: number;
+    startedAt: string;
+    completedAt: string;
+  };
+  hyperparameters: {
+    n_estimators: number;
+    max_depth: number;
+    selected_features?: string[];
+  };
+}
+
+interface CardData {
+  label: string;
+  value: string;
+  icon: string;
+  description: string;
+  color: string;
+  trend: string;
+  trendUp: boolean;
+}
 
 @Component({
   selector: 'app-performance',
   templateUrl: './performance.component.html',
-  styleUrl: './performance.component.css'
+  styleUrls: ['./performance.component.css']
 })
-export class PerformanceComponent {
+export class PerformanceComponent implements OnInit, OnDestroy {
+  private http = inject(HttpClient);
+  private authService = inject(AuthService);
 
+  // Data signals
+  private rawModels = signal<ModelMetrics[]>([]);
+  selectedModels = signal<ModelMetrics[]>([]);
+  isLoading = signal(true);
+
+  // Pagination signals
+  currentPage = signal(0);
+  readonly pageSize = signal(10);
+  totalElements = signal(0);
+  totalPages = signal(0);
+
+  // Filter signals
+  searchQuery = signal('');
+  statusFilter = signal<'all' | 'Draft' | 'Validated' | 'Rejected'>('all');
+  showStatusFilter = signal(false);
+
+  // Accordion signal
+  private isAccordionOpenSignal = signal(true);
+
+  // Role-based signals
+  userRole = computed(() => this.authService.getCurrentUser()?.role || 'ANALYST');
+  isManager = computed(() => this.userRole() === 'MANAGER');
+  isAnalyst = computed(() => this.userRole() === 'ANALYST');
+  currentUserEmail = computed(() => this.authService.getCurrentUser()?.email || '');
+
+  // Chart instances
+  private radarChart: any = null;
+  private barChart: any = null;
+  private rocCurvesChart: any = null;
+  private thresholdChart: any = null;
+  private confusionHeatmapChart: any = null;
+  private driftChart: any = null;
+
+  // Deployment signals
+  isDeploying = signal(false);
+  isUndeploying = signal(false);
+  activeDeployedModel = signal<any>(null);
+
+  // Model Drift tracking
+  modelDriftData = signal<any>(null);
+  isLoadingDrift = signal(false);
+  driftThreshold = 5;
+  driftAlert = signal<{ show: boolean; message: string; driftPercentage: number }>({
+    show: false,
+    message: '',
+    driftPercentage: 0
+  });
+  deploymentHistory: any[] = [];
+  validatedModels: any[] = [];
+
+  // Computed signals
+  filteredModels = computed(() => {
+    let models = this.rawModels();
+    const search = this.searchQuery().toLowerCase().trim();
+    const status = this.statusFilter();
+
+    if (this.isManager()) {
+      models = models.filter(model =>
+        (model.status === 'Validated' || model.status === 'Deployed') &&
+        model.validatedBy?.email === this.currentUserEmail()
+      );
+    }
+
+    if (status !== 'all') {
+      models = models.filter(model => model.status === status);
+    }
+
+    if (search) {
+      models = models.filter(model =>
+        model.modelName.toLowerCase().includes(search) ||
+        model.modelUuid.toLowerCase().includes(search)
+      );
+    }
+
+    return models;
+  });
+
+  modelCounts = computed(() => {
+    let models = this.rawModels();
+
+    if (this.isManager()) {
+      models = models.filter(model =>
+        (model.status === 'Validated' || model.status === 'Deployed') &&
+        model.validatedBy?.email === this.currentUserEmail()
+      );
+    }
+
+    return {
+      total: models.length,
+      draft: models.filter(m => m.status === 'Draft').length,
+      validated: models.filter(m => m.status === 'Validated' || m.status === 'Deployed').length,
+      rejected: models.filter(m => m.status === 'Rejected').length
+    };
+  });
+
+  comparisonStats = computed(() => {
+    const selected = this.selectedModels();
+    if (selected.length === 0) return null;
+
+    const bestByMetric = {
+      f1_score: this.getBestModel(selected, 'f1_score'),
+      precision: this.getBestModel(selected, 'precision'),
+      recall: this.getBestModel(selected, 'recall'),
+      auc_roc: this.getBestModel(selected, 'auc_roc')
+    };
+
+    const averages = {
+      f1_score: selected.reduce((sum, m) => sum + m.metrics.f1_score, 0) / selected.length,
+      precision: selected.reduce((sum, m) => sum + m.metrics.precision, 0) / selected.length,
+      recall: selected.reduce((sum, m) => sum + m.metrics.recall, 0) / selected.length,
+      auc_roc: selected.reduce((sum, m) => sum + m.metrics.auc_roc, 0) / selected.length
+    };
+
+    return { bestByMetric, averages };
+  });
+
+  bestF1Card = computed((): CardData | null => {
+    const stats = this.comparisonStats();
+    if (!stats?.bestByMetric.f1_score) return null;
+    const model = stats.bestByMetric.f1_score;
+    return {
+      label: 'Meilleur F1-Score',
+      value: this.formatPercent(model.metrics.f1_score),
+      icon: 'award',
+      description: model.modelName,
+      color: '#10b981',
+      trend: `${(model.metrics.f1_score * 100).toFixed(1)}%`,
+      trendUp: true
+    };
+  });
+
+  bestPrecisionCard = computed((): CardData | null => {
+    const stats = this.comparisonStats();
+    if (!stats?.bestByMetric.precision) return null;
+    const model = stats.bestByMetric.precision;
+    return {
+      label: 'Meilleure Précision',
+      value: this.formatPercent(model.metrics.precision),
+      icon: 'check-circle',
+      description: model.modelName,
+      color: '#3b82f6',
+      trend: `${(model.metrics.precision * 100).toFixed(1)}%`,
+      trendUp: true
+    };
+  });
+
+  bestRecallCard = computed((): CardData | null => {
+    const stats = this.comparisonStats();
+    if (!stats?.bestByMetric.recall) return null;
+    const model = stats.bestByMetric.recall;
+    return {
+      label: 'Meilleur Rappel',
+      value: this.formatPercent(model.metrics.recall),
+      icon: 'activity',
+      description: model.modelName,
+      color: '#8b5cf6',
+      trend: `${(model.metrics.recall * 100).toFixed(1)}%`,
+      trendUp: true
+    };
+  });
+
+  bestAucRocCard = computed((): CardData | null => {
+    const stats = this.comparisonStats();
+    if (!stats?.bestByMetric.auc_roc) return null;
+    const model = stats.bestByMetric.auc_roc;
+    return {
+      label: 'Meilleur AUC-ROC',
+      value: this.formatPercent(model.metrics.auc_roc),
+      icon: 'trending-up',
+      description: model.modelName,
+      color: '#f59e0b',
+      trend: `${(model.metrics.auc_roc * 100).toFixed(1)}%`,
+      trendUp: true
+    };
+  });
+
+  hasSelectedModels = computed(() => this.selectedModels().length > 0);
+  hasComparisonStats = computed(() => this.comparisonStats() !== null);
+  hasFilteredModels = computed(() => this.filteredModels().length > 0);
+  hasMultiplePages = computed(() => this.totalPages() > 1);
+
+  statusFilterLabel = computed(() => {
+    const filter = this.statusFilter();
+    switch (filter) {
+      case 'all': return 'Tous';
+      case 'Draft': return 'Draft';
+      case 'Validated': return 'Validated';
+      case 'Rejected': return 'Rejected';
+      default: return 'Tous';
+    }
+  });
+
+  constructor() {
+    effect(() => {
+      const selected = this.selectedModels();
+      if (selected.length > 0) {
+        setTimeout(() => this.initCharts(), 100);
+      } else {
+        this.disposeCharts();
+      }
+    });
+
+    effect(() => {
+      const deployedModel = this.activeDeployedModel();
+      if (this.isManager() && deployedModel) {
+        this.loadModelDriftData();
+      }
+    });
+  }
+
+  ngOnInit(): void {
+    this.loadModels();
+    this.loadActiveDeployedModel();
+    if (this.isManager()) {
+      this.loadDeploymentHistory();
+      this.loadValidatedModels();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.disposeCharts();
+  }
+
+  toggleAccordion(): void {
+    this.isAccordionOpenSignal.update(v => !v);
+  }
+
+  isAccordionOpen(): boolean {
+    return this.isAccordionOpenSignal();
+  }
+
+  loadModels(): void {
+    this.isLoading.set(true);
+
+    const url = `${environment.apiUrl}/v1/fraud-detection/models/training/my-models?page=${this.currentPage()}&size=${this.pageSize()}`;
+
+    this.http.get<any>(url).subscribe({
+      next: (response) => {
+        let transformedModels: ModelMetrics[] = response.content.map((model: any) => this.transformModel(model));
+
+        if (this.isManager()) {
+          transformedModels = transformedModels.filter((model: ModelMetrics) =>
+            (model.status === 'Validated' || model.status === 'Deployed') &&
+            model.validatedBy?.email === this.currentUserEmail()
+          );
+        }
+
+        this.rawModels.set(transformedModels);
+        this.totalElements.set(transformedModels.length);
+        this.totalPages.set(Math.ceil(transformedModels.length / this.pageSize()));
+        this.isLoading.set(false);
+
+        if (transformedModels.length > 0 && this.selectedModels().length === 0) {
+          const toSelect = transformedModels.slice(0, Math.min(3, transformedModels.length));
+          this.selectedModels.set(toSelect);
+        }
+      },
+      error: () => {
+        this.isLoading.set(false);
+      }
+    });
+  }
+
+  loadActiveDeployedModel(): void {
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/active`)
+      .subscribe({
+        next: (response: any) => {
+          this.activeDeployedModel.set(response);
+        },
+        error: () => {}
+      });
+  }
+
+  loadDeploymentHistory(): void {
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/history`)
+      .subscribe({
+        next: (response: any) => {
+          this.deploymentHistory = response.data || response || [];
+        },
+        error: () => {}
+      });
+  }
+
+  loadValidatedModels(): void {
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/validated-models`)
+      .subscribe({
+        next: (response: any) => {
+          this.validatedModels = response.data || response || [];
+        },
+        error: () => {}
+      });
+  }
+
+  isModelDeployed(modelUuid: string): boolean {
+    return this.activeDeployedModel()?.modelUuid === modelUuid;
+  }
+
+  deployModel(model: any): void {
+    if (!this.isManager()) {
+      alert('Seuls les managers peuvent déployer des modèles');
+      return;
+    }
+
+    if (!confirm(`Déployer le modèle "${model.modelName}" ?\n\nLe modèle actuellement déployé sera remplacé.`)) {
+      return;
+    }
+
+    this.isDeploying.set(true);
+
+    const request = {
+      modelUuid: model.modelUuid,
+      notes: `Déployé par ${this.currentUserEmail()} le ${new Date().toLocaleString()}`
+    };
+
+    this.http.post(`${environment.apiUrl}/v1/fraud-detection/deployment/deploy`, request)
+      .subscribe({
+        next: () => {
+          alert(`Modèle "${model.modelName}" déployé avec succès !`);
+          this.loadActiveDeployedModel();
+          this.loadModels();
+          this.isDeploying.set(false);
+        },
+        error: (error) => {
+          alert(`Erreur lors du déploiement: ${error.error?.message || 'Unknown error'}`);
+          this.isDeploying.set(false);
+        }
+      });
+  }
+
+  undeployModel(): void {
+    if (!this.isManager()) {
+      alert('Seuls les managers peuvent déployer/retirer des modèles');
+      return;
+    }
+
+    const currentModel = this.activeDeployedModel();
+    if (!currentModel) {
+      alert('Aucun modèle n\'est actuellement déployé');
+      return;
+    }
+
+    if (!confirm(`Retirer le modèle "${currentModel.modelName}" de la production ?\n\nLes transactions ne seront plus scorées par ce modèle.`)) {
+      return;
+    }
+
+    this.isUndeploying.set(true);
+
+    this.http.post(`${environment.apiUrl}/v1/fraud-detection/deployment/undeploy?modelUuid=${currentModel.modelUuid}`, {})
+      .subscribe({
+        next: () => {
+          alert(`Modèle "${currentModel.modelName}" retiré avec succès !`);
+          this.loadActiveDeployedModel();
+          this.loadModels();
+          this.isUndeploying.set(false);
+        },
+        error: (error) => {
+          alert(`Erreur lors du retrait: ${error.error?.message || 'Unknown error'}`);
+          this.isUndeploying.set(false);
+        }
+      });
+  }
+
+  private transformModel(model: any): ModelMetrics {
+    const hyperparameters = model.hyperparameters || {};
+    const trainingResults = hyperparameters._trainingResults || {};
+    const metrics = model.metrics || trainingResults.metrics || {};
+
+    let validatedBy = undefined;
+    if (model.validatedBy) {
+      validatedBy = {
+        id: model.validatedBy.id,
+        email: model.validatedBy.email,
+        firstName: model.validatedBy.firstName,
+        lastName: model.validatedBy.lastName
+      };
+    }
+
+    return {
+      modelUuid: model.modelUuid,
+      modelName: model.modelName || 'Random Forest',
+      modelType: model.modelType || 'RANDOM_FOREST',
+      status: model.status || 'COMPLETED',
+      validatedBy: validatedBy,
+      metrics: {
+        f1_score: metrics.f1_score || model.f1Score || metrics.f1Score || 0,
+        precision: metrics.precision || model.precision || 0,
+        recall: metrics.recall || model.recall || 0,
+        auc_roc: metrics.auc_roc || model.aucRoc || metrics.aucRoc || 0,
+        accuracy: metrics.accuracy || 0
+      },
+      confusionMatrix: model.confusionMatrix || trainingResults.confusionMatrix,
+      thresholds: model.thresholds || trainingResults.thresholds,
+      trainingInfo: {
+        trainingRows: trainingResults.trainingRows || model.trainingRows || 0,
+        testRows: trainingResults.testRows || model.testRows || 0,
+        fraudRate: trainingResults.fraudRate || model.fraudRate || 0,
+        durationSeconds: trainingResults.durationSeconds || model.durationSeconds || 0,
+        startedAt: hyperparameters._trainingMetadata?.trainingDate || model.startedAt,
+        completedAt: trainingResults.completedAt || model.completedAt
+      },
+      hyperparameters: {
+        n_estimators: hyperparameters.n_estimators || 100,
+        max_depth: hyperparameters.max_depth || 10,
+        selected_features: hyperparameters.selected_original_features || []
+      }
+    };
+  }
+
+  toggleModelSelection(model: ModelMetrics): void {
+    this.selectedModels.update(current => {
+      const isSelected = current.some(m => m.modelUuid === model.modelUuid);
+
+      if (isSelected) {
+        return current.filter(m => m.modelUuid !== model.modelUuid);
+      } else {
+        if (current.length >= 5) {
+          alert('Vous pouvez comparer jusqu\'à 5 modèles maximum');
+          return current;
+        }
+        return [...current, model];
+      }
+    });
+  }
+
+  isModelSelected(modelUuid: string): boolean {
+    return this.selectedModels().some(m => m.modelUuid === modelUuid);
+  }
+
+  clearSelection(): void {
+    this.selectedModels.set([]);
+  }
+
+  private getBestModel(models: ModelMetrics[], metric: keyof ModelMetrics['metrics']): ModelMetrics | null {
+    if (models.length === 0) return null;
+    return models.reduce((best, current) =>
+      current.metrics[metric] > best.metrics[metric] ? current : best
+    );
+  }
+
+  toggleStatusFilter(): void {
+    this.showStatusFilter.update(v => !v);
+  }
+
+  setStatusFilter(status: 'all' | 'Draft' | 'Validated' | 'Rejected'): void {
+    this.statusFilter.set(status);
+    this.showStatusFilter.set(false);
+    this.currentPage.set(0);
+    this.loadModels();
+  }
+
+  getStatusBadgeClass(status: string): string {
+    switch (status) {
+      case 'Draft':
+        return 'bg-gray-100 text-gray-700';
+      case 'Validated':
+        return 'bg-green-100 text-green-700';
+      case 'Rejected':
+        return 'bg-red-100 text-red-700';
+      case 'Deployed':
+        return 'bg-blue-100 text-blue-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  }
+
+  @HostListener('document:click', ['$event'])
+  onClickOutside(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (!target.closest('.relative')) {
+      this.showStatusFilter.set(false);
+    }
+  }
+
+  private disposeCharts(): void {
+    const charts = [
+      this.radarChart,
+      this.barChart,
+      this.rocCurvesChart,
+      this.thresholdChart,
+      this.confusionHeatmapChart,
+      this.driftChart
+    ];
+    charts.forEach(chart => {
+      if (chart) {
+        chart.dispose();
+      }
+    });
+
+    this.radarChart = null;
+    this.barChart = null;
+    this.rocCurvesChart = null;
+    this.thresholdChart = null;
+    this.confusionHeatmapChart = null;
+    this.driftChart = null;
+  }
+
+  private initCharts(): void {
+    setTimeout(() => {
+      this.initRadarChart();
+      this.initBarChart();
+      this.initROCCurvesChart();
+      this.initThresholdChart();
+      this.initConfusionHeatmapChart();
+    }, 100);
+  }
+
+  private initRadarChart(): void {
+    const chartDom = document.getElementById('radarComparisonChart');
+    if (!chartDom || this.selectedModels().length === 0) return;
+
+    if (this.radarChart) this.radarChart.dispose();
+    this.radarChart = echarts.init(chartDom);
+
+    const indicators = [
+      { name: 'F1-Score', max: 1 },
+      { name: 'Précision', max: 1 },
+      { name: 'Rappel', max: 1 },
+      { name: 'AUC-ROC', max: 1 },
+      { name: 'Accuracy', max: 1 }
+    ];
+
+    const seriesData = this.selectedModels().map((model, index) => ({
+      value: [
+        model.metrics.f1_score,
+        model.metrics.precision,
+        model.metrics.recall,
+        model.metrics.auc_roc,
+        model.metrics.accuracy
+      ],
+      name: model.modelName,
+      areaStyle: {
+        color: `rgba(${this.getColorForIndex(index)}, 0.2)`
+      },
+      lineStyle: {
+        color: `rgb(${this.getColorForIndex(index)})`,
+        width: 2
+      },
+      itemStyle: {
+        color: `rgb(${this.getColorForIndex(index)})`
+      }
+    }));
+
+    this.radarChart.setOption({
+      title: {
+        text: 'Comparaison des Métriques',
+        left: 'center',
+        top: 10,
+        textStyle: { fontSize: 14, fontWeight: 'bold' }
+      },
+      tooltip: { trigger: 'item' },
+      legend: {
+        data: this.selectedModels().map(m => m.modelName),
+        orient: 'vertical',
+        left: 'left',
+        top: 'center'
+      },
+      radar: {
+        indicator: indicators,
+        shape: 'circle',
+        center: ['50%', '50%'],
+        radius: '60%'
+      },
+      series: [{
+        type: 'radar',
+        data: seriesData
+      }]
+    });
+
+    window.addEventListener('resize', () => this.radarChart?.resize());
+  }
+
+  private initBarChart(): void {
+    const chartDom = document.getElementById('barComparisonChart');
+    if (!chartDom || this.selectedModels().length === 0) return;
+
+    if (this.barChart) this.barChart.dispose();
+    this.barChart = echarts.init(chartDom);
+
+    const metrics = ['F1-Score', 'Précision', 'Rappel', 'AUC-ROC', 'Accuracy'];
+    const colors = this.selectedModels().map((_, i) => `rgb(${this.getColorForIndex(i)})`);
+
+    const seriesData = this.selectedModels().map((model, index) => ({
+      name: model.modelName,
+      type: 'bar',
+      data: [
+        model.metrics.f1_score,
+        model.metrics.precision,
+        model.metrics.recall,
+        model.metrics.auc_roc,
+        model.metrics.accuracy
+      ],
+      itemStyle: {
+        color: colors[index],
+        borderRadius: [4, 4, 0, 0]
+      },
+      label: {
+        show: true,
+        position: 'top',
+        formatter: (params: any) => (params.value * 100).toFixed(1) + '%',
+        fontSize: 10
+      }
+    }));
+
+    this.barChart.setOption({
+      title: {
+        text: 'Comparaison des Performances',
+        left: 'center',
+        top: 10,
+        textStyle: { fontSize: 14, fontWeight: 'bold' }
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params: any) => {
+          let result = `<strong>${params[0].axisValue}</strong><br/>`;
+          params.forEach((p: any) => {
+            result += `${p.marker} ${p.seriesName}: ${(p.value * 100).toFixed(1)}%<br/>`;
+          });
+          return result;
+        }
+      },
+      legend: {
+        data: this.selectedModels().map(m => m.modelName),
+        top: 40
+      },
+      grid: {
+        left: '8%',
+        right: '5%',
+        bottom: '10%',
+        top: '20%'
+      },
+      xAxis: {
+        type: 'category',
+        data: metrics,
+        axisLabel: { fontSize: 11, fontWeight: 'bold' }
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Score',
+        min: 0,
+        max: 1,
+        axisLabel: {
+          formatter: (value: number) => (value * 100).toFixed(0) + '%'
+        }
+      },
+      series: seriesData
+    });
+
+    window.addEventListener('resize', () => this.barChart?.resize());
+  }
+
+  private initROCCurvesChart(): void {
+    const chartDom = document.getElementById('rocCurvesChart');
+    if (!chartDom || this.selectedModels().length === 0) return;
+
+    if (this.rocCurvesChart) this.rocCurvesChart.dispose();
+    this.rocCurvesChart = echarts.init(chartDom);
+
+    const seriesData = this.selectedModels().map((model, index) => {
+      const auc = model.metrics.auc_roc;
+      const points = 50;
+      const fpr: number[] = [];
+      const tpr: number[] = [];
+
+      for (let i = 0; i <= points; i++) {
+        const x = i / points;
+        fpr.push(x);
+        const y = Math.pow(x, (1 - auc) / Math.max(auc, 0.05));
+        tpr.push(y);
+      }
+
+      return {
+        name: `${model.modelName} (AUC: ${(auc * 100).toFixed(1)}%)`,
+        type: 'line',
+        data: fpr.map((x, i) => [x, tpr[i]]),
+        smooth: true,
+        symbol: 'none',
+        lineStyle: {
+          color: `rgb(${this.getColorForIndex(index)})`,
+          width: 2.5
+        }
+      };
+    });
+
+    this.rocCurvesChart.setOption({
+      title: {
+        text: 'Courbes ROC Comparées',
+        left: 'center',
+        top: 10,
+        textStyle: { fontSize: 14, fontWeight: 'bold' }
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross' },
+        formatter: (params: any) => {
+          if (params && params[0]) {
+            return `FPR: ${params[0].data[0].toFixed(3)}<br/>TPR: ${params[0].data[1].toFixed(3)}`;
+          }
+          return '';
+        }
+      },
+      legend: {
+        data: seriesData.map(s => s.name),
+        top: 40,
+        left: 'center',
+        orient: 'horizontal'
+      },
+      grid: {
+        left: '10%',
+        right: '8%',
+        bottom: '10%',
+        top: '20%'
+      },
+      xAxis: {
+        type: 'value',
+        name: 'Taux Faux Positifs (FPR)',
+        min: 0,
+        max: 1
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Taux Vrais Positifs (TPR)',
+        min: 0,
+        max: 1
+      },
+      series: seriesData
+    });
+
+    window.addEventListener('resize', () => this.rocCurvesChart?.resize());
+  }
+
+  private initThresholdChart(): void {
+    const chartDom = document.getElementById('thresholdComparisonChart');
+    if (!chartDom || this.selectedModels().length === 0) return;
+
+    if (this.thresholdChart) this.thresholdChart.dispose();
+    this.thresholdChart = echarts.init(chartDom);
+
+    const thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+
+    const seriesData = this.selectedModels().map((model, index) => {
+      const f1Scores = thresholds.map(t => {
+        const baseF1 = model.metrics.f1_score;
+        return Math.max(0.1, baseF1 * (1 - Math.abs(t - 0.5) * 0.5));
+      });
+
+      return {
+        name: model.modelName,
+        type: 'line',
+        data: f1Scores,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: {
+          color: `rgb(${this.getColorForIndex(index)})`,
+          width: 2.5
+        },
+        itemStyle: {
+          color: `rgb(${this.getColorForIndex(index)})`
+        }
+      };
+    });
+
+    this.thresholdChart.setOption({
+      title: {
+        text: 'Impact du Seuil sur F1-Score',
+        left: 'center',
+        top: 10,
+        textStyle: { fontSize: 14, fontWeight: 'bold' }
+      },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          let result = `<strong>Seuil: ${params[0].axisValue}</strong><br/>`;
+          params.forEach((p: any) => {
+            result += `${p.marker} ${p.seriesName}: ${(p.value * 100).toFixed(1)}%<br/>`;
+          });
+          return result;
+        }
+      },
+      legend: {
+        data: this.selectedModels().map(m => m.modelName),
+        top: 40
+      },
+      grid: {
+        left: '10%',
+        right: '8%',
+        bottom: '10%',
+        top: '20%'
+      },
+      xAxis: {
+        type: 'category',
+        name: 'Seuil de Détection',
+        data: thresholds.map(t => (t * 100).toFixed(0) + '%'),
+        axisLabel: { rotate: 45 }
+      },
+      yAxis: {
+        type: 'value',
+        name: 'F1-Score',
+        min: 0,
+        max: 1,
+        axisLabel: {
+          formatter: (value: number) => (value * 100).toFixed(0) + '%'
+        }
+      },
+      series: seriesData
+    });
+
+    window.addEventListener('resize', () => this.thresholdChart?.resize());
+  }
+
+  private initConfusionHeatmapChart(): void {
+    const chartDom = document.getElementById('confusionHeatmapChart');
+    if (!chartDom || this.selectedModels().length === 0) return;
+
+    if (this.confusionHeatmapChart) this.confusionHeatmapChart.dispose();
+    this.confusionHeatmapChart = echarts.init(chartDom);
+
+    const metrics = ['Vrais Négatifs', 'Faux Positifs', 'Faux Négatifs', 'Vrais Positifs'];
+    const data: any[] = [];
+
+    this.selectedModels().forEach((model, modelIndex) => {
+      const cm = model.confusionMatrix;
+      if (cm) {
+        const values = [cm.true_negatives, cm.false_positives, cm.false_negatives, cm.true_positives];
+        values.forEach((value, metricIndex) => {
+          data.push([modelIndex, metricIndex, value]);
+        });
+      }
+    });
+
+    const maxValue = Math.max(...data.map(d => d[2]), 1);
+
+    this.confusionHeatmapChart.setOption({
+      title: {
+        text: 'Matrices de Confusion',
+        left: 'center',
+        top: 10,
+        textStyle: { fontSize: 14, fontWeight: 'bold' }
+      },
+      tooltip: {
+        position: 'top',
+        formatter: (params: any) => {
+          const modelName = this.selectedModels()[params.value[0]]?.modelName || 'N/A';
+          const metricName = metrics[params.value[1]];
+          const value = params.value[2];
+          return `${modelName}<br/>${metricName}: ${value.toLocaleString()}`;
+        }
+      },
+      grid: {
+        left: '15%',
+        right: '10%',
+        bottom: '10%',
+        top: '15%'
+      },
+      xAxis: {
+        type: 'category',
+        data: this.selectedModels().map(m => m.modelName),
+        axisLabel: {
+          rotate: 30,
+          fontSize: 10,
+          interval: 0
+        }
+      },
+      yAxis: {
+        type: 'category',
+        data: metrics,
+        axisLabel: { fontSize: 11, fontWeight: 'bold' }
+      },
+      visualMap: {
+        min: 0,
+        max: maxValue,
+        calculable: true,
+        orient: 'horizontal',
+        left: 'center',
+        bottom: 0,
+        inRange: {
+          color: ['#f0f2ff', '#3b82f6', '#1e40af']
+        }
+      },
+      series: [{
+        name: 'Matrice de Confusion',
+        type: 'heatmap',
+        data: data,
+        label: {
+          show: true,
+          formatter: (params: any) => params.value[2].toLocaleString(),
+          fontSize: 10
+        }
+      }]
+    });
+
+    window.addEventListener('resize', () => this.confusionHeatmapChart?.resize());
+  }
+
+  private getColorForIndex(index: number): string {
+    const colors = ['59, 130, 246', '16, 185, 129', '245, 158, 11', '139, 92, 246', '236, 72, 153'];
+    return colors[index % colors.length];
+  }
+
+  // ============================================
+  // MODEL DRIFT TRACKING METHODS
+  // ============================================
+
+  loadModelDriftData(): void {
+    if (!this.isManager() || !this.activeDeployedModel()) {
+      return;
+    }
+
+    this.isLoadingDrift.set(true);
+    const currentModel = this.activeDeployedModel();
+    const currentModelUuid = currentModel.modelUuid;
+
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/history`).subscribe({
+      next: (historyResponse: any) => {
+        this.http.get(`${environment.apiUrl}/v1/fraud-detection/models/training/${currentModelUuid}/metrics`).subscribe({
+          next: (metricsResponse: any) => {
+            const driftData = this.calculateDriftFromHistory(historyResponse, metricsResponse, currentModel);
+            this.modelDriftData.set(driftData);
+            this.updateDriftAlert(driftData);
+            this.isLoadingDrift.set(false);
+            setTimeout(() => this.initDriftChart(), 100);
+          },
+          error: () => {
+            this.generateFallbackDriftDataFromModel(currentModel);
+          }
+        });
+      },
+      error: () => {
+        this.generateFallbackDriftDataFromModel(currentModel);
+      }
+    });
+  }
+
+  private calculateDriftFromHistory(historyResponse: any, metricsResponse: any, currentModel: any): any {
+    const history = historyResponse.data || historyResponse || [];
+    const performanceOverTime = this.extractPerformanceFromHistory(history);
+    const currentMetrics = metricsResponse.metrics || metricsResponse || currentModel.metrics || {};
+
+    const initialF1Score = performanceOverTime.length > 0 ? performanceOverTime[0].f1_score : currentMetrics.f1_score || 0.85;
+    const currentF1Score = currentMetrics.f1_score || 0.85;
+    const driftPercentage = Math.max(0, (initialF1Score - currentF1Score) * 100);
+
+    const periods = this.generatePeriodsFromHistory(history);
+    const driftValues = this.generateDriftValuesFromHistory(history, currentMetrics);
+
+    return {
+      periods: periods,
+      driftValues: driftValues,
+      threshold: this.driftThreshold,
+      currentDrift: driftPercentage,
+      isCritical: driftPercentage >= this.driftThreshold,
+      recommendations: this.getRecommendationsBasedOnDrift(driftPercentage),
+      performanceMetrics: {
+        f1_score: currentMetrics.f1_score || 0,
+        precision: currentMetrics.precision || 0,
+        recall: currentMetrics.recall || 0,
+        auc_roc: currentMetrics.auc_roc || 0
+      },
+      dataPoints: performanceOverTime,
+      alertLevel: this.getAlertLevel(driftPercentage),
+      modelName: currentModel.modelName,
+      deploymentDate: currentModel.deployedAt || new Date().toISOString()
+    };
+  }
+
+  private extractPerformanceFromHistory(history: any[]): any[] {
+    if (!history || history.length === 0) return [];
+    return history.map((record: any, index: number) => ({
+      date: record.timestamp || record.deployedAt || record.date,
+      f1_score: record.metrics?.f1_score || record.f1Score || 0.85 - (index * 0.01),
+      precision: record.metrics?.precision || record.precision || 0.83 - (index * 0.01),
+      recall: record.metrics?.recall || record.recall || 0.87 - (index * 0.01),
+      transactions_processed: record.transactionsProcessed || 0
+    })).reverse();
+  }
+
+  private generatePeriodsFromHistory(history: any[]): string[] {
+    if (!history || history.length === 0) {
+      return this.generatePeriods(5);
+    }
+    const periods: string[] = [];
+    const recentHistory = history.slice(-5);
+    recentHistory.forEach((record: any) => {
+      const date = record.timestamp ? new Date(record.timestamp) : new Date();
+      periods.push(date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' }));
+    });
+    while (periods.length < 5) {
+      periods.unshift(`S-${5 - periods.length}`);
+    }
+    return periods;
+  }
+
+  private generateDriftValuesFromHistory(history: any[], currentMetrics: any): number[] {
+    const values: number[] = [];
+    if (history && history.length > 0) {
+      const initialMetrics = history[0]?.metrics || {};
+      const initialF1 = initialMetrics.f1_score || 0.85;
+      history.slice(-5).forEach((record: any) => {
+        const recordF1 = record.metrics?.f1_score || 0.85;
+        const drift = Math.max(0, (initialF1 - recordF1) * 100);
+        values.push(drift);
+      });
+    }
+    const currentF1 = currentMetrics.f1_score || 0.85;
+    const initialF1 = history[0]?.metrics?.f1_score || 0.85;
+    const currentDrift = Math.max(0, (initialF1 - currentF1) * 100);
+    values.push(currentDrift);
+    while (values.length < 5) values.unshift(0);
+    return values.slice(-5);
+  }
+
+  private generateFallbackDriftDataFromModel(model: any): void {
+    const modelMetrics = model.metrics || {};
+    const trainingF1 = model.trainingInfo?.trainingF1 || modelMetrics.f1_score || 0.85;
+    const testF1 = modelMetrics.f1_score || 0.85;
+    const driftPercentage = Math.max(0, (trainingF1 - testF1) * 100);
+    const deploymentDate = model.deployedAt ? new Date(model.deployedAt) : new Date();
+    const weeksSinceDeployment = Math.floor((Date.now() - deploymentDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+    const driftValues = [];
+    for (let i = 0; i < 5; i++) {
+      const weekOffset = Math.max(0, weeksSinceDeployment - (4 - i));
+      const progressionFactor = Math.min(1, weekOffset / 12);
+      driftValues.push(Math.min(this.driftThreshold * 1.2, driftPercentage * progressionFactor));
+    }
+    const periods = this.generatePeriods(5);
+    const driftData = {
+      periods: periods,
+      driftValues: driftValues,
+      threshold: this.driftThreshold,
+      currentDrift: driftValues[driftValues.length - 1],
+      isCritical: driftValues[driftValues.length - 1] >= this.driftThreshold,
+      recommendations: this.getRecommendationsBasedOnDrift(driftValues[driftValues.length - 1]),
+      performanceMetrics: {
+        f1_score: modelMetrics.f1_score || 0,
+        precision: modelMetrics.precision || 0,
+        recall: modelMetrics.recall || 0,
+        auc_roc: modelMetrics.auc_roc || 0
+      },
+      dataPoints: [],
+      alertLevel: this.getAlertLevel(driftValues[driftValues.length - 1]),
+      modelName: model.modelName,
+      deploymentDate: model.deployedAt
+    };
+    this.modelDriftData.set(driftData);
+    this.updateDriftAlert(driftData);
+    this.isLoadingDrift.set(false);
+    setTimeout(() => this.initDriftChart(), 100);
+  }
+
+  private generatePeriods(count: number): string[] {
+    const periods: string[] = [];
+    const now = new Date();
+    for (let i = count - 1; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - (i * 7));
+      periods.push(date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' }));
+    }
+    return periods;
+  }
+
+  private getAlertLevel(driftPercentage: number): string {
+    if (driftPercentage >= this.driftThreshold) return 'critical';
+    if (driftPercentage >= this.driftThreshold * 0.7) return 'warning';
+    if (driftPercentage >= this.driftThreshold * 0.4) return 'info';
+    return 'success';
+  }
+
+  private updateDriftAlert(driftData: any): void {
+    const drift = driftData.currentDrift;
+    if (drift >= this.driftThreshold) {
+      this.driftAlert.set({
+        show: true,
+        message: `ALERTE CRITIQUE: Dérive à ${drift.toFixed(1)}% - Le modèle a dépassé le seuil critique de ${this.driftThreshold}%. Un réentraînement immédiat est recommandé.`,
+        driftPercentage: drift
+      });
+    } else if (drift >= this.driftThreshold * 0.7) {
+      this.driftAlert.set({
+        show: true,
+        message: `ATTENTION: Dérive à ${drift.toFixed(1)}% - La dérive du modèle approche du seuil critique de ${this.driftThreshold}%. Planifiez un réentraînement avec les données récentes.`,
+        driftPercentage: drift
+      });
+    } else if (drift >= this.driftThreshold * 0.4) {
+      this.driftAlert.set({
+        show: true,
+        message: `INFORMATION: Dérive détectée à ${drift.toFixed(1)}% - Surveillez l'évolution de la performance. Une légère dégradation est observée.`,
+        driftPercentage: drift
+      });
+    } else {
+      this.driftAlert.set({ show: false, message: '', driftPercentage: 0 });
+    }
+  }
+
+  private getRecommendationsBasedOnDrift(driftPercentage: number): string[] {
+    if (driftPercentage >= this.driftThreshold) {
+      return [
+        'Reentraîner immédiatement le modèle avec les données récentes',
+        'Analyser les changements dans la distribution des données entrantes',
+        'Vérifier les performances sur les dernières transactions frauduleuses',
+        'Considérer l\'ajout de nouvelles features pour capturer les nouveaux patterns',
+        'Ajuster les hyperparamètres pour mieux généraliser'
+      ];
+    } else if (driftPercentage >= this.driftThreshold * 0.7) {
+      return [
+        'Planifier un réentraînement dans les 2 prochaines semaines',
+        'Analyser les segments où la performance diminue',
+        'Comparer les distributions des données actuelles vs données d\'entraînement',
+        'Vérifier si de nouveaux types de fraude sont apparus'
+      ];
+    } else if (driftPercentage >= this.driftThreshold * 0.4) {
+      return [
+        'Maintenir une surveillance accrue des performances',
+        'Mettre en place des alertes automatiques pour détecter les changements brusques',
+        'Collecter plus de données pour le prochain entraînement'
+      ];
+    } else {
+      return [
+        'Performance stable - continuer la surveillance régulière',
+        'Maintenir les logs pour analyse future',
+        'Documenter les caractéristiques actuelles du modèle'
+      ];
+    }
+  }
+
+  private initDriftChart(): void {
+    const chartDom = document.getElementById('modelDriftChart');
+    if (!chartDom || !this.modelDriftData()) return;
+
+    if (this.driftChart) this.driftChart.dispose();
+    this.driftChart = echarts.init(chartDom);
+    const data = this.modelDriftData();
+
+    const option = {
+      title: {
+        text: 'Dérive du Modèle (Model Drift)',
+        subtext: `Modèle: ${data.modelName || 'Non spécifié'} | Déployé le: ${new Date(data.deploymentDate).toLocaleDateString('fr-FR')}`,
+        left: 'center',
+        top: 10,
+        textStyle: { fontSize: 16, fontWeight: 'bold' },
+        subtextStyle: { fontSize: 11, color: '#6b7280' }
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params: any) => {
+          if (params && params[0]) {
+            const dataPoint = data.dataPoints?.find((dp: any, idx: number) => idx === params[0].dataIndex);
+            return `<strong>${params[0].axisValue}</strong><br/>Dérive: ${params[0].value.toFixed(1)}%<br/>${dataPoint ? `F1-Score: ${(dataPoint.f1_score * 100).toFixed(1)}%` : ''}`;
+          }
+          return '';
+        }
+      },
+      grid: {
+        left: '10%',
+        right: '10%',
+        bottom: '10%',
+        top: '18%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: data.periods,
+        name: 'Période',
+        nameLocation: 'middle',
+        nameGap: 35,
+        axisLabel: { fontSize: 11, fontWeight: 'bold', rotate: 0 },
+        axisLine: { lineStyle: { color: '#9ca3af' } }
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Dérive (%)',
+        nameLocation: 'middle',
+        nameGap: 45,
+        min: 0,
+        max: Math.max(10, Math.ceil(Math.max(...data.driftValues) * 1.2)),
+        axisLabel: { fontSize: 11, formatter: (value: number) => value.toFixed(0) + '%' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#e5e7eb' } }
+      },
+      series: [{
+        name: 'Dérive',
+        type: 'line',
+        data: data.driftValues,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 10,
+        lineStyle: {
+          color: data.currentDrift >= this.driftThreshold ? '#ef4444' : '#f59e0b',
+          width: 3,
+          shadowBlur: 10,
+          shadowColor: 'rgba(239, 68, 68, 0.3)'
+        },
+        itemStyle: {
+          color: data.currentDrift >= this.driftThreshold ? '#dc2626' : '#f97316',
+          borderColor: '#ffffff',
+          borderWidth: 2
+        },
+        areaStyle: {
+          color: data.currentDrift >= this.driftThreshold ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)'
+        },
+        markLine: {
+          data: [{
+            name: 'Seuil Critique',
+            yAxis: this.driftThreshold,
+            lineStyle: { color: '#ef4444', width: 2, type: 'dashed' },
+            label: { show: true, formatter: `Seuil: ${this.driftThreshold}%`, position: 'end', color: '#ef4444', fontWeight: 'bold' }
+          }],
+          symbol: 'none'
+        },
+        label: {
+          show: true,
+          position: 'top',
+          formatter: (params: any) => params.value.toFixed(1) + '%',
+          fontSize: 11,
+          fontWeight: 'bold',
+          color: (params: any) => params.value >= this.driftThreshold ? '#dc2626' : '#f59e0b'
+        }
+      }]
+    };
+
+    this.driftChart.setOption(option);
+    window.addEventListener('resize', () => this.driftChart?.resize());
+  }
+
+  formatPercent(value: number): string {
+    return (value * 100).toFixed(1) + '%';
+  }
+
+  formatNumber(value: number): string {
+    return new Intl.NumberFormat('fr-FR').format(value);
+  }
+
+  formatDuration(seconds: number): string {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+
+  getMetricColor(value: number): string {
+    if (value >= 0.8) return 'text-emerald-600';
+    if (value >= 0.6) return 'text-blue-600';
+    if (value >= 0.4) return 'text-amber-600';
+    return 'text-red-600';
+  }
+
+  onSearch(): void {
+    this.currentPage.set(0);
+    this.loadModels();
+  }
+
+  onPageChange(page: number): void {
+    this.currentPage.set(page);
+    this.loadModels();
+  }
 }

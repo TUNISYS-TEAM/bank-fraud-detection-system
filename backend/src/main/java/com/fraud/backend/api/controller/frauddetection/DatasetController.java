@@ -169,14 +169,14 @@ public class DatasetController {
     // ==================== STATISTIQUES ADMIN ====================
 
     @GetMapping("/count")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<Long> count(@RequestParam(required = false) List<DatasetType> types) {
         long count = datasetService.count(types);
         return ResponseEntity.ok(count);
     }
 
     @GetMapping("/total-size")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<BigDecimal> getTotalSize(@RequestParam(required = false) List<DatasetType> types) {
         BigDecimal totalSize = datasetService.getTotalSize(types);
         return ResponseEntity.ok(totalSize);

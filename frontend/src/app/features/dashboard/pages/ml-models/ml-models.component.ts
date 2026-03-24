@@ -127,6 +127,9 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     'Merchant_Postal_Code', 'Device_Id', 'ip_adress'
   ]);
 
+  // Track model versions to generate sequential numbers
+  private modelVersions: Map<string, number> = new Map();
+
   constructor(
     private http: HttpClient,
     private router: Router
@@ -177,6 +180,24 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  // Generate versioned model name
+  private generateVersionedModelName(modelType: string): string {
+    const prefixMap: Record<string, string> = {
+      'RANDOM_FOREST': 'RF',
+      'XGBOOST': 'XGB',
+      'LIGHTGBM': 'LGBM'
+    };
+    
+    const prefix = prefixMap[modelType] || 'MDL';
+    
+    // Get next version number for this prefix
+    let nextVersion = this.modelVersions.get(prefix) || 0;
+    nextVersion++;
+    this.modelVersions.set(prefix, nextVersion);
+    
+    return `${prefix} v${nextVersion}.0`;
   }
 
   loadAllTrainingDatasets(): void {
@@ -474,6 +495,9 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     // Combine: selected original features + ALL client behavior features
     const allFeaturesForTraining = [...selectedOriginalFeatures, ...this.allClientBehaviorFeatures];
 
+    // Generate versioned model name
+    const versionedModelName = this.generateVersionedModelName(config.modelType);
+
     // Build the hyperparameters object
     const hyperparameters: any = {
       n_estimators: config.hyperparameters.n_estimators,
@@ -485,7 +509,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     const request: TrainingJobRequest = {
       datasetUuid: this.selectedDatasetUuid,
-      jobName: `RF_${new Date().toISOString().slice(0, 10)}_${config.hyperparameters.n_estimators}estimators`,
+      jobName: versionedModelName,
       hyperparameters: hyperparameters,
       testSize: config.testSize,
       randomSeed: config.randomSeed,

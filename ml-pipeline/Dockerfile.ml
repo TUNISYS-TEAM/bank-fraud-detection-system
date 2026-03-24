@@ -26,7 +26,7 @@ COPY . .
 # Install package
 RUN pip install --no-cache-dir -e .
 
-# Create runtime directories
+# Create runtime directories (ADDED /app/models and /app/output for inference)
 RUN mkdir -p \
     /app/artifacts/exported_models \
     /app/artifacts/exported_onnx \
@@ -35,7 +35,9 @@ RUN mkdir -p \
     /app/artifacts/logs \
     /app/data/raw \
     /app/data/processed \
-    /app/data/samples
+    /app/data/samples \
+    /app/models \
+    /app/output
 
 # Fix permissions
 RUN chown -R appuser:appuser /app
@@ -49,4 +51,5 @@ ENV PYTHONPATH=/app/src
 # Expose le port de l'API
 EXPOSE 8888
 
-CMD ["python", "scripts/quick_test.py"]
+# Keep container alive and ready for inference commands
+CMD ["tail", "-f", "/dev/null"]

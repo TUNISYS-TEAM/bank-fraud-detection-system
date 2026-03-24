@@ -28,15 +28,17 @@ import {
   ChevronDown,
   Check,
   RotateCcw,
+  Award,
+  XCircle,
+  PieChart,
 } from 'angular-feather/icons';
-import { ModelDetailsModalComponent } from './shared/modals/models-ml/model-details-modal/model-details-modal.component';
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
   ExternalLink, Settings, LogOut, Bell, X, Mail, Lock, Tag, Calendar, Target, Hash, HardDrive, List,
   Eye, EyeOff, Users, Database, FileText, Plus, Download, Search, AlertCircle, HelpCircle, TrendingUp, Play,
   CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader, GitMerge, Zap,
   AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, Layers,
-  CheckSquare, Square, ChevronUp, CreditCard, ChevronDown, Check, RotateCcw
+  CheckSquare, Square, ChevronUp, CreditCard, ChevronDown, Check, RotateCcw, Award, XCircle, PieChart
 };
 
 @NgModule({

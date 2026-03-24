@@ -141,11 +141,13 @@ public class ModelTrainingService {
     /**
      * Convert ModelML entity to TrainingJobResponse DTO
      */
+    // In ModelTrainingService.java, update the toTrainingJobResponse method
+
     private TrainingJobResponse toTrainingJobResponse(ModelML model) {
         if (model == null)
             return null;
 
-        // Extract training results from hyperparameters if available
+        // Extract training results from hyperparameters
         Map<String, Object> metrics = new HashMap<>();
         Map<String, Object> confusionMatrix = new HashMap<>();
         Integer trainingRows = null;
@@ -195,6 +197,16 @@ public class ModelTrainingService {
             }
         }
 
+        // Build validatedBy info
+        Map<String, Object> validatedByInfo = null;
+        if (model.getValidatedBy() != null) {
+            validatedByInfo = Map.of(
+                    "id", model.getValidatedBy().getId(),
+                    "email", model.getValidatedBy().getEmail(),
+                    "firstName", model.getValidatedBy().getFirstName(),
+                    "lastName", model.getValidatedBy().getLastName());
+        }
+
         TrainingJobResponse response = TrainingJobResponse.builder()
                 .modelUuid(model.getModelUuid())
                 .modelName(model.getModelName())
@@ -215,6 +227,7 @@ public class ModelTrainingService {
                 .durationSeconds(model.getUpdatedAt() != null && model.getCreatedAt() != null
                         ? (int) (model.getUpdatedAt().getSecond() - model.getCreatedAt().getSecond())
                         : null)
+                .validatedBy(validatedByInfo)
                 .build();
 
         // Set derived metrics
@@ -913,13 +926,27 @@ public class ModelTrainingService {
     /**
      * Get models created by the current user with pagination
      */
+    /**
+     * Get models for the current user
+     * - For ANALYST: models created by them
+     * - For MANAGER: models validated by them
+     */
     public Page<TrainingJobResponse> getMyModels(Pageable pageable) {
         AppUser currentUser = getCurrentUser();
-        log.info("Fetching models for user: {} (ID: {}) with pagination: {}",
-                currentUser.getEmail(), currentUser.getId(), pageable);
-        return modelMLRepository.findByCreatedByIdOrderByCreatedAtDesc(currentUser.getId(), pageable)
-                .map(this::toTrainingJobResponse);
-    }
+        log.info("Fetching models for user: {} (ID: {}) with role: {}",
+                currentUser.getEmail(), currentUser.getId(),
+                currentUser.getRole() != null ? currentUser.getRole().getName() : "UNKNOWN");
 
-    
+        // If user is manager, show models they validated
+        if (currentUser.getRole() != null && "MANAGER".equals(currentUser.getRole().getName())) {
+            log.info("User is MANAGER, showing models validated by them (ID: {})", currentUser.getId());
+            return modelMLRepository.findByValidatedByIdOrderByCreatedAtDesc(currentUser.getId(), pageable)
+                    .map(this::toTrainingJobResponse);
+        } else {
+            // Analyst: show only their own models
+            log.info("User is ANALYST, showing models created by them (ID: {})", currentUser.getId());
+            return modelMLRepository.findByCreatedByIdOrderByCreatedAtDesc(currentUser.getId(), pageable)
+                    .map(this::toTrainingJobResponse);
+        }
+    }
 }

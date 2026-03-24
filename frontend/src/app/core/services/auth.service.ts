@@ -12,20 +12,8 @@ import {
   RoleResponse
 } from '../models/auth.model';
 
-// Shape returned by login endpoint
-interface LoginResponse {
-  username: string;
-  expires_in?: number;
-}
-
-// Shape returned by refresh endpoint
-interface RefreshResponse {
-  message?: string;
-  expires_in?: number;
-}
-
-// Shape returned by user profile endpoint (from Keycloak)
-interface UserInfoResponse {
+// Shape returned by GET /api/auth/me
+interface MeResponse {
   sub: string;
   email: string;
   email_verified?: boolean;
@@ -38,6 +26,18 @@ interface UserInfoResponse {
   };
 }
 
+// Shape returned by login endpoint
+interface LoginResponse {
+  username: string;
+  expires_in?: number;
+}
+
+// Shape returned by refresh endpoint
+interface RefreshResponse {
+  message?: string;
+  expires_in?: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private currentUser: AuthUser | null = null;
@@ -46,9 +46,7 @@ export class AuthService {
   private refreshInProgress: boolean = false;
   private refreshSubject: Observable<any> | null = null;
   private http = inject(HttpClient);
-  
-  // Cache for user profile
-  private userProfileCache = new BehaviorSubject<AuthUser | null>(null);
+
 
   // ──────────────────────────────────────────────────────────────────────────
   // LOGIN
@@ -69,132 +67,58 @@ export class AuthService {
         }
       }),
       map(response => response.body),
-      switchMap(() => this.loadUserProfile().pipe(delay(500))),
+      switchMap((body) => of(body).pipe(
+        delay(500),
+        switchMap(() => this.loadUserProfile(credentials.email))
+      )),
       map(user => ({ user })),
       catchError(err => this.handleError(err))
     );
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // LOAD USER PROFILE FROM KEYCLOAK
+  // LOAD USER PROFILE
   // ──────────────────────────────────────────────────────────────────────────
-  loadUserProfile(): Observable<AuthUser> {
-    // Return cached user if available
-    if (this.currentUser) {
+  loadUserProfile(email?: string): Observable<AuthUser> {
+    if (this.currentUser && (!email || this.currentUser.email === email)) {
       return of(this.currentUser);
     }
 
-    return this.http.get<UserInfoResponse>(
+    return this.http.get<MeResponse>(
       `${environment.apiUrl}/auth/me`,
       { withCredentials: true }
     ).pipe(
-      tap(me => {
-        console.debug('User profile loaded:', me);
-      }),
-      map(me => this.mapFromKeycloak(me)),
-      tap(user => {
-        this.currentUser = user;
-        this.userProfileCache.next(user);
-        // After loading user, load their permissions based on role
-        this.loadUserPermissions().subscribe();
+      switchMap(me => {
+        const resolvedEmail = email || me.email || me.preferred_username;
+        const roles = me.realm_access?.roles || [];
+        const role = this.extractRoleFromList(roles);
+
+        // Load permissions dynamically from backend via existing endpoint
+        return this.http.get<RoleResponse>(
+          `${environment.apiUrl}/roles/name/${role}`,
+          { withCredentials: true }
+        ).pipe(
+          map(roleResponse => {
+            const user: AuthUser = {
+              id: me.sub,
+              email: resolvedEmail,
+              name: me.name || resolvedEmail,
+              firstName: me.given_name || resolvedEmail.split('@')[0],
+              lastName: me.family_name || '',
+              role: role,
+              permissions: roleResponse.permissions || [],
+              userId: 0,
+              roleId: roleResponse.id
+            };
+
+            this.currentUser = user;
+            return user;
+          })
+        );
       }),
       catchError(err => {
         console.error('Failed to load user profile:', err);
         return throwError(() => err);
-      })
-    );
-  }
-
-  /**
-   * Map Keycloak response to AuthUser
-   */
-  private mapFromKeycloak(me: UserInfoResponse): AuthUser {
-    const roles = me.realm_access?.roles || [];
-    const role = this.extractRoleFromList(roles);
-    const roleId = this.getRoleIdFromRole(role);
-    
-    return {
-      id: me.sub,
-      email: me.email || me.preferred_username,
-      name: me.name || me.preferred_username,
-      firstName: me.given_name || me.preferred_username.split('@')[0],
-      lastName: me.family_name || '',
-      role: role,
-      roleId: roleId,
-      permissions: [],
-      userId: 0
-    };
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // ROLE & PERMISSION METHODS
-  // ──────────────────────────────────────────────────────────────────────────
-  
-  /**
-   * Get role by ID - this should return the role with its permissions
-   */
-  getRoleById(roleId: number): Observable<RoleResponse> {
-    return this.http.get<RoleResponse>(
-      `${environment.apiUrl}/roles/${roleId}`,
-      { withCredentials: true }
-    ).pipe(
-      catchError(err => {
-        console.error(`Error fetching role ${roleId}:`, err);
-        return throwError(() => err);
-      })
-    );
-  }
-
-  /**
-   * Get role by name
-   */
-  getRoleByName(name: string): Observable<RoleResponse> {
-    return this.http.get<RoleResponse>(
-      `${environment.apiUrl}/api/roles/name/${name}`,
-      { withCredentials: true }
-    ).pipe(
-      catchError(err => {
-        console.error(`Error fetching role ${name}:`, err);
-        return throwError(() => err);
-      })
-    );
-  }
-
-  /**
-   * Get permissions for a specific role
-   */
-  getPermissionsByRoleId(roleId: number): Observable<Permission[]> {
-    return this.getRoleById(roleId).pipe(
-      map(role => {
-        console.log(`Role data for ${roleId}:`, role);
-        // The role should already have its permissions
-        return role.permissions || [];
-      }),
-      catchError(err => {
-        console.error(`Error fetching permissions for role ${roleId}:`, err);
-        return of([]);
-      })
-    );
-  }
-
-  /**
-   * Load current user's permissions based on their role
-   */
-  loadUserPermissions(): Observable<Permission[]> {
-    if (!this.currentUser?.roleId) {
-      console.log('No roleId found for user:', this.currentUser);
-      return of([]);
-    }
-    
-    console.log('Loading permissions for roleId:', this.currentUser.roleId);
-    
-    return this.getPermissionsByRoleId(this.currentUser.roleId).pipe(
-      tap(permissions => {
-        console.log('Permissions loaded for user:', permissions);
-        if (this.currentUser) {
-          this.currentUser.permissions = permissions;
-          this.userProfileCache.next(this.currentUser);
-        }
       })
     );
   }
@@ -247,7 +171,7 @@ export class AuthService {
   // CHECK SESSION
   // ──────────────────────────────────────────────────────────────────────────
   checkSession(): Observable<boolean> {
-    return this.http.get<UserInfoResponse>(
+    return this.http.get<MeResponse>(
       `${environment.apiUrl}/auth/me`,
       { withCredentials: true }
     ).pipe(
@@ -290,55 +214,6 @@ export class AuthService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // PERMISSION CHECK METHODS
-  // ──────────────────────────────────────────────────────────────────────────
-  
-  /**
-   * Check if the current user has a specific permission
-   */
-  hasPermission(permissionName: string): boolean {
-    if (!this.currentUser?.permissions) return false;
-    return this.currentUser.permissions.some(p => p.name === permissionName);
-  }
-
-  /**
-   * Check if the current user has any of the given permissions
-   */
-  hasAnyPermission(permissionNames: string[]): boolean {
-    if (!this.currentUser?.permissions) return false;
-    return permissionNames.some(name => 
-      this.currentUser!.permissions.some(p => p.name === name)
-    );
-  }
-
-  /**
-   * Check if the current user has all of the given permissions
-   */
-  hasAllPermissions(permissionNames: string[]): boolean {
-    if (!this.currentUser?.permissions) return false;
-    return permissionNames.every(name => 
-      this.currentUser!.permissions.some(p => p.name === name)
-    );
-  }
-
-  /**
-   * Get all permissions for the current user
-   */
-  getUserPermissions(): Permission[] {
-    return this.currentUser?.permissions || [];
-  }
-
-  /**
-   * Check if user can access a specific route/action
-   */
-  canAccess(action: string): boolean {
-    if (!this.currentUser?.permissions) return false;
-    return this.currentUser.permissions.some(p => 
-      p.action === action || p.name === action
-    );
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
   // STATE ACCESSORS
   // ──────────────────────────────────────────────────────────────────────────
   isLoggedIn(): boolean {
@@ -352,22 +227,6 @@ export class AuthService {
 
   getCurrentUser(): AuthUser | null {
     return this.currentUser;
-  }
-
-  getUserRole(): UserRole | null {
-    return this.currentUser?.role || null;
-  }
-
-  getUserRoleId(): number | null {
-    return this.currentUser?.roleId || null;
-  }
-
-  getUserId(): number | null {
-    return this.currentUser?.userId || null;
-  }
-
-  getUserEmail(): string | null {
-    return this.currentUser?.email || null;
   }
 
   getSessionId(): string | null {
@@ -422,6 +281,8 @@ export class AuthService {
     return 'ANALYST';
   }
 
+
+
   private getRoleIdFromRole(role: UserRole): number {
     switch(role) {
       case 'ADMIN': return 1;
@@ -437,7 +298,6 @@ export class AuthService {
     this.tokenExpiresAt = 0;
     this.refreshInProgress = false;
     this.refreshSubject = null;
-    this.userProfileCache.next(null);
   }
 
   private handleError(error: any): Observable<never> {
@@ -467,12 +327,21 @@ export class AuthService {
       }
     }
 
-    console.error('Auth error:', error);
+    console.error('Auth error:', { status: error.status, message });
     return throwError(() => new Error(message));
   }
 
-  // Legacy method for backward compatibility
+  // Deprecated methods kept for backward compatibility
   getUserByEmail(email: string): Observable<any> {
     return of(null);
+  }
+
+  getPermissionsByRoleId(roleId: number): Observable<Permission[]> {
+    if (!this.currentUser) return of([]);
+    return of(this.currentUser.permissions);
+  }
+
+  getRoleById(roleId: number): Observable<any> {
+    return of({ id: roleId, name: this.currentUser?.role || 'ANALYST' });
   }
 }

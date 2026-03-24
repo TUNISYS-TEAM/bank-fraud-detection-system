@@ -11,47 +11,49 @@ import java.util.UUID;
 @Data
 @Builder
 public class TrainingJobResponse {
-    
+
     private UUID jobUuid; // This is just a tracking ID for this training run
     private String jobName;
     private String status; // COMPLETED, FAILED
-    
+
     private UUID datasetUuid;
     private String datasetName;
-    
+
     private UUID modelUuid;
     private String modelName;
     private String modelType;
-    
+
     private Map<String, Object> hyperparameters;
     private Map<String, Object> metrics;
     private Map<String, Object> featureImportance;
     private Map<String, Object> confusionMatrix;
-    
+
     private Integer trainingRows;
     private Integer testRows;
     private Double fraudRate;
-    
-    private String modelPath;    // Path to saved model joblib in MinIO
+
+    private String modelPath; // Path to saved model joblib in MinIO
     private String pipelinePath; // Path to saved feature pipeline joblib in MinIO
-    private String onnxPath;     // Path to exported ONNX model in MinIO (null if export failed)
-    
+    private String onnxPath; // Path to exported ONNX model in MinIO (null if export failed)
+
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
     private Integer durationSeconds;
-    
+
     private String errorMessage;
-    
+
     // For UI display
     private Double accuracy;
     private Double precision;
     private Double recall;
     private Double f1Score;
     private Double aucRoc;
-    
+
+    private Map<String, Object> validatedBy;
+
     // Selected features used for training
-    private List<String> selectedFeatures;  // Add this field
-    
+    private List<String> selectedFeatures;
+
     public void extractMetrics() {
         if (metrics != null) {
             this.accuracy = getDoubleMetric("accuracy");
@@ -61,10 +63,11 @@ public class TrainingJobResponse {
             this.aucRoc = getDoubleMetric("auc_roc");
         }
     }
-    
+
     private Double getDoubleMetric(String key) {
         Object value = metrics.get(key);
-        if (value == null) return null;
+        if (value == null)
+            return null;
         if (value instanceof Number) {
             return ((Number) value).doubleValue();
         }

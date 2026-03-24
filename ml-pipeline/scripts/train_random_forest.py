@@ -218,6 +218,9 @@ def main():
         with open(args.hyperparameters, 'r') as f:
             hp = json.load(f)
 
+        # Get model name from hyperparameters (sent from frontend)
+        model_name = hp.get('model_name', 'Random Forest')
+
         # 2. Get selected original features and all features for training
         selected_original_features = hp.get('selected_original_features', [])
         all_features = hp.get('all_features', [])
@@ -228,6 +231,7 @@ def main():
         if not all_features:
             raise ValueError("No features available for training")
         
+        logger.info(f"Model name: {model_name}")
         logger.info(f"Selected original features ({len(selected_original_features)}): {selected_original_features}")
         logger.info(f"Total features for training ({len(all_features)}): {all_features}")
 
@@ -418,6 +422,7 @@ def main():
                 'status': 'COMPLETED',
                 'job_id': args.job_id,
                 'dataset_id': args.dataset_id,
+                'model_name': model_name,
                 'onnx_path': onnx_path,
                 'model_path': model_path,
                 'selected_original_features': selected_original_features,

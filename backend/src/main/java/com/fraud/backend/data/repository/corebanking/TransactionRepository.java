@@ -18,61 +18,65 @@ import java.util.UUID;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
-        @Override
-        @EntityGraph(attributePaths = "account")
-        Optional<Transaction> findById(Long id);
+    @Override
+    @EntityGraph(attributePaths = "account")
+    Optional<Transaction> findById(Long id);
 
-        @EntityGraph(attributePaths = "account")
-        Optional<Transaction> findByTransactionUuid(UUID transactionUuid);
+    @EntityGraph(attributePaths = "account")
+    Optional<Transaction> findByTransactionUuid(UUID transactionUuid);
 
-        @EntityGraph(attributePaths = "account")
-        Page<Transaction> findByAccountId(Long accountId, Pageable pageable);
+    @EntityGraph(attributePaths = "account")
+    Page<Transaction> findByAccountId(Long accountId, Pageable pageable);
 
-        @EntityGraph(attributePaths = "account")
-        Page<Transaction> findByIsFraudTrue(Pageable pageable);
+    @EntityGraph(attributePaths = "account")
+    Page<Transaction> findByIsFraudTrue(Pageable pageable);
 
-        @EntityGraph(attributePaths = "account")
-        Page<Transaction> findByFraudScoreGreaterThan(Double threshold, Pageable pageable);
+    @EntityGraph(attributePaths = "account")
+    Page<Transaction> findByFraudScoreGreaterThan(Double threshold, Pageable pageable);
 
-        // Transactions récentes d'un compte (pour le profil client)
-        @EntityGraph(attributePaths = "account")
-        Page<Transaction> findByAccountIdAndTransactionDateAfter(
-                        Long accountId,
-                        LocalDateTime since,
-                        Pageable pageable);
+    // Transactions récentes d'un compte (pour le profil client)
+    @EntityGraph(attributePaths = "account")
+    Page<Transaction> findByAccountIdAndTransactionDateAfter(
+            Long accountId,
+            LocalDateTime since,
+            Pageable pageable);
 
-        // Filtrage combiné (status + channel + date range) — paramètres optionnels
-        @EntityGraph(attributePaths = "account")
-        @Query("""
-                            SELECT t
-                            FROM Transaction t
-                            WHERE (:status IS NULL OR t.status = :status)
-                              AND (:channel IS NULL OR t.channel = :channel)
-                              AND (cast(:start as localdatetime) IS NULL OR t.transactionDate >= :start)
-                              AND (cast(:end as localdatetime) IS NULL OR t.transactionDate <= :end)
-                        """)
-        Page<Transaction> search(
-                        @Param("status") TransactionStatus status,
-                        @Param("channel") TransactionChannel channel,
-                        @Param("start") LocalDateTime start,
-                        @Param("end") LocalDateTime end,
-                        Pageable pageable);
+    // Filtrage combiné (status + channel + date range) — paramètres optionnels
+    @EntityGraph(attributePaths = "account")
+    @Query("""
+                SELECT t
+                FROM Transaction t
+                WHERE (:status IS NULL OR t.status = :status)
+                  AND (:channel IS NULL OR t.channel = :channel)
+                  AND (cast(:start as localdatetime) IS NULL OR t.transactionDate >= :start)
+                  AND (cast(:end as localdatetime) IS NULL OR t.transactionDate <= :end)
+            """)
+    Page<Transaction> search(
+            @Param("status") TransactionStatus status,
+            @Param("channel") TransactionChannel channel,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            Pageable pageable);
 
-        // Recherche des statuts uniques
-        @Query("""
-                            SELECT DISTINCT t.status
-                            FROM Transaction t
-                            WHERE t.status IS NOT NULL
-                            ORDER BY t.status
-                        """)
-        List<TransactionStatus> findDistinctStatuses();
+    // Recherche des statuts uniques
+    @Query("""
+                SELECT DISTINCT t.status
+                FROM Transaction t
+                WHERE t.status IS NOT NULL
+                ORDER BY t.status
+            """)
+    List<TransactionStatus> findDistinctStatuses();
 
-        // Recherche des canaux uniques
-        @Query("""
-                            SELECT DISTINCT t.channel
-                            FROM Transaction t
-                            WHERE t.channel IS NOT NULL
-                            ORDER BY t.channel
-                        """)
-        List<TransactionChannel> findDistinctChannels();
+    // Recherche des canaux uniques
+    @Query("""
+                SELECT DISTINCT t.channel
+                FROM Transaction t
+                WHERE t.channel IS NOT NULL
+                ORDER BY t.channel
+            """)
+    List<TransactionChannel> findDistinctChannels();
+
+    // Get all transactions for an account in chronological order (for backfill)
+    @EntityGraph(attributePaths = "account")
+    List<Transaction> findByAccountIdOrderByTransactionDateAsc(Long accountId);
 }

@@ -73,4 +73,7 @@ public interface ModelMLRepository extends JpaRepository<ModelML, Long> {
      * Find models by creator ID and status with pagination
      */
     Page<ModelML> findByCreatedByIdAndStatusOrderByCreatedAtDesc(Long createdById, String status, Pageable pageable);
+
+    Page<ModelML> findByValidatedByIdOrderByCreatedAtDesc(Long validatedById, Pageable pageable);
+
 }
