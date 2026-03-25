@@ -25,7 +25,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
 
   constructor(private ngZone: NgZone) { }
 
-  ngOnInit(): void {}
+  ngOnInit(): void { }
 
   ngAfterViewInit(): void {
     setTimeout(() => {
@@ -54,7 +54,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
       this.featureImportanceChart,
       this.precisionRecallChart
     ];
-    
+
     charts.forEach(chart => {
       if (chart) {
         chart.dispose();
@@ -99,13 +99,13 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
 
     this.rocCurveChart = echarts.init(chartDom);
 
-    const auc = this.modelResult?.metrics?.auc_roc || 
-                this.modelResult?.metrics?.aucRoc || 0.85;
-    
+    const auc = this.modelResult?.metrics?.auc_roc ||
+      this.modelResult?.metrics?.aucRoc || 0.85;
+
     const points = 30;
     const fpr: number[] = [];
     const tpr: number[] = [];
-    
+
     for (let i = 0; i <= points; i++) {
       const x = i / points;
       fpr.push(x);
@@ -198,7 +198,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     };
 
     this.rocCurveChart.setOption(option);
-    
+
     window.addEventListener('resize', () => {
       if (this.rocCurveChart) {
         this.rocCurveChart.resize();
@@ -278,7 +278,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     };
 
     this.metricsRadarChart.setOption(option);
-    
+
     window.addEventListener('resize', () => {
       if (this.metricsRadarChart) {
         this.metricsRadarChart.resize();
@@ -299,7 +299,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     const selectedFeatures = this.getOriginalFeatures();
     const clientFeatures = this.getClientFeatures().slice(0, 5);
     const features = [...selectedFeatures, ...clientFeatures];
-    
+
     const importanceData = features.map((name: string) => ({
       name: name.length > 20 ? name.substring(0, 18) + '...' : name,
       value: Math.random() * 0.8 + 0.1
@@ -376,7 +376,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     };
 
     this.featureImportanceChart.setOption(option);
-    
+
     window.addEventListener('resize', () => {
       if (this.featureImportanceChart) {
         this.featureImportanceChart.resize();
@@ -401,7 +401,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
 
     const recallPoints: number[] = [];
     const precisionPoints: number[] = [];
-    
+
     for (let i = 0; i <= 20; i++) {
       const r = i / 20;
       recallPoints.push(r);
@@ -503,7 +503,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     };
 
     this.precisionRecallChart.setOption(option);
-    
+
     window.addEventListener('resize', () => {
       if (this.precisionRecallChart) {
         this.precisionRecallChart.resize();
@@ -527,14 +527,14 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     const thresholdValues: string[] = [];
     const precisionValues: number[] = [];
     const recallValues: number[] = [];
-    
+
     for (let t = 0; t <= 20; t++) {
       const threshold = t / 20;
       thresholdValues.push((threshold * 100).toFixed(0) + '%');
-      
+
       const precision = Math.max(0.1, 0.85 - 0.5 * threshold);
       precisionValues.push(Number((precision * 100).toFixed(1)));
-      
+
       const recall = Math.min(0.95, 0.15 + 0.75 * (1 - threshold));
       recallValues.push(Number((recall * 100).toFixed(1)));
     }
@@ -648,7 +648,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     };
 
     this.thresholdChart.setOption(option);
-    
+
     window.addEventListener('resize', () => {
       if (this.thresholdChart) {
         this.thresholdChart.resize();
@@ -678,21 +678,38 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     return 'text-red-600';
   }
 
+  // Helper method to get hyperparameter values from nested structure
+  getHyperparameterValue(key: string): any {
+    if (this.modelResult?.hyperparameters_used?.[key] !== undefined) {
+      return this.modelResult.hyperparameters_used[key];
+    }
+
+    if (key === 'detection_threshold' && this.modelResult?.thresholds) {
+      if (this.modelResult.thresholds.final !== undefined) {
+        return this.modelResult.thresholds.final;
+      }
+      if (this.modelResult.thresholds.detection_threshold !== undefined) {
+        return this.modelResult.thresholds.detection_threshold;
+      }
+    }
+
+    if (key === 'min_samples_split') {
+      return 2;
+    }
+
+    return null;
+  }
+
   getClientFeatures(): string[] {
-    const allFeatures = this.modelResult?.all_features || 
-                        this.modelResult?.hyperparameters?.all_features || 
-                        this.modelResult?.hyperparameters_used?.all_features || 
-                        [];
-    
-    return allFeatures.filter((f: string) => 
+    const allFeatures = this.modelResult?.hyperparameters_used?.all_features;
+
+    return allFeatures.filter((f: string) =>
       f && typeof f === 'string' && f.toLowerCase().startsWith('client_')
     );
   }
 
   getOriginalFeatures(): string[] {
-    return this.modelResult?.selected_original_features || 
-           this.modelResult?.hyperparameters?.selected_original_features || 
-           this.modelResult?.hyperparameters_used?.selected_original_features || 
-           [];
+    return this.modelResult?.selected_original_features;
   }
+
 }

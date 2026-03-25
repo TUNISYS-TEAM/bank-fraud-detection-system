@@ -8,6 +8,7 @@ interface ModelMetrics {
   modelUuid: string;
   modelName: string;
   modelType: string;
+  version: string;
   status: string;
   validatedBy?: {
     id: number;
@@ -81,7 +82,9 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   // Filter signals
   searchQuery = signal('');
-  statusFilter = signal<'all' | 'Draft' | 'Validated' | 'Rejected'>('all');
+  statusFilter = signal<'all' | 'Draft' | 'Validated' | 'Rejected'>(
+    this.authService.getCurrentUser()?.role === 'MANAGER' ? 'Validated' : 'all'
+  );
   showStatusFilter = signal(false);
 
   // Accordion signal
@@ -132,13 +135,15 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     }
 
     if (status !== 'all') {
-      models = models.filter(model => model.status === status);
+      models = models.filter(model => model.status.toLowerCase() === status.toLowerCase());
     }
 
     if (search) {
       models = models.filter(model =>
         model.modelName.toLowerCase().includes(search) ||
-        model.modelUuid.toLowerCase().includes(search)
+        model.modelUuid.toLowerCase().includes(search) ||
+        model.version.toLowerCase().includes(search) ||
+        model.modelType.toLowerCase().includes(search)
       );
     }
 
@@ -163,22 +168,40 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     };
   });
 
-  comparisonStats = computed(() => {
+  // Combined comparison source: selected models that match current filters
+  filteredSelectedModels = computed(() => {
     const selected = this.selectedModels();
-    if (selected.length === 0) return null;
+    const search = this.searchQuery().toLowerCase().trim();
+    const status = this.statusFilter();
+
+    return selected.filter(model => {
+      const matchStatus = status === 'all' || model.status.toLowerCase() === status.toLowerCase();
+      const matchSearch = !search || (
+        model.modelName.toLowerCase().includes(search) ||
+        model.modelUuid.toLowerCase().includes(search) ||
+        model.version.toLowerCase().includes(search) ||
+        model.modelType.toLowerCase().includes(search)
+      );
+      return matchStatus && matchSearch;
+    });
+  });
+
+  comparisonStats = computed(() => {
+    const filteredSelected = this.filteredSelectedModels();
+    if (filteredSelected.length === 0) return null;
 
     const bestByMetric = {
-      f1_score: this.getBestModel(selected, 'f1_score'),
-      precision: this.getBestModel(selected, 'precision'),
-      recall: this.getBestModel(selected, 'recall'),
-      auc_roc: this.getBestModel(selected, 'auc_roc')
+      f1_score: this.getBestModel(filteredSelected, 'f1_score'),
+      precision: this.getBestModel(filteredSelected, 'precision'),
+      recall: this.getBestModel(filteredSelected, 'recall'),
+      auc_roc: this.getBestModel(filteredSelected, 'auc_roc')
     };
 
     const averages = {
-      f1_score: selected.reduce((sum, m) => sum + m.metrics.f1_score, 0) / selected.length,
-      precision: selected.reduce((sum, m) => sum + m.metrics.precision, 0) / selected.length,
-      recall: selected.reduce((sum, m) => sum + m.metrics.recall, 0) / selected.length,
-      auc_roc: selected.reduce((sum, m) => sum + m.metrics.auc_roc, 0) / selected.length
+      f1_score: filteredSelected.reduce((sum, m) => sum + m.metrics.f1_score, 0) / filteredSelected.length,
+      precision: filteredSelected.reduce((sum, m) => sum + m.metrics.precision, 0) / filteredSelected.length,
+      recall: filteredSelected.reduce((sum, m) => sum + m.metrics.recall, 0) / filteredSelected.length,
+      auc_roc: filteredSelected.reduce((sum, m) => sum + m.metrics.auc_roc, 0) / filteredSelected.length
     };
 
     return { bestByMetric, averages };
@@ -263,7 +286,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   constructor() {
     // FIX: Use effect with manual initialization instead of writing to signals
     effect(() => {
-      const selected = this.selectedModels();
+      const selected = this.filteredSelectedModels();
       // Use setTimeout to avoid signal writes during effect execution
       setTimeout(() => {
         if (selected.length > 0) {
@@ -310,7 +333,13 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   loadModels(): void {
     this.isLoading.set(true);
 
-    const url = `${environment.apiUrl}/v1/fraud-detection/models/training/my-models?page=${this.currentPage()}&size=${this.pageSize()}`;
+    let url = `${environment.apiUrl}/v1/fraud-detection/models/training/my-models?page=${this.currentPage()}&size=${this.pageSize()}`;
+
+    const search = this.searchQuery();
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+
+    const status = this.statusFilter();
+    if (status !== 'all') url += `&status=${status}`;
 
     this.http.get<any>(url).subscribe({
       next: (response) => {
@@ -345,7 +374,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         next: (response: any) => {
           this.activeDeployedModel.set(response);
         },
-        error: () => {}
+        error: () => { }
       });
   }
 
@@ -355,7 +384,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         next: (response: any) => {
           this.deploymentHistory = response.data || response || [];
         },
-        error: () => {}
+        error: () => { }
       });
   }
 
@@ -365,7 +394,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         next: (response: any) => {
           this.validatedModels = response.data || response || [];
         },
-        error: () => {}
+        error: () => { }
       });
   }
 
@@ -457,6 +486,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       modelUuid: model.modelUuid,
       modelName: model.modelName || 'Random Forest',
       modelType: model.modelType || 'RANDOM_FOREST',
+      version: model.version || '1.0',
       status: model.status || 'COMPLETED',
       validatedBy: validatedBy,
       metrics: {
@@ -519,6 +549,12 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     this.showStatusFilter.update(v => !v);
   }
 
+  onSearchChange(value: string) {
+    this.searchQuery.set(value);
+    this.currentPage.set(0);
+    this.loadModels();
+  }
+
   setStatusFilter(status: 'all' | 'Draft' | 'Validated' | 'Rejected'): void {
     this.statusFilter.set(status);
     this.showStatusFilter.set(false);
@@ -527,14 +563,16 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   }
 
   getStatusBadgeClass(status: string): string {
-    switch (status) {
-      case 'Draft':
+    if (!status) return 'bg-gray-100 text-gray-700';
+    const s = status.toLowerCase();
+    switch (s) {
+      case 'draft':
         return 'bg-gray-100 text-gray-700';
-      case 'Validated':
+      case 'validated':
         return 'bg-green-100 text-green-700';
-      case 'Rejected':
+      case 'rejected':
         return 'bg-red-100 text-red-700';
-      case 'Deployed':
+      case 'deployed':
         return 'bg-blue-100 text-blue-700';
       default:
         return 'bg-gray-100 text-gray-700';
@@ -584,7 +622,8 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   private initRadarChart(): void {
     const chartDom = document.getElementById('radarComparisonChart');
-    if (!chartDom || this.selectedModels().length === 0) return;
+    const selected = this.filteredSelectedModels();
+    if (!chartDom || selected.length === 0) return;
 
     if (this.radarChart) this.radarChart.dispose();
     this.radarChart = echarts.init(chartDom);
@@ -597,7 +636,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       { name: 'Accuracy', max: 1 }
     ];
 
-    const seriesData = this.selectedModels().map((model, index) => ({
+    const seriesData = selected.map((model, index) => ({
       value: [
         model.metrics.f1_score,
         model.metrics.precision,
@@ -627,7 +666,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       },
       tooltip: { trigger: 'item' },
       legend: {
-        data: this.selectedModels().map(m => m.modelName),
+        data: selected.map(m => m.modelName),
         orient: 'vertical',
         left: 'left',
         top: 'center'
@@ -649,15 +688,16 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   private initBarChart(): void {
     const chartDom = document.getElementById('barComparisonChart');
-    if (!chartDom || this.selectedModels().length === 0) return;
+    const selected = this.filteredSelectedModels();
+    if (!chartDom || selected.length === 0) return;
 
     if (this.barChart) this.barChart.dispose();
     this.barChart = echarts.init(chartDom);
 
     const metrics = ['F1-Score', 'Précision', 'Rappel', 'AUC-ROC', 'Accuracy'];
-    const colors = this.selectedModels().map((_, i) => `rgb(${this.getColorForIndex(i)})`);
+    const colors = selected.map((_, i) => `rgb(${this.getColorForIndex(i)})`);
 
-    const seriesData = this.selectedModels().map((model, index) => ({
+    const seriesData = selected.map((model, index) => ({
       name: model.modelName,
       type: 'bar',
       data: [
@@ -729,12 +769,13 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   private initROCCurvesChart(): void {
     const chartDom = document.getElementById('rocCurvesChart');
-    if (!chartDom || this.selectedModels().length === 0) return;
+    const selected = this.filteredSelectedModels();
+    if (!chartDom || selected.length === 0) return;
 
     if (this.rocCurvesChart) this.rocCurvesChart.dispose();
     this.rocCurvesChart = echarts.init(chartDom);
 
-    const seriesData = this.selectedModels().map((model, index) => {
+    const seriesData = selected.map((model, index) => {
       const auc = model.metrics.auc_roc;
       const points = 50;
       const fpr: number[] = [];
@@ -809,14 +850,15 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   private initThresholdChart(): void {
     const chartDom = document.getElementById('thresholdComparisonChart');
-    if (!chartDom || this.selectedModels().length === 0) return;
+    const selected = this.filteredSelectedModels();
+    if (!chartDom || selected.length === 0) return;
 
     if (this.thresholdChart) this.thresholdChart.dispose();
     this.thresholdChart = echarts.init(chartDom);
 
     const thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
 
-    const seriesData = this.selectedModels().map((model, index) => {
+    const seriesData = selected.map((model, index) => {
       const f1Scores = thresholds.map(t => {
         const baseF1 = model.metrics.f1_score;
         return Math.max(0.1, baseF1 * (1 - Math.abs(t - 0.5) * 0.5));
@@ -857,7 +899,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         }
       },
       legend: {
-        data: this.selectedModels().map(m => m.modelName),
+        data: selected.map(m => m.modelName),
         top: 40
       },
       grid: {
@@ -889,7 +931,8 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   private initConfusionHeatmapChart(): void {
     const chartDom = document.getElementById('confusionHeatmapChart');
-    if (!chartDom || this.selectedModels().length === 0) return;
+    const selected = this.filteredSelectedModels();
+    if (!chartDom || selected.length === 0) return;
 
     if (this.confusionHeatmapChart) this.confusionHeatmapChart.dispose();
     this.confusionHeatmapChart = echarts.init(chartDom);
@@ -897,73 +940,93 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const metrics = ['Vrais Négatifs', 'Faux Positifs', 'Faux Négatifs', 'Vrais Positifs'];
     const data: any[] = [];
 
-    this.selectedModels().forEach((model, modelIndex) => {
-      const cm = model.confusionMatrix;
+    selected.forEach((m, modelIndex) => {
+      const cm = m.confusionMatrix;
       if (cm) {
+        const total = cm.true_negatives + cm.false_positives + cm.false_negatives + cm.true_positives;
         const values = [cm.true_negatives, cm.false_positives, cm.false_negatives, cm.true_positives];
-        values.forEach((value, metricIndex) => {
-          data.push([modelIndex, metricIndex, value]);
+        values.forEach((v, metricIndex) => {
+          const percent = total > 0 ? (v / total * 100) : 0;
+          data.push([modelIndex, metricIndex, percent, v]); // Store percent for heatmap, v for label
         });
       }
     });
 
-    const maxValue = Math.max(...data.map(d => d[2]), 1);
+    if (data.length === 0) return;
 
     this.confusionHeatmapChart.setOption({
-      title: {
-        text: 'Matrices de Confusion',
-        left: 'center',
-        top: 10,
-        textStyle: { fontSize: 14, fontWeight: 'bold' }
-      },
       tooltip: {
         position: 'top',
         formatter: (params: any) => {
-          const modelName = this.selectedModels()[params.value[0]]?.modelName || 'N/A';
-          const metricName = metrics[params.value[1]];
-          const value = params.value[2];
-          return `${modelName}<br/>${metricName}: ${value.toLocaleString()}`;
+          const val = params.data[3];
+          const pct = params.data[2].toFixed(2);
+          return `<div class="p-2 font-sans">
+            <div class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">${selected[params.data[0]].modelName}</div>
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-xs font-medium text-slate-600">${metrics[params.data[1]]}</span>
+              <span class="text-sm font-black text-slate-900">${val.toLocaleString()}</span>
+            </div>
+            <div class="text-[10px] text-blue-500 font-bold mt-1">${pct}% du total test</div>
+          </div>`;
         }
       },
       grid: {
-        left: '15%',
-        right: '10%',
-        bottom: '10%',
-        top: '15%'
+        top: 20,
+        bottom: 115,
+        left: 120,
+        right: 40
       },
       xAxis: {
         type: 'category',
-        data: this.selectedModels().map(m => m.modelName),
-        axisLabel: {
-          rotate: 30,
-          fontSize: 10,
-          interval: 0
-        }
+        data: selected.map(m => m.modelName),
+        splitArea: { show: true },
+        axisLabel: { rotate: 25, fontSize: 10, fontWeight: 'bold' }
       },
       yAxis: {
         type: 'category',
         data: metrics,
-        axisLabel: { fontSize: 11, fontWeight: 'bold' }
+        splitArea: { show: true },
+        axisLabel: { fontWeight: 'bold', fontSize: 11 }
       },
       visualMap: {
         min: 0,
-        max: maxValue,
+        max: 100,
         calculable: true,
         orient: 'horizontal',
         left: 'center',
-        bottom: 0,
+        bottom: -20,
+        dimension: 2,
+        formatter: (value: number) => value.toFixed(0) + '%',
         inRange: {
-          color: ['#f0f2ff', '#3b82f6', '#1e40af']
+          color: ['#f8fafc', '#dbeafe', '#3b82f6', '#1d4ed8']
+        },
+        outOfRange: {
+          opacity: 0
         }
       },
       series: [{
-        name: 'Matrice de Confusion',
+        name: 'Confusion Matrix',
         type: 'heatmap',
         data: data,
         label: {
           show: true,
-          formatter: (params: any) => params.value[2].toLocaleString(),
-          fontSize: 10
+          formatter: (params: any) => {
+            const rawVal = params.data[3];
+            const pct = params.data[2];
+            return rawVal > 1000 ? (rawVal / 1000).toFixed(1) + 'k' : rawVal;
+          },
+          fontSize: 12,
+          fontWeight: 'black'
+        },
+        itemStyle: {
+          borderWidth: 2,
+          borderColor: '#ffffff'
+        },
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowColor: 'rgba(0, 0, 0, 0.2)'
+          }
         }
       }]
     });
@@ -971,8 +1034,19 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     window.addEventListener('resize', () => this.confusionHeatmapChart?.resize());
   }
 
-  private getColorForIndex(index: number): string {
-    const colors = ['59, 130, 246', '16, 185, 129', '245, 158, 11', '139, 92, 246', '236, 72, 153'];
+  public getColorForIndex(index: number): string {
+    const colors = [
+      '59, 130, 246',   // Blue 500
+      '16, 185, 129',   // Emerald 500
+      '139, 92, 246',   // Violet 500
+      '245, 158, 11',   // Amber 500
+      '239, 68, 68',    // Red 500
+      '236, 72, 153',   // Pink 500
+      '14, 165, 233',   // Sky 500
+      '168, 85, 247',   // Purple 500
+      '249, 115, 22',   // Orange 500
+      '20, 184, 166'    // Teal 500
+    ];
     return colors[index % colors.length];
   }
 
