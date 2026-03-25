@@ -3,7 +3,6 @@ package com.fraud.backend.data.repository.frauddetection;
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
