@@ -38,9 +38,17 @@ public class FraudAlertMapper {
             // Use correct field names from Transaction entity
             builder.transactionAmount(alert.getTransaction().getAmount() != null ? 
                 alert.getTransaction().getAmount().doubleValue() : null);
+            builder.transactionCurrency(alert.getTransaction().getCurrency());
             builder.transactionChannel(alert.getTransaction().getChannel() != null ? 
                 alert.getTransaction().getChannel().toString() : null);
             builder.transactionCategory(alert.getTransaction().getMerchantCategory());
+            
+            if (alert.getTransaction().getAccount() != null) {
+                builder.accountNumber(alert.getTransaction().getAccount().getAccountNumber());
+                if (alert.getTransaction().getAccount().getClient() != null) {
+                    builder.clientName(alert.getTransaction().getAccount().getClient().getFullName());
+                }
+            }
         }
         
         if (alert.getUser() != null) {

@@ -35,6 +35,9 @@ public class FraudAlertResponse {
     
     // Transaction details for summary views
     private Double transactionAmount;
+    private String transactionCurrency;
     private String transactionChannel;
     private String transactionCategory;
+    private String clientName;
+    private String accountNumber;
 }

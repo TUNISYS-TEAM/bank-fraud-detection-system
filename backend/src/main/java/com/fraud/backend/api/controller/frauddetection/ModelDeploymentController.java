@@ -2,10 +2,10 @@ package com.fraud.backend.api.controller.frauddetection;
 
 import com.fraud.backend.api.dto.frauddetection.model.request.DeployModelRequest;
 import com.fraud.backend.api.dto.frauddetection.model.response.DeploymentResponse;
+import com.fraud.backend.api.dto.frauddetection.model.response.ModelSummaryResponse;
 import com.fraud.backend.api.dto.frauddetection.model.response.ScoringJobStatusResponse;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
-import com.fraud.backend.data.entity.frauddetection.ModelML;
 import com.fraud.backend.data.service.frauddetection.ModelDeploymentService;
 import com.fraud.backend.data.service.frauddetection.ScoringJobStatus;
 import lombok.RequiredArgsConstructor;
@@ -42,10 +42,10 @@ public class ModelDeploymentController {
     }
 
     /**
-     * Get all validated models (available for deployment)
+     * Get all validated models (available for deployment) - Returns DTOs
      */
     @GetMapping("/validated-models")
-    public ResponseEntity<List<ModelML>> getValidatedModels() {
+    public ResponseEntity<List<ModelSummaryResponse>> getValidatedModels() {
         log.info("Getting validated models available for deployment");
         return ResponseEntity.ok(deploymentService.getValidatedModels());
     }
@@ -60,14 +60,25 @@ public class ModelDeploymentController {
     }
 
     /**
-     * Get currently deployed model
+     * Get currently deployed model summary
+     */
+    @GetMapping("/active/summary")
+    public ResponseEntity<ModelSummaryResponse> getActiveDeploymentSummary() {
+        log.info("Getting active deployment summary");
+        return deploymentService.getDeployedModelSummary()
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Get currently deployed model with full details
      */
     @GetMapping("/active")
     public ResponseEntity<DeploymentResponse> getActiveDeployment() {
         log.info("Getting active deployment");
         return deploymentService.getDeployedModelResponse()
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElse(ResponseEntity.ok().body(null)); 
     }
 
     /**

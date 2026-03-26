@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../environments/environment';
 import { AuthStore } from '../../../../core/store/auth.store';
@@ -69,6 +70,7 @@ export interface ColumnInfo {
 })
 export class ImportDataComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
+  private route = inject(ActivatedRoute);
   authStore = inject(AuthStore);
 
   // États pour la liste des datasets
@@ -120,7 +122,8 @@ export class ImportDataComponent implements OnInit, OnDestroy {
       label: 'Lignes Importées',
       value: 'Chargement...',
       icon: 'database',
-      trend: 'Vérification...',
+      trend: 'Vérifiées',
+      trendIcon: 'check',
       trendUp: true,
       color: '#4f46e5'
     },
@@ -129,7 +132,8 @@ export class ImportDataComponent implements OnInit, OnDestroy {
       value: 'Chargement...',
       icon: 'alert-circle',
       trend: 'Anomalies détectées',
-      trendUp: false,
+      trendIcon: 'check',
+      trendUp: true,
       color: '#ef4444'
     },
     {
@@ -137,7 +141,8 @@ export class ImportDataComponent implements OnInit, OnDestroy {
       value: 'Chargement...',
       icon: 'copy',
       trend: 'À nettoyer',
-      trendUp: false,
+      trendIcon: 'check',
+      trendUp: true,
       color: '#f59e0b'
     },
     {
@@ -145,6 +150,7 @@ export class ImportDataComponent implements OnInit, OnDestroy {
       value: 'Chargement...',
       icon: 'help-circle',
       trend: 'Total',
+      trendIcon: 'check',
       trendUp: true,
       color: '#10b981'
     }
@@ -194,6 +200,15 @@ export class ImportDataComponent implements OnInit, OnDestroy {
         this.totalElements.set(response.totalElements);
         this.totalPages.set(response.totalPages);
         this.loading.set(false);
+
+        // Auto-select dataset if coming from query param
+        const targetUuid = this.route.snapshot.queryParamMap.get('datasetUuid');
+        if (targetUuid && !this.selectedDataset()) {
+          const targetDataset = response.content.find(d => d.datasetUuid === targetUuid);
+          if (targetDataset) {
+            this.selectDataset(targetDataset);
+          }
+        }
       },
       error: (error) => {
         console.error('Error loading training datasets:', error);
@@ -313,28 +328,37 @@ export class ImportDataComponent implements OnInit, OnDestroy {
       }
 
       if (stats.fraudRate !== undefined) {
+        const isNormal = stats.fraudRate <= 2;
         newCards[1] = {
           ...newCards[1],
           value: `${stats.fraudRate.toFixed(2)}%`,
-          trend: stats.fraudRate > 2 ? 'Élevé' : 'Normal'
+          trend: isNormal ? 'Normal' : 'Élevé',
+          trendIcon: isNormal ? 'check' : 'alert-circle',
+          trendUp: isNormal
         };
       }
 
       if (stats.duplicateCount !== undefined) {
+        const isClean = stats.duplicateCount === 0;
         newCards[2] = {
           ...newCards[2],
           value: this.formatNumber(stats.duplicateCount),
           trend: stats.duplicateRate !== undefined
             ? `${stats.duplicateRate.toFixed(1)}% des lignes`
-            : 'À nettoyer'
+            : (isClean ? 'Aucun doublon' : 'À nettoyer'),
+          trendIcon: isClean ? 'check' : 'copy',
+          trendUp: isClean
         };
       }
 
       if (stats.totalMissingValues !== undefined) {
+        const isComplete = stats.totalMissingValues === 0;
         newCards[3] = {
           ...newCards[3],
           value: this.formatNumber(stats.totalMissingValues),
-          trend: stats.totalMissingValues === 0 ? 'Aucune' : 'À traiter'
+          trend: isComplete ? 'Aucune' : 'À traiter',
+          trendIcon: isComplete ? 'check' : 'help-circle',
+          trendUp: isComplete
         };
       }
 
@@ -472,7 +496,10 @@ export class ImportDataComponent implements OnInit, OnDestroy {
       {
         label: 'Lignes Importées',
         value: 'Chargement...',
-        icon: 'database',
+        icon: 'check-circle',
+        trend: 'Vérifiées',
+        trendIcon: 'check',
+        trendUp: true,
         color: '#4f46e5'
       },
       {
@@ -480,7 +507,8 @@ export class ImportDataComponent implements OnInit, OnDestroy {
         value: 'Chargement...',
         icon: 'alert-circle',
         trend: 'Anomalies détectées',
-        trendUp: false,
+        trendIcon: 'check',
+        trendUp: true,
         color: '#ef4444'
       },
       {
@@ -488,7 +516,8 @@ export class ImportDataComponent implements OnInit, OnDestroy {
         value: 'Chargement...',
         icon: 'copy',
         trend: 'À nettoyer',
-        trendUp: false,
+        trendIcon: 'check',
+        trendUp: true,
         color: '#f59e0b'
       },
       {
@@ -496,6 +525,7 @@ export class ImportDataComponent implements OnInit, OnDestroy {
         value: 'Chargement...',
         icon: 'help-circle',
         trend: 'Total',
+        trendIcon: 'check',
         trendUp: true,
         color: '#10b981'
       }
@@ -579,5 +609,4 @@ export class ImportDataComponent implements OnInit, OnDestroy {
     if (ratio < 0.05) return 'text-amber-600';
     return 'text-red-600';
   }
-  
 }

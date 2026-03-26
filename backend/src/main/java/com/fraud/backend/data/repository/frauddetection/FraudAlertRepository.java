@@ -3,6 +3,7 @@ package com.fraud.backend.data.repository.frauddetection;
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -73,5 +74,5 @@ public interface FraudAlertRepository extends JpaRepository<FraudAlert, Long>, J
            "SUM(CASE WHEN f.status = 'RESOLVED' THEN 1 ELSE 0 END), " +
            "SUM(CASE WHEN f.status = 'FALSE_POSITIVE' THEN 1 ELSE 0 END) " +
            "FROM FraudAlert f")
-    Object[] getAlertStats();
+    List<Object[]> getAlertStats();
 }

@@ -1,12 +1,18 @@
-// overview.component.ts
-import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
+import { Component, inject, computed, signal, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import * as echarts from 'echarts';
 import { forkJoin, of, Subscription, interval } from 'rxjs';
 import { catchError, timeout, switchMap } from 'rxjs/operators';
+
 import { environment } from '../../../../../environments/environment';
 import { AuthStore } from '../../../../core/store/auth.store';
-import { SystemMetricsService, SystemMetrics, MetricsHistory } from '../../../../core/services/system-metrics.service';
-import * as echarts from 'echarts';
+import { OverviewService, OverviewStats } from '../../../../core/services/overview.service';
+import { FraudAlertService } from '../../../../core/services/fraud-alert.service';
+import { AuthService } from '../../../../core/services/auth.service';
+import { FraudAlertResponse } from '../../../../core/models/fraud-alert.model';
+import { UserRole } from '../../../../core/models/auth.model';
+import { KpiCard } from '../../../../shared/cards/cards.component';
+import { SystemMetricsService, SystemMetrics } from '../../../../core/services/system-metrics.service';
 
 interface AlertStats {
   total: number;
@@ -32,28 +38,194 @@ interface TimeSeriesPoint {
 @Component({
   selector: 'app-overview',
   templateUrl: './overview.component.html',
-  styleUrls: ['./overview.component.css']
+  styleUrl: './overview.component.css',
 })
 export class OverviewComponent implements OnInit, OnDestroy {
+  readonly authStore = inject(AuthStore);
+
+  private overviewService = inject(OverviewService);
+  private alertService = inject(FraudAlertService);
+  private authService = inject(AuthService);
   private http = inject(HttpClient);
   private systemMetricsService = inject(SystemMetricsService);
-  authStore = inject(AuthStore);
-  
-  // Signals for reactive state
+
+  userRole = signal<UserRole | null>(null);
   isLoading = signal(true);
+
+  @HostListener('window:resize')
+  onResize(): void {
+    this.fraudEvolutionChart?.resize();
+    this.riskDistributionChart?.resize();
+    this.requestChart?.resize();
+    this.responseTimeChart?.resize();
+    this.cpuMemoryChart?.resize();
+    this.systemHealthChart?.resize();
+  }
+
+  isAdmin = computed(() => this.userRole() === 'ADMIN');
+  isManagerOrAnalyst = computed(
+    () => this.userRole() === 'MANAGER' || this.userRole() === 'ANALYST'
+  );
+
+  roleDisplay = computed(() => this.authStore.userRoleLabel());
+
+  roleDescription = computed(() => {
+    const role = this.userRole();
+    switch (role) {
+      case 'ADMIN':
+        return 'Vous avez une vue d’ensemble du système avec des métriques globales et des indicateurs de performance en temps réel.';
+      case 'ANALYST':
+        return 'Utilisez nos outils avancés pour détecter et analyser les tentatives de fraude.';
+      case 'MANAGER':
+        return 'Supervisez la qualité des modèles et validez les stratégies de détection.';
+      default:
+        return 'Bienvenue sur votre plateforme de surveillance.';
+    }
+  });
+
+  features = computed(() => {
+    const role = this.userRole();
+
+    if (role === 'ADMIN') {
+      return [
+        'Surveillance en temps réel des alertes',
+        'Analyse des tendances de fraude',
+        'Gestion des utilisateurs et permissions',
+        'Configuration des seuils de détection',
+        'Audit complet du système',
+        'Rapports personnalisés',
+      ];
+    }
+
+    if (role === 'MANAGER') {
+      return [
+        'Validation et mise en production des modèles',
+        'Supervision stratégique des performances',
+        'Analyse du contexte des règles de détection',
+        'Évaluation et optimisation du moteur de détection',
+      ];
+    }
+
+    return [
+      'Importation et filtrage des transactions',
+      'Entraînement et test des modèles de détection',
+      'Analyse et validation des alertes suspectes',
+      'Simulation de scénarios de fraude complexes',
+    ];
+  });
+
+  // =========================================================
+  // SECTION MANAGER / ANALYST
+  // =========================================================
+  stats = signal<OverviewStats | null>(null);
+  isLoadingCharts = signal(true);
+  latestAlerts = signal<FraudAlertResponse[]>([]);
+
+  selectedAlert = signal<FraudAlertResponse | null>(null);
+  hideAiInModal = signal(false);
+  isDetailsOpen = signal(false);
+
+  private fraudEvolutionChart: echarts.ECharts | null = null;
+  private riskDistributionChart: echarts.ECharts | null = null;
+
+  systemStats = computed(() => {
+    const model = this.stats()?.activeModel;
+    if (!model) {
+      return {
+        accuracy: 0,
+        recall: 0,
+        f1Score: 0,
+        falsePositives: 0,
+      };
+    }
+    return {
+      accuracy: model.accuracy,
+      recall: model.recall,
+      f1Score: model.f1Score,
+      falsePositives: model.falsePositives,
+    };
+  });
+
+  activeAlertsCard = computed((): KpiCard => {
+    const s = this.stats();
+    const trend = s?.activeAlertsTrend ?? '';
+    return {
+      label: 'Alertes Actives',
+      value: s?.activeAlerts ?? '...',
+      icon: 'bell',
+      trend,
+      trendUp: trend.startsWith('+'),
+      isStable: trend === 'Stable',
+      color: '#ef4444',
+      reverseTrend: true,
+    };
+  });
+
+  fraudRateCard = computed((): KpiCard => {
+    const s = this.stats();
+    const trend = s?.fraudRateTrend ?? '';
+    return {
+      label: 'Taux de Fraude',
+      value: s ? s.fraudRate.toFixed(1) + '%' : '...',
+      icon: 'trending-up',
+      trend,
+      trendUp: trend.startsWith('+'),
+      isStable: trend === 'Stable',
+      color: '#f59e0b',
+      reverseTrend: true,
+    };
+  });
+
+  criticalTransactionsCard = computed((): KpiCard => {
+    const s = this.stats();
+    return {
+      label: 'Transactions Critiques',
+      value: s?.criticalTransactions ?? '...',
+      icon: 'alert-octagon',
+      trend: 'Action requise',
+      trendUp: false,
+      isStable: true,
+      color: '#ef4444',
+    };
+  });
+
+  activeModelCard = computed((): KpiCard => {
+    const s = this.stats();
+    return {
+      label: 'Modèle Actif',
+      value: s?.activeModel ? s.activeModel.name : '...',
+      icon: 'check-circle',
+      trend: s?.activeModel
+        ? `${s.activeModel.accuracy.toFixed(1)}% précision`
+        : undefined,
+      trendUp: true,
+      color: '#10b981',
+      description: 'Déployé',
+    };
+  });
+
+  // =========================================================
+  // SECTION ADMIN
+  // =========================================================
   apiError = signal<string | null>(null);
   chartsInitialized = false;
-  
-  // Fraud Alert Data
+
   alertStats = signal<AlertStats>({
-    total: 0, critical: 0, high: 0, medium: 0, low: 0,
-    pending: 0, reviewed: 0, resolved: 0, falsePositive: 0
+    total: 0,
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    pending: 0,
+    reviewed: 0,
+    resolved: 0,
+    falsePositive: 0,
   });
+
   timeSeriesData = signal<TimeSeriesPoint[]>([]);
   riskDistributionData = signal<any[]>([]);
   recentAlerts = signal<any[]>([]);
-  
-  // System Metrics Data
+
   systemMetrics = signal<SystemMetrics>({
     uptime: 0,
     requestsPerSecond: 0,
@@ -66,100 +238,62 @@ export class OverviewComponent implements OnInit, OnDestroy {
     jvmVersion: '',
     osName: '',
     osArch: '',
-    availableProcessors: 0
+    availableProcessors: 0,
   });
-  
-  // Historical data for charts
+
   requestHistory = signal<{ time: string; value: number }[]>([]);
   responseTimeHistory = signal<{ time: string; value: number }[]>([]);
   cpuHistory = signal<{ time: string; value: number }[]>([]);
   memoryHistory = signal<{ time: string; value: number }[]>([]);
-  
+
   private refreshSubscription: Subscription | null = null;
   private metricsSubscription: Subscription | null = null;
+
+  private requestChart: echarts.ECharts | null = null;
+  private responseTimeChart: echarts.ECharts | null = null;
+  private cpuMemoryChart: echarts.ECharts | null = null;
+  private systemHealthChart: echarts.ECharts | null = null;
   
-  // Chart instances
-  private requestChart: any = null;
-  private responseTimeChart: any = null;
-  private cpuMemoryChart: any = null;
-  private systemHealthChart: any = null;
-  
-  // Computed signals for UI
-  roleDisplay = computed(() => this.authStore.userRoleLabel());
-  
+  systemHealthScore = computed(() => {
+    const metrics = this.systemMetrics();
+    return Math.max(
+      0,
+      Math.min(100, 100 - (metrics.cpuUsage * 0.3 + metrics.memoryUsage * 0.2))
+    );
+  });
+
   formattedUptime = computed(() => {
     const seconds = this.systemMetrics().uptime;
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    
+
     if (days > 0) return `${days}j ${hours}h ${minutes}m`;
     if (hours > 0) return `${hours}h ${minutes}m`;
     if (minutes > 0) return `${minutes}m`;
     return `${seconds}s`;
   });
-  
-  roleDescription = computed(() => {
-    const role = this.authStore.userRole();
-    switch (role) {
-      case 'ADMIN':
-        return 'Vous avez une vue d\'ensemble du système avec des métriques globales et des indicateurs de performance en temps réel.';
-      case 'ANALYST':
-        return 'Utilisez nos outils avancés pour détecter et analyser les tentatives de fraude.';
-      case 'MANAGER':
-        return 'Supervisez la qualité des modèles et validez les stratégies de détection.';
-      default:
-        return 'Bienvenue sur votre plateforme de surveillance.';
-    }
-  });
-  
-  features = computed(() => {
-    const role = this.authStore.userRole();
-    if (role === 'ADMIN') {
-      return [
-        'Surveillance en temps réel des alertes',
-        'Analyse des tendances de fraude',
-        'Gestion des utilisateurs et permissions',
-        'Configuration des seuils de détection',
-        'Audit complet du système',
-        'Rapports personnalisés'
-      ];
-    } else if (role === 'MANAGER') {
-      return [
-        'Validation et mise en production des modèles',
-        'Supervision stratégique des performances',
-        'Analyse du contexte des règles de détection',
-        'Évaluation et optimisation du moteur de détection'
-      ];
-    } else {
-      return [
-        'Importation et filtrage des transactions',
-        'Entraînement et test des modèles de détection',
-        'Analyse et validation des alertes suspectes',
-        'Simulation de scénarios de fraude complexes'
-      ];
-    }
-  });
-  
-  // Computed KPI Cards - Only 4 cards
-  kpiCards = computed(() => [
+
+  adminKpiCards = computed((): KpiCard[] => [
     {
       label: 'Uptime',
       value: this.formattedUptime(),
       icon: 'server',
-      trend: '',
-      trendUp: true,
+      trend: this.systemHealthScore().toFixed(0) + '%',
+      trendUp: this.systemHealthScore() >= 80,
       description: 'temps de fonctionnement',
-      color: '#8b5cf6'
+      color: '#8b5cf6',
     },
     {
       label: 'Requêtes/s',
       value: this.systemMetrics().requestsPerSecond.toFixed(1),
       icon: 'activity',
       trend: this.calculateRequestTrend(),
-      trendUp: this.systemMetrics().requestsPerSecond > (this.requestHistory()[this.requestHistory().length - 2]?.value || 0),
+      trendUp:
+        this.systemMetrics().requestsPerSecond >
+        (this.requestHistory()[this.requestHistory().length - 2]?.value || 0),
       description: 'moyenne en temps réel',
-      color: '#06b6d4'
+      color: '#06b6d4',
     },
     {
       label: 'Temps Réponse',
@@ -168,76 +302,433 @@ export class OverviewComponent implements OnInit, OnDestroy {
       trend: this.calculateResponseTimeTrend(),
       trendUp: false,
       description: 'latence moyenne',
-      color: '#f97316'
+      color: '#f97316',
     },
     {
       label: 'CPU',
       value: this.systemMetrics().cpuUsage.toFixed(0) + '%',
-      icon: 'cpu',
+      icon: 'zap',
       trend: this.calculateCpuTrend(),
       trendUp: false,
       description: 'utilisation processeur',
-      color: '#ef4444'
-    }
+      color: '#ef4444',
+    },
   ]);
-  
+
   ngOnInit(): void {
+    const currentRole = this.authService.getCurrentUser()?.role || this.authStore.userRole() || 'ANALYST';
+    this.userRole.set(currentRole as UserRole);
+
+    if (this.isAdmin()) {
+      this.loadAdminOverview();
+    } else {
+      this.loadFraudOverview();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.disposeFraudCharts();
+    this.disposeAdminCharts();
+
+    this.refreshSubscription?.unsubscribe();
+    this.metricsSubscription?.unsubscribe();
+  }
+
+  // =========================================================
+  // INIT LOADERS
+  // =========================================================
+  private loadFraudOverview(): void {
+    this.loadStats();
+    this.loadChartData();
+    this.loadRecentAnomalies();
+  }
+
+  private loadAdminOverview(): void {
     this.loadAllData();
     this.startMetricsPolling();
-    
-    // Auto-refresh every 30 seconds for fraud data
+
     this.refreshSubscription = interval(30000).subscribe(() => {
       this.refreshData();
     });
   }
-  
-  ngOnDestroy(): void {
-    if (this.refreshSubscription) {
-      this.refreshSubscription.unsubscribe();
-    }
-    if (this.metricsSubscription) {
-      this.metricsSubscription.unsubscribe();
-    }
-    this.disposeCharts();
-  }
-  
-  viewAlert(alertUuid: string): void {
-    console.log('View alert:', alertUuid);
-  }
-  
-  private startMetricsPolling(): void {
-    // Initial load
-    this.loadSystemMetrics();
-    this.loadMetricsHistory();
-    
-    // Poll every 5 seconds for real-time metrics
-    this.metricsSubscription = interval(5000).pipe(
-      switchMap(() => this.systemMetricsService.getSystemMetrics())
-    ).subscribe({
-      next: (metrics) => {
-        this.systemMetrics.set(metrics);
-        this.updateHistoricalData();
-        this.refreshSystemCharts();
+
+  // =========================================================
+  // FRAUD OVERVIEW METHODS
+  // =========================================================
+  loadStats(): void {
+    this.isLoading.set(true);
+    this.overviewService.getOverviewStats().subscribe({
+      next: (data) => {
+        this.stats.set(data);
+        this.isLoading.set(false);
       },
-      error: (error) => {
-        console.error('Error fetching system metrics:', error);
-      }
+      error: () => {
+        this.isLoading.set(false);
+      },
     });
   }
-  
+
+  loadRecentAnomalies(): void {
+    this.alertService.getRecentAnomalies(4).subscribe({
+      next: (alerts) => this.latestAlerts.set(alerts),
+      error: () => this.latestAlerts.set([]),
+    });
+  }
+
+  loadChartData(): void {
+    this.isLoadingCharts.set(true);
+
+    this.overviewService.getTransactionTimeSeries().subscribe({
+      next: (data) => {
+        setTimeout(() => this.initFraudEvolutionChart(data), 0);
+      },
+      error: () => {},
+    });
+
+    this.overviewService.getRiskDistribution().subscribe({
+      next: (data) => {
+        setTimeout(() => this.initRiskDistributionChart(data), 0);
+        this.isLoadingCharts.set(false);
+      },
+      error: () => {
+        this.isLoadingCharts.set(false);
+      },
+    });
+  }
+
+  private initFraudEvolutionChart(data: any[]): void {
+    const chartDom = document.getElementById('fraudEvolutionChart');
+    if (!chartDom) return;
+
+    this.fraudEvolutionChart?.dispose();
+    this.fraudEvolutionChart = echarts.init(chartDom, null, { renderer: 'svg' });
+
+    const dates = data.map((item) => {
+      const d = new Date(item.date);
+      return d.getHours().toString().padStart(2, '0') + ':00';
+    });
+
+    const frauds = data.map((item) => item.fraudes || 0);
+    const legitimates = data.map((item) => item.total - (item.fraudes || 0));
+
+    this.fraudEvolutionChart.setOption({
+      color: ['#3b82f6', '#f43f5e'],
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross', label: { backgroundColor: '#6a7985' } },
+      },
+      legend: {
+        data: ['Légitimes', 'Fraudes'],
+        bottom: 0,
+        icon: 'circle',
+        textStyle: { color: '#475569', fontWeight: 500 },
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '10%',
+        containLabel: true,
+      },
+      xAxis: [
+        {
+          type: 'category',
+          boundaryGap: false,
+          data: dates,
+          axisLine: { lineStyle: { color: '#e5e7eb' } },
+          axisLabel: { color: '#9ca3af' },
+        },
+      ],
+      yAxis: [
+        {
+          type: 'value',
+          minInterval: 1,
+          splitLine: { lineStyle: { type: 'dashed' } },
+          axisLabel: { color: '#9ca3af' },
+        },
+      ],
+      series: [
+        {
+          name: 'Légitimes',
+          type: 'line',
+          stack: 'Total',
+          smooth: true,
+          lineStyle: { width: 1, color: '#3b82f6' },
+          showSymbol: true,
+          symbolSize: 4,
+          areaStyle: {
+            opacity: 0.4,
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(59, 130, 246, 0.6)' },
+              { offset: 1, color: 'rgba(59, 130, 246, 0.1)' },
+            ]),
+          },
+          emphasis: { focus: 'series' },
+          data: legitimates,
+        },
+        {
+          name: 'Fraudes',
+          type: 'line',
+          stack: 'Total',
+          smooth: true,
+          lineStyle: { width: 1, color: '#f43f5e' },
+          showSymbol: true,
+          symbolSize: 4,
+          areaStyle: {
+            opacity: 0.4,
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(244, 63, 94, 0.6)' },
+              { offset: 1, color: 'rgba(244, 63, 94, 0.1)' },
+            ]),
+          },
+          emphasis: { focus: 'series' },
+          data: frauds,
+        },
+      ],
+    });
+  }
+
+  private initRiskDistributionChart(data: any[]): void {
+    const chartDom = document.getElementById('riskDistributionChart');
+    if (!chartDom) return;
+
+    this.riskDistributionChart?.dispose();
+    this.riskDistributionChart = echarts.init(chartDom, null, { renderer: 'svg' });
+
+    const riskOrder = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+    const riskLabels = ['Faible', 'Moyen', 'Élevé', 'Critique'];
+
+    const bgColors = [
+      'rgba(34, 197, 94, 0.15)',
+      'rgba(59, 130, 246, 0.15)',
+      'rgba(249, 115, 22, 0.15)',
+      'rgba(239, 68, 68, 0.15)',
+    ];
+    const borderColors = ['#22c55e', '#3b82f6', '#f97316', '#ef4444'];
+
+    const chartData = riskOrder.map((level, index) => {
+      const item = data.find((d) => d.riskLevel === level);
+      return {
+        value: item ? item.count : 0,
+        itemStyle: {
+          color: bgColors[index],
+          borderColor: borderColors[index],
+        },
+      };
+    });
+
+    this.riskDistributionChart.setOption({
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true,
+      },
+      xAxis: [
+        {
+          type: 'category',
+          data: riskLabels,
+          axisTick: { alignWithLabel: true },
+          axisLine: { lineStyle: { color: '#e5e7eb' } },
+          axisLabel: { color: '#4b5563', fontWeight: 'bold' },
+        },
+      ],
+      yAxis: [
+        {
+          type: 'value',
+          minInterval: 1,
+          splitLine: { lineStyle: { type: 'dashed' } },
+          axisLabel: { color: '#9ca3af' },
+        },
+      ],
+      series: [
+        {
+          name: 'Alertes',
+          type: 'bar',
+          barWidth: '60%',
+          data: chartData,
+          itemStyle: {
+            borderWidth: 2,
+            borderRadius: [8, 8, 0, 0],
+          },
+        },
+      ],
+    });
+  }
+
+  private disposeFraudCharts(): void {
+    this.fraudEvolutionChart?.dispose();
+    this.riskDistributionChart?.dispose();
+    this.fraudEvolutionChart = null;
+    this.riskDistributionChart = null;
+  }
+
+  getRiskBadgeClass(risk: string): string {
+    switch (risk?.toUpperCase()) {
+      case 'CRITICAL':
+        return 'risk-badge-critical';
+      case 'HIGH':
+        return 'risk-badge-high';
+      case 'MEDIUM':
+        return 'risk-badge-medium';
+      case 'LOW':
+        return 'risk-badge-low';
+      default:
+        return 'risk-badge-default';
+    }
+  }
+
+  getRiskIcon(risk: string): string {
+    switch (risk?.toUpperCase()) {
+      case 'CRITICAL':
+        return 'alert-octagon';
+      case 'HIGH':
+        return 'alert-triangle';
+      case 'MEDIUM':
+        return 'info';
+      case 'LOW':
+        return 'check-circle';
+      default:
+        return 'shield';
+    }
+  }
+
+  getStatusBadgeClass(status: string): string {
+    switch (status?.toUpperCase()) {
+      case 'PENDING':
+        return 'bg-amber-50 text-amber-600 border-amber-100';
+      case 'REVIEWED':
+        return 'bg-blue-50 text-blue-600 border-blue-100';
+      case 'RESOLVED':
+        return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+      case 'FALSE_POSITIVE':
+        return 'bg-slate-50 text-slate-600 border-slate-100';
+      default:
+        return 'bg-gray-50 text-gray-600 border-gray-100';
+    }
+  }
+
+  translateStatus(status: string): string {
+    switch (status?.toUpperCase()) {
+      case 'PENDING':
+        return 'En Attente';
+      case 'REVIEWED':
+        return 'En Cours';
+      case 'RESOLVED':
+        return 'Résolue';
+      case 'FALSE_POSITIVE':
+        return 'Faux Positif';
+      default:
+        return status;
+    }
+  }
+
+  translateRisk(risk: string): string {
+    switch (risk?.toUpperCase()) {
+      case 'CRITICAL':
+        return 'Critique';
+      case 'HIGH':
+        return 'Élevé';
+      case 'MEDIUM':
+        return 'Moyen';
+      case 'LOW':
+        return 'Faible';
+      default:
+        return risk;
+    }
+  }
+
+  translateAlertType(type: string): string {
+    switch (type?.toUpperCase()) {
+      case 'PATTERN':
+        return 'Schéma de Fraude';
+      case 'LOCATION_ANOMALY':
+        return 'Anomalie de Localisation';
+      case 'VELOCITY':
+        return 'Vélocité Inhabituelle';
+      case 'AMOUNT_ANOMALY':
+        return 'Montant Anormal';
+      case 'NEW_DEVICE':
+        return 'Nouvel Appareil';
+      default:
+        return type;
+    }
+  }
+
+  getRiskLabel(level: string): string {
+    return this.translateRisk(level);
+  }
+
+  formatTimeAgo(dateString: string): string {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+      if (diffInSeconds < 60) return "À l'instant";
+      if (diffInSeconds < 3600) return `Il y a ${Math.floor(diffInSeconds / 60)} min`;
+      if (diffInSeconds < 86400) return `Il y a ${Math.floor(diffInSeconds / 3600)} h`;
+      return `Il y a ${Math.floor(diffInSeconds / 86400)} j`;
+    } catch {
+      return '';
+    }
+  }
+
+  onExamine(alert: FraudAlertResponse): void {
+    this.openDetails(alert, false);
+  }
+
+  openDetails(alert: FraudAlertResponse, hideAi: boolean = false): void {
+    this.selectedAlert.set(alert);
+    this.hideAiInModal.set(hideAi);
+    this.isDetailsOpen.set(true);
+  }
+
+  closeDetails(): void {
+    this.isDetailsOpen.set(false);
+    this.selectedAlert.set(null);
+  }
+
+  handleAlertAction(event: any): void {
+    this.closeDetails();
+    this.loadRecentAnomalies();
+  }
+
+  // =========================================================
+  // ADMIN OVERVIEW METHODS
+  // =========================================================
+  viewAlert(alertUuid: string): void {}
+
+  private startMetricsPolling(): void {
+    this.loadSystemMetrics();
+    this.loadMetricsHistory();
+
+    this.metricsSubscription = interval(5000)
+      .pipe(switchMap(() => this.systemMetricsService.getSystemMetrics()))
+      .subscribe({
+        next: (metrics) => {
+          this.systemMetrics.set(metrics);
+          this.updateHistoricalData();
+          this.refreshSystemCharts();
+        },
+        error: () => {},
+      });
+  }
+
   private loadSystemMetrics(): void {
     this.systemMetricsService.getSystemMetrics().subscribe({
       next: (metrics) => {
         this.systemMetrics.set(metrics);
         this.updateHistoricalData();
       },
-      error: (error) => {
-        console.error('Error loading system metrics:', error);
-        this.generateMockSystemMetrics();
-      }
+      error: () => {},
     });
   }
-  
+
   private loadMetricsHistory(): void {
     this.systemMetricsService.getMetricsHistory(60).subscribe({
       next: (history) => {
@@ -245,8 +736,7 @@ export class OverviewComponent implements OnInit, OnDestroy {
         this.responseTimeHistory.set(history.responseTime);
         this.cpuHistory.set(history.cpuUsage);
         this.memoryHistory.set(history.memoryUsage);
-        
-        // Initialize charts only once after history is loaded
+
         if (!this.chartsInitialized) {
           setTimeout(() => {
             this.initAllCharts();
@@ -256,382 +746,361 @@ export class OverviewComponent implements OnInit, OnDestroy {
           this.refreshSystemCharts();
         }
       },
-      error: (error) => {
-        console.error('Error loading metrics history:', error);
-        this.generateMockHistory();
-        if (!this.chartsInitialized) {
-          setTimeout(() => {
-            this.initAllCharts();
-            this.chartsInitialized = true;
-          }, 200);
-        }
-      }
+      error: () => {},
     });
   }
-  
+
   private updateHistoricalData(): void {
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const timeStr = now.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
     const metrics = this.systemMetrics();
-    
-    // Update request history
-    const newRequestPoint = { time: timeStr, value: metrics.requestsPerSecond };
-    const updatedRequests = [...this.requestHistory(), newRequestPoint];
+
+    const updatedRequests = [...this.requestHistory(), { time: timeStr, value: metrics.requestsPerSecond }];
     if (updatedRequests.length > 20) updatedRequests.shift();
     this.requestHistory.set(updatedRequests);
-    
-    // Update response time history
-    const newResponsePoint = { time: timeStr, value: metrics.responseTime };
-    const updatedResponseTimes = [...this.responseTimeHistory(), newResponsePoint];
+
+    const updatedResponseTimes = [...this.responseTimeHistory(), { time: timeStr, value: metrics.responseTime }];
     if (updatedResponseTimes.length > 20) updatedResponseTimes.shift();
     this.responseTimeHistory.set(updatedResponseTimes);
-    
-    // Update CPU history
-    const newCpuPoint = { time: timeStr, value: metrics.cpuUsage };
-    const updatedCpu = [...this.cpuHistory(), newCpuPoint];
+
+    const updatedCpu = [...this.cpuHistory(), { time: timeStr, value: metrics.cpuUsage }];
     if (updatedCpu.length > 20) updatedCpu.shift();
     this.cpuHistory.set(updatedCpu);
-    
-    // Update memory history
-    const newMemoryPoint = { time: timeStr, value: metrics.memoryUsage };
-    const updatedMemory = [...this.memoryHistory(), newMemoryPoint];
+
+    const updatedMemory = [...this.memoryHistory(), { time: timeStr, value: metrics.memoryUsage }];
     if (updatedMemory.length > 20) updatedMemory.shift();
     this.memoryHistory.set(updatedMemory);
   }
-  
+
   private loadAllData(): void {
     this.isLoading.set(true);
     this.apiError.set(null);
-    
+
     const apiBaseUrl = environment.apiUrl || '';
-    
+
     forkJoin({
       recent: this.http.get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`).pipe(
         timeout(10000),
-        catchError(err => {
-          console.error('Recent alerts API error:', err);
-          return of([]);
-        })
-      )
+        catchError(() => of([]))
+      ),
     }).subscribe({
       next: (results) => {
-        if (results.recent && results.recent.length > 0) this.recentAlerts.set(results.recent);
-        else this.generateMockRecentAlerts();
-        
+        if (results.recent && results.recent.length > 0) {
+          this.recentAlerts.set(results.recent);
+        }
         this.isLoading.set(false);
       },
-      error: (error) => {
-        console.error('Error loading dashboard data:', error);
-        this.apiError.set('Impossible de charger les données. Affichage des données de démonstration.');
+      error: () => {
+        this.apiError.set('Impossible de charger les données.');
         this.isLoading.set(false);
-        
-        this.generateMockRecentAlerts();
-        this.generateMockSystemMetrics();
-        this.generateMockHistory();
-        
-        if (!this.chartsInitialized) {
-          setTimeout(() => {
-            this.initAllCharts();
-            this.chartsInitialized = true;
-          }, 200);
-        }
-      }
+      },
     });
   }
-  
+
   private refreshData(): void {
     const apiBaseUrl = environment.apiUrl || '';
-    
-    this.http.get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`)
+
+    this.http
+      .get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`)
       .pipe(catchError(() => of([])))
       .subscribe({
         next: (recent) => {
           if (recent && recent.length > 0) this.recentAlerts.set(recent);
         },
-        error: (error) => {
-          console.error('Error refreshing dashboard data:', error);
-        }
+        error: () => {},
       });
   }
-  
-  private generateMockSystemMetrics(): void {
-    this.systemMetrics.set({
-      uptime: Math.floor(Math.random() * 86400) + 3600,
-      requestsPerSecond: Math.floor(Math.random() * 100) + 20,
-      cpuUsage: Math.floor(Math.random() * 60) + 10,
-      memoryUsage: Math.floor(Math.random() * 50) + 30,
-      responseTime: Math.floor(Math.random() * 200) + 50,
-      activeConnections: Math.floor(Math.random() * 50) + 10,
-      diskUsage: Math.floor(Math.random() * 40) + 20,
-      threadCount: Math.floor(Math.random() * 50) + 20,
-      jvmVersion: '17.0.1',
-      osName: 'Linux',
-      osArch: 'amd64',
-      availableProcessors: 8
-    });
-  }
-  
-  private generateMockHistory(): void {
-    const requests: { time: string; value: number }[] = [];
-    const responses: { time: string; value: number }[] = [];
-    const cpus: { time: string; value: number }[] = [];
-    const memories: { time: string; value: number }[] = [];
-    
-    for (let i = 20; i >= 0; i--) {
-      const time = new Date(Date.now() - i * 60000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      requests.push({ time, value: Math.floor(Math.random() * 100) + 20 });
-      responses.push({ time, value: Math.floor(Math.random() * 200) + 50 });
-      cpus.push({ time, value: Math.floor(Math.random() * 60) + 10 });
-      memories.push({ time, value: Math.floor(Math.random() * 50) + 30 });
-    }
-    
-    this.requestHistory.set(requests);
-    this.responseTimeHistory.set(responses);
-    this.cpuHistory.set(cpus);
-    this.memoryHistory.set(memories);
-  }
-  
-  private generateMockRecentAlerts(): void {
-    this.recentAlerts.set([
-      {
-        alertUuid: 'mock-1',
-        createdAt: new Date().toISOString(),
-        riskLevel: 'CRITICAL',
-        alertType: 'AMOUNT_ANOMALY',
-        fraudScore: 0.92,
-        status: 'PENDING'
-      },
-      {
-        alertUuid: 'mock-2',
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-        riskLevel: 'HIGH',
-        alertType: 'LOCATION_ANOMALY',
-        fraudScore: 0.78,
-        status: 'PENDING'
-      },
-      {
-        alertUuid: 'mock-3',
-        createdAt: new Date(Date.now() - 7200000).toISOString(),
-        riskLevel: 'MEDIUM',
-        alertType: 'PATTERN',
-        fraudScore: 0.65,
-        status: 'REVIEWED'
-      },
-      {
-        alertUuid: 'mock-4',
-        createdAt: new Date(Date.now() - 10800000).toISOString(),
-        riskLevel: 'LOW',
-        alertType: 'LOCATION_ANOMALY',
-        fraudScore: 0.34,
-        status: 'RESOLVED'
-      }
-    ]);
-  }
-  
+
   private initAllCharts(): void {
-    // Only initialize if DOM elements exist and charts not already initialized
-    if (this.requestChart || this.responseTimeChart || this.cpuMemoryChart || this.systemHealthChart) {
-      return;
-    }
-    
     this.initRequestChart();
     this.initResponseTimeChart();
     this.initCpuMemoryChart();
     this.initSystemHealthChart();
   }
-  
+
   private refreshSystemCharts(): void {
-    if (this.requestChart && !this.requestChart.isDisposed()) {
-      this.updateRequestChart();
-    }
-    if (this.responseTimeChart && !this.responseTimeChart.isDisposed()) {
-      this.updateResponseTimeChart();
-    }
-    if (this.cpuMemoryChart && !this.cpuMemoryChart.isDisposed()) {
-      this.updateCpuMemoryChart();
-    }
-    if (this.systemHealthChart && !this.systemHealthChart.isDisposed()) {
-      this.updateSystemHealthChart();
-    }
+    this.updateRequestChart();
+    this.updateResponseTimeChart();
+    this.updateCpuMemoryChart();
+    this.updateSystemHealthChart();
   }
-  
-  private disposeCharts(): void {
-    if (this.requestChart && !this.requestChart.isDisposed()) {
-      this.requestChart.dispose();
-      this.requestChart = null;
-    }
-    if (this.responseTimeChart && !this.responseTimeChart.isDisposed()) {
-      this.responseTimeChart.dispose();
-      this.responseTimeChart = null;
-    }
-    if (this.cpuMemoryChart && !this.cpuMemoryChart.isDisposed()) {
-      this.cpuMemoryChart.dispose();
-      this.cpuMemoryChart = null;
-    }
-    if (this.systemHealthChart && !this.systemHealthChart.isDisposed()) {
-      this.systemHealthChart.dispose();
-      this.systemHealthChart = null;
-    }
+
+  private disposeAdminCharts(): void {
+    this.requestChart?.dispose();
+    this.responseTimeChart?.dispose();
+    this.cpuMemoryChart?.dispose();
+    this.systemHealthChart?.dispose();
+
+    this.requestChart = null;
+    this.responseTimeChart = null;
+    this.cpuMemoryChart = null;
+    this.systemHealthChart = null;
     this.chartsInitialized = false;
   }
-  
+
   private initRequestChart(): void {
     const chartDom = document.getElementById('requestChart');
     if (!chartDom) return;
-    if (this.requestChart && !this.requestChart.isDisposed()) {
-      this.requestChart.dispose();
-    }
+
+    this.requestChart?.dispose();
     this.requestChart = echarts.init(chartDom);
     this.updateRequestChart();
+
     window.addEventListener('resize', () => {
-      if (this.requestChart && !this.requestChart.isDisposed()) {
-        this.requestChart.resize();
-      }
+      this.requestChart?.resize();
     });
   }
-  
+
   private updateRequestChart(): void {
-    if (!this.requestChart || this.requestChart.isDisposed()) return;
+    if (!this.requestChart) return;
+
     const data = this.requestHistory();
-    this.requestChart.setOption({
-      title: { text: 'Requêtes par Seconde', left: 'center', textStyle: { fontSize: 14, fontWeight: 'bold' } },
-      tooltip: { trigger: 'axis' },
-      grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-      xAxis: { type: 'category', data: data.map(d => d.time), axisLabel: { rotate: 45 } },
-      yAxis: { type: 'value', name: 'Requêtes/s' },
-      series: [{
-        name: 'RPS', type: 'line', data: data.map(d => d.value), smooth: true, color: '#06b6d4',
-        areaStyle: { color: 'rgba(6, 182, 212, 0.1)' }, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 6
-      }]
-    }, true);
+    this.requestChart.setOption(
+      {
+        title: {
+          text: 'Requêtes par Seconde',
+          left: 'center',
+          top: 0,
+          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#334155' }
+        },
+        tooltip: { trigger: 'axis' },
+        grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
+        xAxis: { type: 'category', data: data.map((d) => d.time), axisLabel: { rotate: 45 } },
+        yAxis: { type: 'value', name: 'Requêtes/s' },
+        series: [
+          {
+            name: 'RPS',
+            type: 'line',
+            data: data.map((d) => d.value),
+            smooth: true,
+            color: '#06b6d4',
+            areaStyle: { color: 'rgba(6, 182, 212, 0.1)' },
+            lineStyle: { width: 3 },
+            symbol: 'circle',
+            symbolSize: 6,
+          },
+        ],
+      },
+      true
+    );
   }
-  
+
   private initResponseTimeChart(): void {
     const chartDom = document.getElementById('responseTimeChart');
     if (!chartDom) return;
-    if (this.responseTimeChart && !this.responseTimeChart.isDisposed()) {
-      this.responseTimeChart.dispose();
-    }
+
+    this.responseTimeChart?.dispose();
     this.responseTimeChart = echarts.init(chartDom);
     this.updateResponseTimeChart();
+
     window.addEventListener('resize', () => {
-      if (this.responseTimeChart && !this.responseTimeChart.isDisposed()) {
-        this.responseTimeChart.resize();
-      }
+      this.responseTimeChart?.resize();
     });
   }
-  
+
   private updateResponseTimeChart(): void {
-    if (!this.responseTimeChart || this.responseTimeChart.isDisposed()) return;
+    if (!this.responseTimeChart) return;
+
     const data = this.responseTimeHistory();
-    this.responseTimeChart.setOption({
-      title: { text: 'Temps de Réponse', left: 'center', textStyle: { fontSize: 14, fontWeight: 'bold' } },
-      tooltip: { trigger: 'axis' },
-      grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-      xAxis: { type: 'category', data: data.map(d => d.time), axisLabel: { rotate: 45 } },
-      yAxis: { type: 'value', name: 'ms' },
-      series: [{
-        name: 'Latence', type: 'line', data: data.map(d => d.value), smooth: true, color: '#f97316',
-        areaStyle: { color: 'rgba(249, 115, 22, 0.1)' }, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 6
-      }]
-    }, true);
+    this.responseTimeChart.setOption(
+      {
+        title: {
+          text: 'Temps de Réponse',
+          left: 'center',
+          top: 0,
+          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#334155' }
+        },
+        tooltip: { trigger: 'axis' },
+        grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
+        xAxis: { type: 'category', data: data.map((d) => d.time), axisLabel: { rotate: 45 } },
+        yAxis: { type: 'value', name: 'ms' },
+        series: [
+          {
+            name: 'Latence',
+            type: 'line',
+            data: data.map((d) => d.value),
+            smooth: true,
+            color: '#f97316',
+            areaStyle: { color: 'rgba(249, 115, 22, 0.1)' },
+            lineStyle: { width: 3 },
+            symbol: 'circle',
+            symbolSize: 6,
+          },
+        ],
+      },
+      true
+    );
   }
-  
+
   private initCpuMemoryChart(): void {
     const chartDom = document.getElementById('cpuMemoryChart');
     if (!chartDom) return;
-    if (this.cpuMemoryChart && !this.cpuMemoryChart.isDisposed()) {
-      this.cpuMemoryChart.dispose();
-    }
+
+    this.cpuMemoryChart?.dispose();
     this.cpuMemoryChart = echarts.init(chartDom);
     this.updateCpuMemoryChart();
+
     window.addEventListener('resize', () => {
-      if (this.cpuMemoryChart && !this.cpuMemoryChart.isDisposed()) {
-        this.cpuMemoryChart.resize();
-      }
+      this.cpuMemoryChart?.resize();
     });
   }
-  
+
   private updateCpuMemoryChart(): void {
-    if (!this.cpuMemoryChart || this.cpuMemoryChart.isDisposed()) return;
+    if (!this.cpuMemoryChart) return;
+
     const cpuData = this.cpuHistory();
     const memoryData = this.memoryHistory();
-    this.cpuMemoryChart.setOption({
-      title: { text: 'CPU & Mémoire', left: 'center', textStyle: { fontSize: 14, fontWeight: 'bold' } },
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['CPU (%)', 'Mémoire (%)'], top: 30, left: 'center' },
-      grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-      xAxis: { type: 'category', data: cpuData.map(d => d.time), axisLabel: { rotate: 45 } },
-      yAxis: { type: 'value', name: 'Pourcentage (%)', max: 100 },
-      series: [
-        { name: 'CPU (%)', type: 'line', data: cpuData.map(d => d.value), smooth: true, color: '#ef4444', lineStyle: { width: 2 } },
-        { name: 'Mémoire (%)', type: 'line', data: memoryData.map(d => d.value), smooth: true, color: '#3b82f6', lineStyle: { width: 2 } }
-      ]
-    }, true);
+
+    this.cpuMemoryChart.setOption(
+      {
+        title: {
+          text: 'CPU & Mémoire',
+          left: 'center',
+          top: 0,
+          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#334155' }
+        },
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['CPU (%)', 'Mémoire (%)'], top: 30, left: 'center', icon: 'circle' },
+        grid: { left: '3%', right: '4%', bottom: '3%', top: '20%', containLabel: true },
+        xAxis: { type: 'category', data: cpuData.map((d) => d.time), axisLabel: { rotate: 45 } },
+        yAxis: { type: 'value', name: 'Pourcentage (%)', max: 100 },
+        series: [
+          {
+            name: 'CPU (%)',
+            type: 'line',
+            data: cpuData.map((d) => d.value),
+            smooth: true,
+            color: '#ef4444',
+            lineStyle: { width: 2 },
+          },
+          {
+            name: 'Mémoire (%)',
+            type: 'line',
+            data: memoryData.map((d) => d.value),
+            smooth: true,
+            color: '#3b82f6',
+            lineStyle: { width: 2 },
+          },
+        ],
+      },
+      true
+    );
   }
-  
+
   private initSystemHealthChart(): void {
     const chartDom = document.getElementById('systemHealthChart');
     if (!chartDom) return;
-    if (this.systemHealthChart && !this.systemHealthChart.isDisposed()) {
-      this.systemHealthChart.dispose();
-    }
+
+    this.systemHealthChart?.dispose();
     this.systemHealthChart = echarts.init(chartDom);
     this.updateSystemHealthChart();
+
     window.addEventListener('resize', () => {
-      if (this.systemHealthChart && !this.systemHealthChart.isDisposed()) {
-        this.systemHealthChart.resize();
-      }
+      this.systemHealthChart?.resize();
     });
   }
-  
+
   private updateSystemHealthChart(): void {
-    if (!this.systemHealthChart || this.systemHealthChart.isDisposed()) return;
-    const healthScore = Math.max(0, Math.min(100, 100 - (this.systemMetrics().cpuUsage * 0.3 + this.systemMetrics().memoryUsage * 0.2)));
-    this.systemHealthChart.setOption({
-      title: { text: 'Santé du Système', left: 'center', textStyle: { fontSize: 14, fontWeight: 'bold' } },
-      series: [{
-        type: 'gauge', center: ['50%', '50%'], radius: '70%', startAngle: 180, endAngle: 0,
-        min: 0, max: 100, splitNumber: 5, progress: { show: true, width: 18, itemStyle: { color: this.getHealthColor(healthScore) } },
-        axisLine: { lineStyle: { width: 18, color: [[healthScore / 100, this.getHealthColor(healthScore)]] } },
-        axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, pointer: { show: false },
-        detail: { offsetCenter: [0, 20], valueAnimation: true, fontSize: 20, fontWeight: 'bold' },
-        title: { show: true, offsetCenter: [0, -20], fontSize: 14 },
-        data: [{ value: healthScore, name: 'Score' }]
-      }]
-    }, true);
+    if (!this.systemHealthChart) return;
+
+    const healthScore = this.systemHealthScore();
+
+    this.systemHealthChart.setOption(
+      {
+        title: {
+          text: 'Santé du Système',
+          left: 'center',
+          top: 0,
+          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#334155' }
+        },
+        series: [
+          {
+            type: 'gauge',
+            center: ['50%', '65%'],
+            radius: '80%',
+            startAngle: 180,
+            endAngle: 0,
+            min: 0,
+            max: 100,
+            splitNumber: 5,
+            progress: {
+              show: true,
+              width: 22,
+              itemStyle: { 
+                color: this.getHealthColor(healthScore),
+                borderRadius: 10 
+              },
+              roundCap: true
+            },
+            axisLine: {
+              lineStyle: {
+                width: 22,
+                color: [[1, '#f1f5f9']],
+                shadowBlur: 10,
+                shadowColor: 'rgba(0,0,0,0.02)'
+              },
+            },
+            axisTick: { show: false },
+            splitLine: { show: false },
+            axisLabel: { show: false },
+            pointer: { show: false },
+            detail: {
+              offsetCenter: [0, 20],
+              valueAnimation: true,
+              fontSize: 30,
+              fontWeight: '900',
+              formatter: '{value}%',
+              color: '#1e293b'
+            },
+            title: { 
+              show: true, 
+              offsetCenter: [0, -35], 
+              fontSize: 14, 
+              fontWeight: 'bold', 
+              color: '#94a3b8'
+            },
+            data: [{ value: Number(healthScore.toFixed(1)), name: 'SCORE DE STABILITÉ' }],
+          },
+        ],
+      },
+      true
+    );
   }
-  
+
   private getHealthColor(score: number): string {
     if (score >= 80) return '#10b981';
     if (score >= 60) return '#f59e0b';
     return '#ef4444';
   }
-  
+
   private calculateRequestTrend(): string {
     const history = this.requestHistory();
     if (history.length < 2) return '0%';
     const current = history[history.length - 1].value;
     const previous = history[history.length - 2].value;
-    const change = previous ? ((current - previous) / previous * 100).toFixed(0) : '0';
-    return `${change}%`;
+    const change = previous ? ((current - previous) / previous) * 100 : 0;
+    return `${change.toFixed(0)}%`;
   }
-  
+
   private calculateResponseTimeTrend(): string {
     const history = this.responseTimeHistory();
     if (history.length < 2) return '0%';
     const current = history[history.length - 1].value;
     const previous = history[history.length - 2].value;
-    const change = previous ? ((current - previous) / previous * 100).toFixed(0) : '0';
-    return `${change}%`;
+    const change = previous ? ((current - previous) / previous) * 100 : 0;
+    return `${change.toFixed(0)}%`;
   }
-  
+
   private calculateCpuTrend(): string {
     const history = this.cpuHistory();
     if (history.length < 2) return '0%';
     const current = history[history.length - 1].value;
     const previous = history[history.length - 2].value;
-    const change = previous ? ((current - previous) / previous * 100).toFixed(0) : '0';
-    return `${change}%`;
+    const change = previous ? ((current - previous) / previous) * 100 : 0;
+    return `${change.toFixed(0)}%`;
   }
 }

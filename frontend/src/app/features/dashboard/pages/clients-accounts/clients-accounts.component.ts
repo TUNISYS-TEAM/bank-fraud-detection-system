@@ -45,7 +45,8 @@ export class ClientsAccountsComponent implements OnInit, OnDestroy {
       value: '...',
       icon: 'dollar-sign',
       color: '#f59e0b',
-      isCurrency: true
+      isCurrency: true,
+      abbreviate: true
     }
   ]);
 

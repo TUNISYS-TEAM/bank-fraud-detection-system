@@ -79,4 +79,25 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     // Get all transactions for an account in chronological order (for backfill)
     @EntityGraph(attributePaths = "account")
     List<Transaction> findByAccountIdOrderByTransactionDateAsc(Long accountId);
+
+    @Query("SELECT MAX(t.transactionDate) FROM Transaction t")
+    java.util.Optional<LocalDateTime> findMaxTransactionDate();
+
+    @Query(value = "SELECT DATE_TRUNC('hour', transaction_date) as hour, " +
+           "COUNT(*) as total, " +
+           "SUM(CASE WHEN is_fraud = true THEN 1 ELSE 0 END) as frauds " +
+           "FROM transaction " +
+           "WHERE transaction_date BETWEEN :start AND :end " +
+           "GROUP BY DATE_TRUNC('hour', transaction_date) " +
+           "ORDER BY hour", nativeQuery = true)
+    List<Object[]> getTimeSeriesStats(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query(value = "SELECT DATE_TRUNC('day', transaction_date) as day, " +
+           "COUNT(*) as total, " +
+           "SUM(CASE WHEN is_fraud = true THEN 1 ELSE 0 END) as frauds " +
+           "FROM transaction " +
+           "WHERE transaction_date BETWEEN :start AND :end " +
+           "GROUP BY DATE_TRUNC('day', transaction_date) " +
+           "ORDER BY day", nativeQuery = true)
+    List<Object[]> getDailyTimeSeriesStats(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

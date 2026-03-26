@@ -82,8 +82,8 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   // Filter signals
   searchQuery = signal('');
-  statusFilter = signal<'all' | 'Draft' | 'Validated' | 'Rejected'>(
-    this.authService.getCurrentUser()?.role === 'MANAGER' ? 'Validated' : 'all'
+  statusFilter = signal<'all' | 'Draft' | 'Validated' | 'Rejected' | 'Deployed'>(
+    this.authService.getCurrentUser()?.role === 'MANAGER' ? 'all' : 'all'
   );
   showStatusFilter = signal(false);
 
@@ -127,17 +127,22 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const search = this.searchQuery().toLowerCase().trim();
     const status = this.statusFilter();
 
+    // For managers: show deployed models (any) AND validated models they approved
     if (this.isManager()) {
       models = models.filter(model =>
-        (model.status === 'Validated' || model.status === 'Deployed') &&
-        model.validatedBy?.email === this.currentUserEmail()
+        // Deployed models are always visible (anyone can deploy)
+        model.status === 'Deployed' ||
+        // Validated models only visible if approved by current manager
+        (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail())
       );
     }
 
+    // Apply status filter
     if (status !== 'all') {
       models = models.filter(model => model.status.toLowerCase() === status.toLowerCase());
     }
 
+    // Apply search filter
     if (search) {
       models = models.filter(model =>
         model.modelName.toLowerCase().includes(search) ||
@@ -155,15 +160,16 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
     if (this.isManager()) {
       models = models.filter(model =>
-        (model.status === 'Validated' || model.status === 'Deployed') &&
-        model.validatedBy?.email === this.currentUserEmail()
+        model.status === 'Deployed' ||
+        (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail())
       );
     }
 
     return {
       total: models.length,
       draft: models.filter(m => m.status === 'Draft').length,
-      validated: models.filter(m => m.status === 'Validated' || m.status === 'Deployed').length,
+      validated: models.filter(m => m.status === 'Validated').length,
+      deployed: models.filter(m => m.status === 'Deployed').length,
       rejected: models.filter(m => m.status === 'Rejected').length
     };
   });
@@ -175,6 +181,13 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const status = this.statusFilter();
 
     return selected.filter(model => {
+      // For managers, only show deployed or their validated models in comparison
+      if (this.isManager()) {
+        const isValidForManager = model.status === 'Deployed' ||
+          (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail());
+        if (!isValidForManager) return false;
+      }
+
       const matchStatus = status === 'all' || model.status.toLowerCase() === status.toLowerCase();
       const matchSearch = !search || (
         model.modelName.toLowerCase().includes(search) ||
@@ -277,14 +290,15 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     switch (filter) {
       case 'all': return 'Tous';
       case 'Draft': return 'Draft';
-      case 'Validated': return 'Validated';
-      case 'Rejected': return 'Rejected';
+      case 'Validated': return 'Validés';
+      case 'Deployed': return 'Déployés';
+      case 'Rejected': return 'Rejetés';
       default: return 'Tous';
     }
   });
 
   constructor() {
-    // FIX: Use effect with manual initialization instead of writing to signals
+    // Use effect with manual initialization instead of writing to signals
     effect(() => {
       const selected = this.filteredSelectedModels();
       // Use setTimeout to avoid signal writes during effect execution
@@ -297,7 +311,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       }, 0);
     });
 
-    // FIX: For drift tracking - use effect without writing to signals directly
+    // For drift tracking - use effect without writing to signals directly
     effect(() => {
       const deployedModel = this.activeDeployedModel();
       if (this.isManager() && deployedModel) {
@@ -338,17 +352,20 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const search = this.searchQuery();
     if (search) url += `&search=${encodeURIComponent(search)}`;
 
-    const status = this.statusFilter();
-    if (status !== 'all') url += `&status=${status}`;
+    // Don't filter by status in API for managers - we'll filter in component
+    if (!this.isManager() && this.statusFilter() !== 'all') {
+      url += `&status=${this.statusFilter()}`;
+    }
 
     this.http.get<any>(url).subscribe({
       next: (response) => {
         let transformedModels: ModelMetrics[] = response.content.map((model: any) => this.transformModel(model));
 
+        // For managers: show deployed models (any) AND validated models they approved
         if (this.isManager()) {
           transformedModels = transformedModels.filter((model: ModelMetrics) =>
-            (model.status === 'Validated' || model.status === 'Deployed') &&
-            model.validatedBy?.email === this.currentUserEmail()
+            model.status === 'Deployed' ||
+            (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail())
           );
         }
 
@@ -362,40 +379,52 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           this.selectedModels.set(toSelect);
         }
       },
-      error: () => {
+      error: (error) => {
+        console.error('Error loading models:', error);
         this.isLoading.set(false);
       }
     });
   }
 
   loadActiveDeployedModel(): void {
-    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/active`)
-      .subscribe({
-        next: (response: any) => {
-          this.activeDeployedModel.set(response);
-        },
-        error: () => { }
-      });
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/active`).subscribe({
+      next: (response: any) => {
+        this.activeDeployedModel.set(response);
+      },
+      error: (error) => {
+        if (error.status === 404) {
+          console.log('No model currently deployed');
+          this.activeDeployedModel.set(null);
+        } else {
+          console.error('Error loading active deployed model:', error);
+          this.activeDeployedModel.set(null);
+        }
+      }
+    });
   }
 
   loadDeploymentHistory(): void {
-    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/history`)
-      .subscribe({
-        next: (response: any) => {
-          this.deploymentHistory = response.data || response || [];
-        },
-        error: () => { }
-      });
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/history`).subscribe({
+      next: (response: any) => {
+        this.deploymentHistory = response.data || response || [];
+      },
+      error: (error) => {
+        console.error('Error loading deployment history:', error);
+        this.deploymentHistory = [];
+      }
+    });
   }
 
   loadValidatedModels(): void {
-    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/validated-models`)
-      .subscribe({
-        next: (response: any) => {
-          this.validatedModels = response.data || response || [];
-        },
-        error: () => { }
-      });
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/validated-models`).subscribe({
+      next: (response: any) => {
+        this.validatedModels = response.data || response || [];
+      },
+      error: (error) => {
+        console.error('Error loading validated models:', error);
+        this.validatedModels = [];
+      }
+    });
   }
 
   isModelDeployed(modelUuid: string): boolean {
@@ -515,6 +544,16 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   }
 
   toggleModelSelection(model: ModelMetrics): void {
+    // For managers, prevent selecting models they don't have permission to see
+    if (this.isManager()) {
+      const isValidForManager = model.status === 'Deployed' ||
+        (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail());
+      if (!isValidForManager) {
+        alert('Vous ne pouvez pas sélectionner ce modèle');
+        return;
+      }
+    }
+
     this.selectedModels.update(current => {
       const isSelected = current.some(m => m.modelUuid === model.modelUuid);
 
@@ -555,7 +594,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     this.loadModels();
   }
 
-  setStatusFilter(status: 'all' | 'Draft' | 'Validated' | 'Rejected'): void {
+  setStatusFilter(status: 'all' | 'Draft' | 'Validated' | 'Rejected' | 'Deployed'): void {
     this.statusFilter.set(status);
     this.showStatusFilter.set(false);
     this.currentPage.set(0);
@@ -947,7 +986,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         const values = [cm.true_negatives, cm.false_positives, cm.false_negatives, cm.true_positives];
         values.forEach((v, metricIndex) => {
           const percent = total > 0 ? (v / total * 100) : 0;
-          data.push([modelIndex, metricIndex, percent, v]); // Store percent for heatmap, v for label
+          data.push([modelIndex, metricIndex, percent, v]);
         });
       }
     });
@@ -1012,7 +1051,6 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           show: true,
           formatter: (params: any) => {
             const rawVal = params.data[3];
-            const pct = params.data[2];
             return rawVal > 1000 ? (rawVal / 1000).toFixed(1) + 'k' : rawVal;
           },
           fontSize: 12,
@@ -1056,6 +1094,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   loadModelDriftData(): void {
     if (!this.isManager() || !this.activeDeployedModel()) {
+      this.isLoadingDrift.set(false);
       return;
     }
 
@@ -1073,12 +1112,14 @@ export class PerformanceComponent implements OnInit, OnDestroy {
             this.isLoadingDrift.set(false);
             setTimeout(() => this.initDriftChart(), 100);
           },
-          error: () => {
+          error: (error) => {
+            console.error('Error loading model metrics:', error);
             this.generateFallbackDriftDataFromModel(currentModel);
           }
         });
       },
-      error: () => {
+      error: (error) => {
+        console.error('Error loading deployment history for drift:', error);
         this.generateFallbackDriftDataFromModel(currentModel);
       }
     });

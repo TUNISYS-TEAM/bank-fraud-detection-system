@@ -78,4 +78,11 @@ public class TransactionController {
     public ResponseEntity<java.util.List<String>> getAllChannels() {
         return ResponseEntity.ok(transactionService.getAllChannels());
     }
+
+    @GetMapping("/stats/time-series")
+    public ResponseEntity<java.util.List<java.util.Map<String, Object>>> getTimeSeriesStats(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
+        return ResponseEntity.ok(transactionService.getTimeSeriesStats(start, end));
+    }
 }

@@ -23,56 +23,56 @@ import java.util.UUID;
 @RequestMapping("/api/fraud-alerts")
 @RequiredArgsConstructor
 public class FraudAlertController {
-    
+
     private final FraudAlertService fraudAlertService;
-    
+
     @GetMapping("/count")
     public ResponseEntity<Long> getTotalAlerts() {
         return ResponseEntity.ok(fraudAlertService.getTotalAlerts());
     }
-    
+
     @GetMapping("/count/critical")
     public ResponseEntity<Long> getCriticalAlertsCount() {
         return ResponseEntity.ok(fraudAlertService.getCriticalAlertsCount());
     }
-    
+
     @GetMapping("/stats")
     public ResponseEntity<AlertStatsResponse> getAlertStats() {
         return ResponseEntity.ok(fraudAlertService.getAlertStats());
     }
-    
+
     @GetMapping("/time-series")
     public ResponseEntity<List<TimeSeriesDataResponse>> getTimeSeriesData(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
         return ResponseEntity.ok(fraudAlertService.getTimeSeriesData(startDate, endDate));
     }
-    
+
     @GetMapping("/risk-distribution")
     public ResponseEntity<List<Map<String, Object>>> getRiskDistribution(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
         return ResponseEntity.ok(fraudAlertService.getRiskDistribution(startDate, endDate));
     }
-    
+
     @GetMapping("/recent")
     public ResponseEntity<List<FraudAlertResponse>> getRecentAnomalies(
             @RequestParam(defaultValue = "8") int limit) {
         return ResponseEntity.ok(fraudAlertService.getRecentAnomalies(limit));
     }
-    
+
     @GetMapping("/{alertUuid}")
     public ResponseEntity<FraudAlertResponse> getAlertByUuid(@PathVariable UUID alertUuid) {
         return ResponseEntity.ok(fraudAlertService.getAlertByUuid(alertUuid));
     }
-    
+
     @PutMapping("/{alertUuid}/status")
     public ResponseEntity<FraudAlertResponse> updateAlertStatus(
             @PathVariable UUID alertUuid,
             @RequestBody UpdateAlertStatusRequest request) {
         return ResponseEntity.ok(fraudAlertService.updateAlertStatus(alertUuid, request));
     }
-    
+
     @GetMapping
     public ResponseEntity<Page<FraudAlertResponse>> getAlerts(
             @RequestParam(required = false) String riskLevel,
@@ -80,12 +80,14 @@ public class FraudAlertController {
             @RequestParam(required = false) String alertType,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "DESC") String sortDirection) {
         Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
-        return ResponseEntity.ok(fraudAlertService.getAlerts(riskLevel, status, alertType, startDate, endDate, pageable));
+        return ResponseEntity
+                .ok(fraudAlertService.getAlerts(riskLevel, status, alertType, search, startDate, endDate, pageable));
     }
 }

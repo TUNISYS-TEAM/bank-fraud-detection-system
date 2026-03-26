@@ -1,1 +1,212 @@
-<p>alerts works!</p>
+<div class="space-y-6 animate-fadeIn p-4">
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800 tracking-tight">Alertes & Transactions Suspectes</h1>
+            <p class="mt-1 text-lg text-gray-500 font-medium">
+                Examinez et traitez les alertes de fraude détectées
+            </p>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-fadeIn">
+        <app-cards [data]="totalAlertsCard()"></app-cards>
+        <app-cards [data]="pendingAlertsCard()"></app-cards>
+        <app-cards [data]="reviewedAlertsCard()"></app-cards>
+        <app-cards [data]="criticalAlertsCard()"></app-cards>
+    </div>
+
+    <!-- Filters Section -->
+    <div
+        class="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm mb-6 transition-all hover:shadow-md animate-fadeIn">
+        <div class="flex flex-col lg:flex-row lg:items-end gap-x-8 gap-y-6">
+
+            <!-- Search Input -->
+            <div class="flex-1 min-w-[280px]">
+                <label
+                    class="block text-[11px] font-bold text-gray-400 uppercase tracking-[0.1em] mb-2 px-1">Rechercher</label>
+                <div class="relative group/search">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <i-feather name="search"
+                            class="w-4 h-4 text-gray-400 group-focus-within/search:text-blue-500 transition-colors"></i-feather>
+                    </div>
+                    <input type="text" (input)="onSearchChange($any($event.target).value)"
+                        class="w-full h-12 pl-11 pr-4 bg-gray-50/50 border border-gray-100 rounded-2xl text-[13px] text-gray-700 placeholder:text-gray-400 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all outline-none"
+                        placeholder="Rechercher par ID, type, montant...">
+                </div>
+            </div>
+
+            <div class="hidden lg:block w-px h-8 bg-gray-100 self-end mb-2"></div>
+
+            <!-- Status Filter -->
+            <div class="w-full lg:w-48">
+                <label
+                    class="block text-[11px] font-bold text-gray-400 uppercase tracking-[0.1em] mb-2 px-1">Statut</label>
+                <div class="relative group/select">
+                    <select [ngModel]="statusFilter()" (ngModelChange)="setStatusFilter($event)"
+                        class="w-full h-12 pl-4 pr-10 bg-gray-50/50 border border-gray-100 rounded-2xl text-[13px] text-gray-700 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all outline-none appearance-none cursor-pointer">
+                        <option value="all">Tous les statuts</option>
+                        <option value="PENDING">En Attente</option>
+                        <option value="REVIEWED">En Cours</option>
+                        <option value="RESOLVED">Résolue</option>
+                        <option value="FALSE_POSITIVE">Faux Positif</option>
+                    </select>
+                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                        <i-feather name="chevron-down"
+                            class="w-4 h-4 text-gray-400 group-focus-within/select:text-blue-500 transition-colors"></i-feather>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hidden lg:block w-px h-8 bg-gray-100 self-end mb-2"></div>
+
+            <!-- Risk Level Filter -->
+            <div class="w-full lg:w-48">
+                <label class="block text-[11px] font-bold text-gray-400 uppercase tracking-[0.1em] mb-2 px-1">Niveau de
+                    Risque</label>
+                <div class="relative group/select">
+                    <select [ngModel]="riskLevelFilter()" (ngModelChange)="setRiskFilter($event)"
+                        class="w-full h-12 pl-4 pr-10 bg-gray-50/50 border border-gray-100 rounded-2xl text-[13px] text-gray-700 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all outline-none appearance-none cursor-pointer">
+                        <option value="all">Tous les risques</option>
+                        <option value="CRITICAL">Critique</option>
+                        <option value="HIGH">Élevé</option>
+                        <option value="MEDIUM">Moyen</option>
+                        <option value="LOW">Faible</option>
+                    </select>
+                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                        <i-feather name="chevron-down" class="w-4 h-4 text-gray-400 transition-colors"></i-feather>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ml-auto flex gap-3 mb-2">
+                <button (click)="exportToCSV()"
+                    class="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-all">
+                    <i-feather name="download" class="w-4 h-4"></i-feather>
+                    Exporter
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts Table -->
+    <div
+        class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden transition-all hover:shadow-md animate-fadeIn">
+        <div class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+            <h2 class="text-xl font-bold text-gray-800">Transactions Signalées ({{ totalElements() }})</h2>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="bg-gray-50/50 text-left border-b border-gray-100">
+                        <th class="pl-20 pr-8 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">ID
+                            Transaction</th>
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type / Alerte
+                        </th>
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Montant</th>
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                            Score Risque</th>
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">Statut</th>
+                        <th class="pl-10 pr-32 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                            Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                    @if (isLoading()) {
+                    <tr>
+                        <td colspan="6" class="px-8 py-20 text-center">
+                            <div
+                                class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent">
+                            </div>
+                            <p class="mt-4 text-gray-500 font-medium">Analyse des transactions en cours...</p>
+                        </td>
+                    </tr>
+                    } @else if (alerts().length === 0) {
+                    <tr>
+                        <td colspan="6" class="px-8 py-20 text-center">
+                            <i-feather name="shield" class="w-16 h-16 text-gray-200 mx-auto mb-4"></i-feather>
+                            <p class="text-gray-500 font-medium text-lg">Aucune alerte détectée</p>
+                            <p class="text-sm text-gray-400 mt-2">Le système n'a identifié aucune activité frauduleuse
+                                avec ces filtres.</p>
+                        </td>
+                    </tr>
+                    } @else {
+                    @for (alert of alerts(); track alert.alertUuid) {
+                    <tr class="hover:bg-gray-50 group/row cursor-pointer">
+                        <td class="pl-20 pr-8 py-5">
+                            <span class="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-[11px] font-bold tracking-tight">
+                                #TXN-{{ alert.transactionId }}
+                            </span>
+                        </td>
+                        <td class="px-10 py-5">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-bold text-gray-800">{{ translateAlertType(alert.alertType) }}</span>
+                                <span class="text-[11px] text-gray-400 font-medium">{{ alert.createdAt | date:'dd MMM yyyy, HH:mm' }}</span>
+                            </div>
+                        </td>
+                        <td class="px-10 py-5">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-semibold text-slate-800">{{ alert.transactionAmount | currency:(alert.transactionCurrency || 'TND'):'symbol':'1.2-2' }}</span>
+                                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{{ alert.transactionChannel }}</span>
+                            </div>
+                        </td>
+                        <td class="px-10 py-5">
+                            <div class="flex justify-center">
+                                <div [ngClass]="getRiskBadgeClass(alert.riskLevel)" class="risk-badge-base">
+                                    <i-feather [name]="getRiskIcon(alert.riskLevel)" style="width: 13px; height: 13px; stroke-width: 2.5px;"></i-feather>
+                                    <span class="font-black text-[10px] tracking-tight">{{ translateRisk(alert.riskLevel) }}</span>
+                                    <span class="font-black text-[11px] ml-[2px]">({{ (alert.fraudScore * 100).toFixed(0) }}%)</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-10 py-5 text-center">
+                            <span [ngClass]="getStatusBadgeClass(alert.status)"
+                                class="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl border">
+                                {{ translateStatus(alert.status) }}
+                            </span>
+                        </td>
+                        <td class="pl-10 pr-32 py-5 text-center">
+                            <div class="flex items-center justify-center opacity-0 group-hover/row:opacity-100">
+                                <button (click)="openDetails(alert)"
+                                    class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all hover:scale-110"
+                                    title="Examiner l'alerte">
+                                    <i-feather name="eye" class="w-4 h-4"></i-feather>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        @if (!isLoading() && totalPages() > 1) {
+        <div class="px-8 py-5 border-t border-gray-100 flex items-center justify-between bg-white text-gray-500">
+            <div class="text-xs font-bold uppercase tracking-widest opacity-60">
+                Page {{ currentPage() + 1 }} sur {{ totalPages() }}
+            </div>
+            <div class="flex gap-2">
+                <button (click)="onPageChange(currentPage() - 1)" [disabled]="currentPage() === 0"
+                    class="p-2 border border-gray-100 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-all">
+                    <i-feather name="chevron-left" class="w-5 h-5"></i-feather>
+                </button>
+                <button (click)="onPageChange(currentPage() + 1)" [disabled]="currentPage() >= totalPages() - 1"
+                    class="p-2 border border-gray-100 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-all">
+                    <i-feather name="chevron-right" class="w-5 h-5"></i-feather>
+                </button>
+            </div>
+        </div>
+        }
+    </div>
+</div>
+
+<app-alert-details-modal 
+    [isOpen]="isDetailsOpen()" 
+    [alert]="selectedAlert()" 
+    (close)="closeDetails()" 
+    (action)="handleAlertAction($event)">
+</app-alert-details-modal>

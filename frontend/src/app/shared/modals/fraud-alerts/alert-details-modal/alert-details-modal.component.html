@@ -1,0 +1,129 @@
+@if (isOpen && alert) {
+<div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fadeIn" (click)="onClose()"></div>
+
+    <!-- Modal Content -->
+    <div class="relative bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-slideUp">
+
+        <!-- ─── Header ─── -->
+        <div class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50/50 to-white">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-sm">
+                    <i-feather name="activity" class="w-6 h-6"></i-feather>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900 tracking-tight">Détail de la Transaction</h2>
+                    <p class="text-sm text-gray-500 font-medium tracking-tight">TXN-{{alert.transactionId}} • Alerte {{alert.alertUuid.substring(0, 8)}}...</p>
+                </div>
+            </div>
+            <button (click)="onClose()" class="p-2.5 hover:bg-gray-100 rounded-xl transition-all hover:scale-105 active:scale-95 group">
+                <i-feather name="x" class="w-6 h-6 text-gray-400 group-hover:text-gray-600"></i-feather>
+            </button>
+        </div>
+
+        <!-- Scrollable Content Area -->
+        <div class="px-8 pb-8 space-y-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
+            <!-- Details section -->
+            <div class="bg-white rounded-2xl p-10 border border-gray-100/60 shadow-[0_20px_50px_rgba(0,0,0,0.02)]">
+                <div class="grid grid-cols-2 gap-x-12 gap-y-10 mb-10">
+                    <!-- Item 1: Identity -->
+                    <div>
+                        <label class="block text-[12px] font-bold text-slate-400 uppercase tracking-wider mb-2">Identité Client</label>
+                        <p class="text-[13px] font-bold text-slate-700 tracking-tight leading-tight">{{ alert.clientName || 'CLIENT-' + alert.userId }}</p>
+                        <p class="text-[12px] font-medium text-slate-400 font-mono mt-1.5 tracking-tight uppercase">
+                            {{ alert.accountNumber || 'ACC-0000000' }}</p>
+                    </div>
+
+                    <!-- Item 2: Amount -->
+                    <div>
+                        <label class="block text-[12px] font-bold text-slate-400 uppercase tracking-wider mb-2">Montant Transaction</label>
+                        <div class="flex items-baseline gap-2">
+                            <p class="text-[13px] font-bold text-slate-700 tracking-tight">
+                                {{ alert.transactionAmount | currency:(alert.transactionCurrency || 'TND'):'symbol':'1.3-3' }}
+                            </p>
+                            <span class="text-[9px] font-bold text-emerald-500 uppercase tracking-widest px-1.5 py-0.5 bg-emerald-50 rounded-md">
+                                {{ alert.transactionChannel || 'ONLINE' }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Item 3: Date -->
+                    <div>
+                        <label class="block text-[12px] font-bold text-slate-400 uppercase tracking-wider mb-2">Date du Signalement</label>
+                        <p class="text-[13px] font-bold text-slate-700 tracking-tight">{{ formatDate(alert.createdAt) }}</p>
+                    </div>
+
+                    <!-- Item 4: Anomaly -->
+                    <div>
+                        <label class="block text-[12px] font-bold text-slate-400 uppercase tracking-wider mb-2">Type d'Anomalie</label>
+                        <p class="text-[13px] font-bold text-slate-700 tracking-tight leading-tight">{{ translateAlertType(alert.alertType) }}</p>
+                    </div>
+                </div>
+
+                <!-- Enhanced Risk Level Bar (Kept Perfect as per User) -->
+                <div class="pt-8 border-t border-gray-100 flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="w-2 h-8 rounded-full bg-slate-200"></div>
+                        <div>
+                            <p class="text-[11px] font-black text-slate-400 uppercase tracking-widest">Évaluation
+                                des Risques</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div [ngClass]="getRiskBadgeClass(alert.riskLevel)"
+                            class="px-6 py-2.5 rounded-[1.2rem] flex items-center gap-3 border shadow-sm transition-all hover:scale-105 cursor-default">
+                            <i-feather name="activity" class="w-4 h-4"></i-feather>
+                            <span class="text-[11px] font-black uppercase tracking-[0.15em]">
+                                {{ translateRisk(alert.riskLevel) }} ({{ (alert.fraudScore * 100).toFixed(0) }}%)
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (!hideAiAnalysis) {
+            <!-- Analysis & Feedback Section card -->
+            <div class="bg-white rounded-2xl p-10 border border-gray-100/60 shadow-[0_20px_50px_rgba(0,0,0,0.02)] space-y-8">
+                <!-- XAI Section -->
+                <div class="space-y-3">
+                    <h3 class="text-sm font-bold text-gray-800">Explications (XAI)</h3>
+                    <div class="h-24 flex items-center justify-center border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50/30">
+                        <p class="text-[11px] font-medium text-gray-400 text-center px-8 italic">
+                            L'analyse détaillée des facteurs de risque sera générée ici par le système expert...
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Comment Section -->
+                <div class="space-y-3">
+                    <label class="text-sm font-bold text-gray-800">Ajouter un Commentaire</label>
+                    <textarea (ngModelChange)="comment.set($event)" [ngModel]="comment()"
+                        placeholder="Notes sur l'analyse de cette transaction..."
+                        class="w-full h-14 p-4 bg-gray-50 border border-gray-100 rounded-2xl text-[13px] text-gray-700 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all outline-none resize-none"></textarea>
+                </div>
+            </div>
+
+            <!-- Actions Footer -->
+            <div class="flex flex-col sm:flex-row gap-3 pt-2">
+                <button (click)="onAction('VALIDE_FRAUDE')"
+                    class="flex-1 h-12 flex items-center justify-center gap-2 bg-red-600 text-white rounded-2xl font-bold text-sm hover:bg-red-700 transition-all shadow-lg shadow-red-600/20">
+                    <i-feather name="check" class="w-4 h-4"></i-feather>
+                    Valider Fraude
+                </button>
+                <button (click)="onAction('REJETTE_ALERTE')"
+                    class="flex-1 h-12 flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-600 rounded-2xl font-bold text-sm hover:bg-gray-50 transition-all">
+                    <i-feather name="x-circle" class="w-4 h-4"></i-feather>
+                    Rejeter Alerte
+                </button>
+                <button (click)="onAction('CONTACT_CLIENT')"
+                    class="flex-1 h-12 flex items-center justify-center gap-2 bg-white border border-gray-100 text-gray-600 rounded-2xl font-bold text-sm hover:bg-gray-50 transition-all">
+                    <i-feather name="mail" class="w-4 h-4"></i-feather>
+                    Contacter Client
+                </button>
+            </div>
+            }
+        </div>
+    </div>
+</div>
+}

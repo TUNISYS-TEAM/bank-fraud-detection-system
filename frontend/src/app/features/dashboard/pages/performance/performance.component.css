@@ -1,0 +1,90 @@
+/* Action Buttons */
+.btn-action {
+  padding: 0.5rem 1rem;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-radius: 0.75rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  border: none;
+  cursor: pointer;
+}
+
+.btn-deploy {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #ffffff;
+}
+
+.btn-deploy:hover {
+  box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.2);
+  transform: translateY(-2px);
+}
+
+.btn-deploy:active {
+  transform: translateY(0);
+}
+
+.btn-undeploy {
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #ffe4e6;
+}
+
+.btn-undeploy:hover {
+  background: #f43f5e;
+  color: #ffffff;
+  border-color: #f43f5e;
+  box-shadow: 0 10px 15px -3px rgba(244, 63, 94, 0.2);
+  transform: translateY(-2px);
+}
+
+.btn-undeploy i-feather {
+  transition: color 0.3s ease;
+}
+
+.btn-undeploy:hover i-feather {
+  color: #ffffff;
+}
+
+/* Status Badge Actif */
+.badge-active {
+  padding: 0.375rem 0.75rem;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.5s ease;
+  background: rgba(239, 246, 255, 0.8);
+  color: #2563eb;
+  border: 1px solid rgba(191, 219, 254, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.badge-active i-feather {
+  width: 14px;
+  height: 14px;
+  animation: pulse-activity 2s infinite;
+}
+
+@keyframes pulse-activity {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .btn-action, .badge-active {
+    padding: 0.375rem 0.625rem;
+    font-size: 9px;
+  }
+}

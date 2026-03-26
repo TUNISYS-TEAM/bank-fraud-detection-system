@@ -1,29 +1,30 @@
-<div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-    <div class="flex items-start justify-between">
-        <div class="space-y-4">
-            <span class="text-m font-medium text-gray-500 block">{{ data().label }}</span>
+<div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 h-full overflow-hidden">
+    <div class="flex items-start justify-between gap-4">
+        <div class="space-y-4 flex-1 min-w-0">
+            <span class="text-sm font-medium text-gray-400 block truncate">{{ data().label }}</span>
             <div class="flex items-baseline space-x-2">
-                <h3 class="text-3xl font-bold text-gray-800">
-                    @if (data().isCurrency && data().value !== '...') {
-                        {{ data().value | currency:'TND':'symbol':'1.2-2' }}
-                    } @else {
-                        {{ data().value }}
-                    }
+                <h3 class="text-2xl lg:text-3xl font-bold text-gray-800 break-words">
+                    {{ formatValue(data().value, data().isCurrency) }}
                 </h3>
             </div>
 
             @if (data().trend || data().description) {
-            <div class="flex items-center space-x-1.5 pt-1">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
                 @if (data().trend) {
-                <span [ngClass]="data().trendUp ? 'text-emerald-500' : 'text-amber-500'"
-                    class="flex items-center text-sm font-semibold">
-                    <i-feather [name]="data().trendUp ? 'trending-up' : 'alert-triangle'"
-                        class="w-4 h-4 mr-1"></i-feather>
+                <span [ngClass]="data().isStable ? 'text-orange-500' : (
+                        data().reverseTrend ? 
+                        (data().trendUp ? 'text-rose-500' : 'text-emerald-500') : 
+                        (data().trendUp ? 'text-emerald-500' : 'text-rose-500'))"
+                    class="flex items-center text-sm font-semibold whitespace-nowrap">
+                    <i-feather [name]="data().trendIcon || (data().isStable ? 'alert-triangle' : (
+                        (data().reverseTrend ? !data().trendUp : data().trendUp) ? 'trending-up' : 'trending-down'
+                    ))"
+                        class="w-4 h-4 mr-1 flex-shrink-0"></i-feather>
                     {{ data().trend }}
                 </span>
                 }
                 @if (data().description) {
-                <span class="text-sm text-gray-400 font-medium">{{ data().description }}</span>
+                <span class="text-xs text-gray-400 font-medium whitespace-nowrap">{{ data().description }}</span>
                 }
             </div>
             }
@@ -31,8 +32,8 @@
 
         <!-- Icône avec fond dynamique -->
         <div [style.background-color]="data().color ? data().color + '15' : 'rgba(79, 70, 229, 0.08)'"
-            class="p-4 rounded-2xl">
-            <i-feather [name]="data().icon" [style.color]="data().color || '#4f46e5'" class="w-7 h-7"></i-feather>
+            class="p-4 rounded-2xl flex-shrink-0">
+            <i-feather [name]="data().icon" [style.color]="data().color || '#4f46e5'" class="w-6 h-6 lg:w-7 lg:h-7"></i-feather>
         </div>
     </div>
 </div>

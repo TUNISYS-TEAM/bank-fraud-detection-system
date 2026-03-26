@@ -1,6 +1,7 @@
 package com.fraud.backend.data.service.frauddetection;
 
 import com.fraud.backend.api.dto.frauddetection.model.response.DeploymentResponse;
+import com.fraud.backend.api.dto.frauddetection.model.response.ModelSummaryResponse;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.corebanking.*;
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -53,10 +55,36 @@ public class ModelDeploymentService {
     private volatile UUID currentBackfillJobId = null;
 
     /**
-     * Get all validated models (available for deployment)
+     * Get all validated models (available for deployment) - returns DTOs
      */
-    public List<ModelML> getValidatedModels() {
-        return modelMLRepository.findByStatus("Validated");
+    public List<ModelSummaryResponse> getValidatedModels() {
+        return modelMLRepository.findByStatus("Validated").stream()
+                .map(this::toModelSummaryResponse)
+                .toList();
+    }
+
+    /**
+     * Convert ModelML entity to ModelSummaryResponse DTO
+     */
+    private ModelSummaryResponse toModelSummaryResponse(ModelML model) {
+        if (model == null) return null;
+        
+        return ModelSummaryResponse.builder()
+                .modelUuid(model.getModelUuid())
+                .modelName(model.getModelName())
+                .modelType(model.getModelType())
+                .version(model.getVersion())
+                .status(model.getStatus())
+                .createdAt(model.getCreatedAt())
+                .createdByEmail(model.getCreatedBy() != null ? model.getCreatedBy().getEmail() : null)
+                .createdByName(model.getCreatedBy() != null
+                        ? model.getCreatedBy().getFirstName() + " " + model.getCreatedBy().getLastName()
+                        : null)
+                .auc(model.getAuc())
+                .precision(model.getPrecision())
+                .recall(model.getRecall())
+                .f1Score(model.getF1Score())
+                .build();
     }
 
     /**
@@ -69,16 +97,26 @@ public class ModelDeploymentService {
     }
 
     /**
-     * Get currently deployed model as DTO
+     * Get currently deployed model entity (internal use only)
      */
-    public Optional<ModelML> getDeployedModel() {
+    private Optional<ModelML> getDeployedModelEntity() {
         return deploymentHistoryRepository
                 .findFirstByStatusOrderByDeploymentDateDesc("ACTIVE")
                 .map(ModelDeploymentHistory::getModel);
     }
 
     /**
-     * Get currently deployed model response
+     * Get currently deployed model summary DTO
+     */
+    public Optional<ModelSummaryResponse> getDeployedModelSummary() {
+        return deploymentHistoryRepository
+                .findFirstByStatusOrderByDeploymentDateDesc("ACTIVE")
+                .map(ModelDeploymentHistory::getModel)
+                .map(this::toModelSummaryResponse);
+    }
+
+    /**
+     * Get currently deployed model response (for backward compatibility)
      */
     public Optional<DeploymentResponse> getDeployedModelResponse() {
         return deploymentHistoryRepository
@@ -228,7 +266,7 @@ public class ModelDeploymentService {
             model = modelMLRepository.findByModelUuid(modelUuid)
                     .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
         } else {
-            model = getDeployedModel()
+            model = getDeployedModelEntity()
                     .orElseThrow(() -> new IllegalStateException("No model deployed"));
         }
 
@@ -240,14 +278,16 @@ public class ModelDeploymentService {
      */
     private FraudAlert scoreTransactionWithModel(Transaction transaction, ModelML model) {
         try {
-            log.info("=== STARTING SCORING for Transaction ID: {}, UUID: {} ===", 
+            log.info("=== STARTING SCORING for Transaction ID: {}, UUID: {} ===",
                     transaction.getId(), transaction.getTransactionUuid());
-            
+
             // Get client behavior
             ClientBehavior clientBehavior = clientBehaviorRepository.findByAccountId(transaction.getAccount().getId())
                     .orElse(null);
-            
-            log.info("Client behavior found: {}", clientBehavior != null ? "YES (risk score: " + clientBehavior.getClientRiskScore() + ")" : "NO (first transaction)");
+
+            log.info("Client behavior found: {}",
+                    clientBehavior != null ? "YES (risk score: " + clientBehavior.getClientRiskScore() + ")"
+                            : "NO (first transaction)");
 
             // Prepare features for scoring
             Map<String, Object> features = prepareFeatures(transaction, clientBehavior);
@@ -259,12 +299,12 @@ public class ModelDeploymentService {
                     model.getModelUuid(),
                     transaction.getAccount().getId(),
                     transaction.getTransactionUuid());
-            
+
             Double fraudScore = (Double) prediction.get("fraud_score");
             String riskLevel = (String) prediction.get("risk_level");
-            
+
             log.info("Python prediction result - fraud_score: {}, risk_level: {}", fraudScore, riskLevel);
-            
+
             // Map fraud score to allowed alert type
             String alertType = mapToAlertType(fraudScore);
             log.info("Mapped alert_type: {}", alertType);
@@ -290,14 +330,14 @@ public class ModelDeploymentService {
             transaction.setFraudScore(fraudScoreDecimal);
             transaction.setIsFraud(fraudScore > 0.75);
             transaction.setModel(model);
-            
-            log.info("Before saving transaction - ID: {}, Fraud Score: {}, Is Fraud: {}", 
+
+            log.info("Before saving transaction - ID: {}, Fraud Score: {}, Is Fraud: {}",
                     transaction.getId(), fraudScoreDecimal, transaction.getIsFraud());
-            
+
             // Save transaction
             Transaction savedTransaction = transactionRepository.save(transaction);
-            
-            log.info("After saving transaction - ID: {}, Fraud Score: {}, Is Fraud: {}", 
+
+            log.info("After saving transaction - ID: {}, Fraud Score: {}, Is Fraud: {}",
                     savedTransaction.getId(), savedTransaction.getFraudScore(), savedTransaction.getIsFraud());
 
             // Update client behavior after transaction (ONLY ONCE)
@@ -313,12 +353,12 @@ public class ModelDeploymentService {
 
             // Save fraud alert
             FraudAlert savedAlert = fraudAlertRepository.save(alert);
-            
+
             log.info("Transaction {} scored successfully: score={}, risk={}, isFraud={}, alertType={}",
                     transaction.getTransactionUuid(), fraudScore, riskLevel, transaction.getIsFraud(), alertType);
-            
+
             log.info("=== SCORING COMPLETED SUCCESSFULLY ===");
-            
+
             return savedAlert;
 
         } catch (Exception e) {
@@ -368,7 +408,7 @@ public class ModelDeploymentService {
         BigDecimal newAvg = behavior.getClientAvgTxAmount()
                 .multiply(BigDecimal.valueOf(behavior.getClientTotalTransactions()))
                 .add(transaction.getAmount())
-                .divide(BigDecimal.valueOf(newTotalTransactions), 2, BigDecimal.ROUND_HALF_UP);
+                .divide(BigDecimal.valueOf(newTotalTransactions), 2, RoundingMode.HALF_UP);
 
         behavior.setClientTotalTransactions(newTotalTransactions);
         behavior.setClientAvgTxAmount(newAvg);
@@ -396,7 +436,7 @@ public class ModelDeploymentService {
                     model = modelMLRepository.findByModelUuid(modelUuid)
                             .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
                 } else {
-                    model = getDeployedModel()
+                    model = getDeployedModelEntity()
                             .orElseThrow(() -> new IllegalStateException("No model deployed"));
                 }
 
@@ -464,8 +504,9 @@ public class ModelDeploymentService {
 
         CompletableFuture.runAsync(() -> {
             try {
-                ModelML deployedModel = getDeployedModel()
-                        .orElseThrow(() -> new IllegalStateException("No model deployed. Please deploy a model first."));
+                ModelML deployedModel = getDeployedModelEntity()
+                        .orElseThrow(
+                                () -> new IllegalStateException("No model deployed. Please deploy a model first."));
 
                 log.info("Processing with model: {}", deployedModel.getModelName());
 
@@ -510,7 +551,7 @@ public class ModelDeploymentService {
                                 String riskLevel = (String) prediction.get("risk_level");
                                 String alertType = mapToAlertType(fraudScore);
 
-                                log.info("Backfill - Transaction ID: {}, Score: {}, AlertType: {}", 
+                                log.info("Backfill - Transaction ID: {}, Score: {}, AlertType: {}",
                                         transaction.getId(), fraudScore, alertType);
 
                                 // Create fraud alert
@@ -519,7 +560,8 @@ public class ModelDeploymentService {
                                         .transaction(transaction)
                                         .user(null)
                                         .fraudScore(fraudScore)
-                                        .supervisedScore((Double) prediction.getOrDefault("supervised_score", fraudScore))
+                                        .supervisedScore(
+                                                (Double) prediction.getOrDefault("supervised_score", fraudScore))
                                         .anomalyScore((Double) prediction.getOrDefault("anomaly_score", 0.0))
                                         .modelUsed(deployedModel)
                                         .riskLevel(riskLevel)
@@ -533,13 +575,13 @@ public class ModelDeploymentService {
                                 transaction.setFraudScore(BigDecimal.valueOf(fraudScore));
                                 transaction.setIsFraud(fraudScore > 0.75);
                                 transaction.setModel(deployedModel);
-                                
-                                log.info("Backfill - Before saving transaction - ID: {}, Fraud Score: {}", 
+
+                                log.info("Backfill - Before saving transaction - ID: {}, Fraud Score: {}",
                                         transaction.getId(), fraudScore);
-                                
+
                                 transactionRepository.save(transaction);
-                                
-                                log.info("Backfill - After saving transaction - ID: {}, Fraud Score: {}", 
+
+                                log.info("Backfill - After saving transaction - ID: {}, Fraud Score: {}",
                                         transaction.getId(), transaction.getFraudScore());
 
                                 // Update behavior

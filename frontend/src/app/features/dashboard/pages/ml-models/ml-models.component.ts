@@ -449,6 +449,11 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     return colors[category] || 'text-gray-600 bg-gray-50';
   }
 
+  get isDatasetAnalyzed(): boolean {
+    if (!this.selectedDataset?.statistics) return false;
+    return (this.selectedDataset.statistics.columnCount || 0) > 0;
+  }
+
   getCategoryHeaderBg(category: string): string {
     const colors: Record<string, string> = {
       'temporal': 'bg-blue-50/50',

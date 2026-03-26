@@ -27,6 +27,8 @@ import { ClientsViewModalComponent } from '../../shared/modals/clients-accounts/
 import { UpdateHistoryModalComponent } from '../../shared/modals/models-ml/history-update-modal/history-update-modal.component';
 import { DeleteHistoryModalComponent } from '../../shared/modals/models-ml/history-delete-modal/history-delete-modal.component';
 import { ModelDetailsModalComponent } from  '../../shared/modals/models-ml/model-details-modal/model-details-modal.component';
+import { AlertDetailsModalComponent } from '../../shared/modals/fraud-alerts/alert-details-modal/alert-details-modal.component';
+
 
 @NgModule({
   declarations: [
@@ -56,6 +58,7 @@ import { ModelDetailsModalComponent } from  '../../shared/modals/models-ml/model
     UpdateHistoryModalComponent,
     DeleteHistoryModalComponent,
     ModelDetailsModalComponent,
+    AlertDetailsModalComponent
   ]
 })
 export class DashboardModule { }
