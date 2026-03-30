@@ -9,8 +9,11 @@ from pathlib import Path
 from ml_pipeline.pipeline.onnx_exporter import main as export_main
 from ml_pipeline.training.train_models import main as train_main
 from ml_pipeline.training.analyze_dataset import analyze_dataset_file
-from ml_pipeline.transformers.behavioral.client_behavior import ClientBehaviorTransformer 
-import pandas as pd 
+from ml_pipeline.transformers.behavioral.client_behavior import ClientBehaviorTransformer
+import pandas as pd
+
+# NEW
+from scripts.train_random_forest import main as train_random_forest_main
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,6 +39,19 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--onnx-dir", default="artifacts/exported_onnx")
     train_parser.add_argument("--log", default=None)
     train_parser.add_argument("--level", default="INFO")
+
+    # ---- train-random-forest ----
+    rf_parser = subparsers.add_parser(
+        "train-random-forest",
+        help="Entraîne un modèle Random Forest pour le backend Java"
+    )
+    rf_parser.add_argument("--dataset-path", required=True)
+    rf_parser.add_argument("--dataset-id", required=True)
+    rf_parser.add_argument("--job-id", required=True)
+    rf_parser.add_argument("--timestamp", required=True)  # <-- ADDED
+    rf_parser.add_argument("--hyperparameters", required=True)
+    rf_parser.add_argument("--test-size", type=float, default=0.2)
+    rf_parser.add_argument("--random-seed", type=int, default=42)
 
     # ---- export-onnx ----
     export_parser = subparsers.add_parser("export-onnx", help="Exporte le modèle au format ONNX")
@@ -111,7 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Chemin vers le fichier d'historique client (JSON) si --use-fitted-history est activé"
     )
 
-    # ---- convert-to-parquet - NOUVELLE COMMANDE ----
+    # ---- convert-to-parquet ----
     convert_parser = subparsers.add_parser(
         "convert-to-parquet",
         help="Convertit un fichier CSV au format Parquet"
@@ -152,12 +168,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def extract_behavior_command(args):
     """Implémentation de la commande extract-behavior."""
-    import json
     try:
         input_path = Path(args.input)
         dataset_id = args.dataset_id
         job_id = args.job_id
-        
+
         logging.info("Extraction des features comportementales - dataset=%s job=%s", dataset_id, job_id)
         logging.info("Fichier d'entrée: %s", input_path)
 
@@ -165,11 +180,10 @@ def extract_behavior_command(args):
         if input_path.suffix.lower() == '.parquet':
             df = pd.read_parquet(input_path)
         else:
-            # Pour CSV, essayer de parser TX_Time automatiquement
             df = pd.read_csv(input_path)
             if 'TX_Time' in df.columns:
                 df['TX_Time'] = pd.to_datetime(df['TX_Time'], errors='coerce')
-        
+
         logging.info("Dataset chargé : %d lignes, %d colonnes", len(df), len(df.columns))
 
         # 2. Vérifier les colonnes requises
@@ -180,18 +194,14 @@ def extract_behavior_command(args):
 
         # 3. Initialiser le transformer
         transformer = ClientBehaviorTransformer()
-        
+
         # 4. Charger l'historique si demandé
         if args.use_fitted_history and args.history_path:
-            import json
             from collections import Counter
             history_path = Path(args.history_path)
             if history_path.exists():
-                with open(history_path, 'r') as f:
-                    # Note: Le chargement complet de l'historique peut être lourd
-                    # À adapter selon le format de sérialisation
+                with open(history_path, 'r', encoding='utf-8') as f:
                     client_stats = json.load(f)
-                    # Reconstruire les Counter objects
                     for acc, state in client_stats.items():
                         state['region_counter'] = Counter(state['region_counter'])
                         state['channel_counter'] = Counter(state['channel_counter'])
@@ -203,19 +213,16 @@ def extract_behavior_command(args):
 
         # 5. Appliquer le transformer
         if not args.use_fitted_history:
-            # Mode strict as-of : fit puis transform
             logging.info("Mode strict as-of : fit sur les données fournies")
             transformer.fit(df)
             df_features = transformer.transform(df, use_fitted_history=False)
         else:
-            # Mode avec historique : transform seulement
             logging.info("Mode avec historique pré-entraîné")
             df_features = transformer.transform(df, use_fitted_history=True)
 
         logging.info("Features extraites : %d colonnes", len(df_features.columns))
 
         # 6. Fusionner avec les données originales
-        # On ajoute les nouvelles colonnes, en évitant les collisions
         for col in df_features.columns:
             if col not in df.columns:
                 df[col] = df_features[col]
@@ -227,36 +234,28 @@ def extract_behavior_command(args):
             output_path = Path(args.output)
         else:
             output_path = input_path.parent / f"enriched_{dataset_id}.parquet"
-        
-        # Créer le répertoire parent si nécessaire
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Sauvegarder au format Parquet (compact et rapide)
-        df.to_parquet(output_path, index=False)
-        logging.info("Fichier enrichi sauvegardé : %s (%d Mo)", 
-                    output_path, output_path.stat().st_size / (1024*1024))
 
-        # 8. Statistiques pour le retour JSON
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(output_path, index=False)
+        logging.info("Fichier enrichi sauvegardé : %s (%d Mo)",
+                     output_path, output_path.stat().st_size / (1024 * 1024))
+
         stats = {
             "status": "success",
             "original_rows": len(df),
             "accounts": int(df["Account_Id"].nunique()),
-            "columns_before": list(df_features.columns),  # seulement les nouvelles
+            "columns_before": list(df_features.columns),
             "all_columns": list(df.columns),
             "output_file": str(output_path),
             "dataset_id": dataset_id,
             "job_id": job_id,
             "columns_added": list(df_features.columns)
         }
-        
-        # Écrire le JSON sur stdout (pour Java)
+
         print(json.dumps(stats, default=str))
-        
-        # Écrire les logs sur stderr
         logging.info("Extraction terminée avec succès")
 
     except Exception as e:
-        # En cas d'erreur, imprimer un JSON d'erreur sur stdout
         error_result = {
             "status": "error",
             "error": str(e),
@@ -273,31 +272,25 @@ def convert_to_parquet_command(args):
     try:
         input_path = Path(args.input)
         output_path = Path(args.output)
-        
+
         logging.info("Conversion CSV vers Parquet - input=%s output=%s", input_path, output_path)
-        
-        # Vérifier que le fichier d'entrée existe
+
         if not input_path.exists():
             raise FileNotFoundError(f"Fichier d'entrée non trouvé: {input_path}")
-        
-        # Créer le répertoire de sortie si nécessaire
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Lire le CSV
+
         logging.info("Lecture du fichier CSV: %s", input_path)
         df = pd.read_csv(input_path)
         logging.info("CSV chargé: %d lignes, %d colonnes", len(df), len(df.columns))
-        
-        # Convertir en Parquet
+
         logging.info("Conversion en Parquet...")
         df.to_parquet(output_path, index=False, compression='snappy')
-        
-        # Vérifier que le fichier a été créé
+
         if output_path.exists():
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
             logging.info("Conversion réussie: %s (%.2f MB)", output_path, file_size_mb)
-            
-            # Résultat JSON
+
             result = {
                 "status": "success",
                 "input": str(input_path),
@@ -309,7 +302,7 @@ def convert_to_parquet_command(args):
             print(json.dumps(result))
         else:
             raise RuntimeError("Le fichier de sortie n'a pas été créé")
-        
+
     except Exception as e:
         error_result = {
             "status": "error",
@@ -327,31 +320,25 @@ def convert_to_csv_command(args):
     try:
         input_path = Path(args.input)
         output_path = Path(args.output)
-        
+
         logging.info("Conversion Parquet vers CSV - input=%s output=%s", input_path, output_path)
-        
-        # Vérifier que le fichier d'entrée existe
+
         if not input_path.exists():
             raise FileNotFoundError(f"Fichier d'entrée non trouvé: {input_path}")
-        
-        # Créer le répertoire de sortie si nécessaire
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Lire le Parquet
+
         logging.info("Lecture du fichier Parquet: %s", input_path)
         df = pd.read_parquet(input_path)
         logging.info("Parquet chargé: %d lignes, %d colonnes", len(df), len(df.columns))
-        
-        # Convertir en CSV
+
         logging.info("Conversion en CSV...")
         df.to_csv(output_path, index=False)
-        
-        # Vérifier que le fichier a été créé
+
         if output_path.exists():
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
             logging.info("Conversion réussie: %s (%.2f MB)", output_path, file_size_mb)
-            
-            # Résultat JSON
+
             result = {
                 "status": "success",
                 "input": str(input_path),
@@ -363,7 +350,7 @@ def convert_to_csv_command(args):
             print(json.dumps(result))
         else:
             raise RuntimeError("Le fichier de sortie n'a pas été créé")
-        
+
     except Exception as e:
         error_result = {
             "status": "error",
@@ -380,7 +367,6 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    # Configurer le logging pour que les logs aillent sur stderr
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
@@ -399,6 +385,19 @@ def main() -> None:
                 sys.argv.extend([f"--{key.replace('_', '-')}", str(value)])
         train_main()
 
+    elif args.command == "train-random-forest":
+        sys.argv = [
+            "train_random_forest",
+            "--dataset-path", args.dataset_path,
+            "--dataset-id", args.dataset_id,
+            "--job-id", args.job_id,
+            "--timestamp", args.timestamp,  # <-- ADDED
+            "--hyperparameters", args.hyperparameters,
+            "--test-size", str(args.test_size),
+            "--random-seed", str(args.random_seed),
+        ]
+        train_random_forest_main()
+
     elif args.command == "export-onnx":
         sys.argv = [
             "onnx_exporter",
@@ -414,34 +413,28 @@ def main() -> None:
 
     elif args.command == "analyze-dataset":
         try:
-            # Appeler la fonction d'analyse
             result = analyze_dataset_file(
                 file_path=args.dataset_path,
                 sample_rows=args.sample_rows,
                 max_rows=args.max_rows if args.max_rows > 0 else None
             )
-            # Sérialiser en JSON
             json_output = json.dumps(result, indent=2, default=str)
-            # Écrire sur stdout (Java lira ce flux) - SEULEMENT le JSON
             print(json_output)
-            # Si un fichier de sortie est demandé, l'écrire aussi
+
             if args.out:
                 out_path = Path(args.out)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_text(json_output, encoding="utf-8")
-                # Ce message va sur stderr, pas sur stdout
                 print(f"Résultat également sauvegardé dans {out_path}", file=sys.stderr)
         except Exception as e:
-            # En cas d'erreur, imprimer un JSON d'erreur sur stdout
             error_result = {"error": str(e)}
             print(json.dumps(error_result))
-            # Le stack trace va sur stderr
             logging.exception("Erreur lors de l'analyse")
             sys.exit(1)
 
     elif args.command == "extract-behavior":
         extract_behavior_command(args)
-        
+
     elif args.command == "convert-to-parquet":
         convert_to_parquet_command(args)
 

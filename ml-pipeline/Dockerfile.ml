@@ -26,7 +26,6 @@ COPY . .
 # Install package
 RUN pip install --no-cache-dir -e .
 
-# Create runtime directories (ADDED /app/models and /app/output for inference)
 RUN mkdir -p \
     /app/artifacts/exported_models \
     /app/artifacts/exported_onnx \
@@ -36,7 +35,6 @@ RUN mkdir -p \
     /app/data/raw \
     /app/data/processed \
     /app/data/samples \
-    /app/models \
     /app/output
 
 # Fix permissions

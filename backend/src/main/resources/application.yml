@@ -90,8 +90,28 @@ app:
 ml:
   onnx:
     model-dir: src/main/resources/models   
+
+# Fraud Detection Backfill Configuration - ADD THIS
+fraud:
+  backfill:
+    batch-size: 200
+    parallelism: 5
+  scoring:
+    fraud-threshold: 0.75
+    batch-size: 100
+  inference:
+    container-name: fraud-ml-pipeline
+    use-mock: false
+    timeout-seconds: 60
+    max-concurrent: 5
  
 logging:
   level:
     org.springframework.web.servlet.mvc.method.annotation: DEBUG
     com.fraud.backend.api.controller.messaging: DEBUG
+    com.fraud.backend.data.service.frauddetection: INFO
+
+hadoop:
+  home: C:\\hadoop
+  tmp:
+    dir: ${java.io.tmpdir}

@@ -1,9 +1,9 @@
 package com.fraud.backend.data.repository.frauddetection;
 
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
+import com.fraud.backend.data.entity.frauddetection.ModelML;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -31,8 +31,24 @@ public interface FraudAlertRepository extends JpaRepository<FraudAlert, Long>, J
     @EntityGraph(attributePaths = {"transaction", "user", "modelUsed"})
     List<FraudAlert> findByTransaction_Account_IdOrderByCreatedAtDesc(Long accountId, Pageable pageable);
     
+    // FIX 1: Query by ModelML entity instead of UUID
     @EntityGraph(attributePaths = {"transaction", "user", "modelUsed"})
-    Page<FraudAlert> findByModelUsed_ModelUuid(UUID modelUuid, Pageable pageable);
+    Page<FraudAlert> findByModelUsed(ModelML model, Pageable pageable);
+    
+    // FIX 2: Alternative - query by ModelML UUID
+    @EntityGraph(attributePaths = {"transaction", "user", "modelUsed"})
+    @Query("SELECT f FROM FraudAlert f WHERE f.modelUsed.modelUuid = :modelUuid")
+    Page<FraudAlert> findByModelUsedUuid(@Param("modelUuid") UUID modelUuid, Pageable pageable);
+    
+    // FIX 3: Query for alerts after a specific date by model
+    @Query("SELECT f FROM FraudAlert f WHERE f.modelUsed = :model AND f.createdAt > :since")
+    List<FraudAlert> findByModelUsedAndCreatedAtAfter(@Param("model") ModelML model, 
+                                                       @Param("since") LocalDateTime since);
+    
+    // FIX 4: Alternative - query by model UUID
+    @Query("SELECT f FROM FraudAlert f WHERE f.modelUsed.modelUuid = :modelUuid AND f.createdAt > :since")
+    List<FraudAlert> findByModelUsedUuidAndCreatedAtAfter(@Param("modelUuid") UUID modelUuid, 
+                                                           @Param("since") LocalDateTime since);
     
     long count();
     long countByRiskLevel(String riskLevel);
@@ -75,4 +91,5 @@ public interface FraudAlertRepository extends JpaRepository<FraudAlert, Long>, J
            "SUM(CASE WHEN f.status = 'FALSE_POSITIVE' THEN 1 ELSE 0 END) " +
            "FROM FraudAlert f")
     List<Object[]> getAlertStats();
+
 }

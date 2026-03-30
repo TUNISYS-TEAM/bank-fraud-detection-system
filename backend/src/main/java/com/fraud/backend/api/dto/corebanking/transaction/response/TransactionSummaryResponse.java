@@ -1,5 +1,6 @@
 package com.fraud.backend.api.dto.corebanking.transaction.response;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Builder;
 import lombok.Data;
 
@@ -19,5 +20,6 @@ public class TransactionSummaryResponse {
     private String status;
     private Boolean isFraud;
     private BigDecimal fraudScore;
+    private JsonNode fraudReason;  
     private String accountNumber;
 }

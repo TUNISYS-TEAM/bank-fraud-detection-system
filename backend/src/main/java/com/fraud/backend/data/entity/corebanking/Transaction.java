@@ -7,7 +7,10 @@ import com.fraud.backend.data.enums.transactions.TransactionStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -63,8 +66,9 @@ public class Transaction {
     @Column(name = "fraud_score", precision = 5, scale = 4)
     private BigDecimal fraudScore;
 
-    @Column(name = "fraud_reason")
-    private String fraudReason;
+    @Column(columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode fraudReason;
 
     @Column(name = "ip_address")
     private String ipAddress;

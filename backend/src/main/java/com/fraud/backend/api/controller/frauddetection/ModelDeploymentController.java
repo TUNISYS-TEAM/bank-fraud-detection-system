@@ -3,21 +3,26 @@ package com.fraud.backend.api.controller.frauddetection;
 import com.fraud.backend.api.dto.frauddetection.model.request.DeployModelRequest;
 import com.fraud.backend.api.dto.frauddetection.model.response.DeploymentResponse;
 import com.fraud.backend.api.dto.frauddetection.model.response.ModelSummaryResponse;
+import com.fraud.backend.api.dto.frauddetection.model.response.ScoringJobStatus;
 import com.fraud.backend.api.dto.frauddetection.model.response.ScoringJobStatusResponse;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
-import com.fraud.backend.data.service.frauddetection.ModelDeploymentService;
-import com.fraud.backend.data.service.frauddetection.ScoringJobStatus;
+import com.fraud.backend.data.service.frauddetection.*;
+import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
+import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @RestController
@@ -26,19 +31,40 @@ import java.util.Map;
 public class ModelDeploymentController {
 
     private final ModelDeploymentService deploymentService;
+    private final TransactionScoringService transactionScoringService;
+    private final BackfillScoringService backfillScoringService;
+    private final ScoringJobService scoringJobService;
+    private final ModelDriftMonitoringService driftMonitoringService;
+    private final KeycloakMappingRepository keycloakMappingRepository;
 
     private AppUser getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new IllegalStateException("User not authenticated");
         }
-        // Replace with actual user retrieval from your service
-        return AppUser.builder()
-                .id(1L)
-                .email("admin@fraud.com")
-                .firstName("Admin")
-                .lastName("User")
-                .build();
+
+        Object principal = authentication.getPrincipal();
+        String email = null;
+
+        if (principal instanceof Jwt jwt) {
+            email = jwt.getClaim("preferred_username");
+            if (email == null) email = jwt.getClaim("email");
+        } else if (principal instanceof org.springframework.security.core.userdetails.UserDetails userDetails) {
+            email = userDetails.getUsername();
+        } else if (principal instanceof String s) {
+            email = s;
+        }
+
+        if (email == null) email = authentication.getName();
+
+        return keycloakMappingRepository.findByEmail(email)
+                .map(KeycloakMapping::getUser)
+                .orElse(AppUser.builder()
+                        .id(1L)
+                        .email(email)
+                        .firstName("Admin")
+                        .lastName("User")
+                        .build());
     }
 
     /**
@@ -92,6 +118,15 @@ public class ModelDeploymentController {
                 request.getModelUuid(),
                 request.getNotes(),
                 deployedBy);
+        
+        // Automatically trigger backfill for existing transactions
+        try {
+            log.info("Automatically triggering backfill for model: {}", request.getModelUuid());
+            backfillScoringService.startBackfillForDeployedModel();
+        } catch (Exception e) {
+            log.warn("Auto-backfill failed to start: {}. User can manually trigger it.", e.getMessage());
+        }
+        
         return ResponseEntity.ok(deployment);
     }
 
@@ -113,7 +148,7 @@ public class ModelDeploymentController {
             @PathVariable UUID transactionUuid,
             @RequestParam(required = false) UUID modelUuid) {
         log.info("Scoring transaction: {}", transactionUuid);
-        var alert = deploymentService.scoreTransaction(transactionUuid, modelUuid);
+        var alert = transactionScoringService.scoreTransaction(transactionUuid, modelUuid);
         return ResponseEntity.ok(alert);
     }
 
@@ -126,12 +161,33 @@ public class ModelDeploymentController {
             @RequestParam(required = false) UUID modelUuid) {
         log.info("Starting batch scoring for {} transactions", transactionUuids.size());
         UUID jobId = UUID.randomUUID();
-        deploymentService.scoreTransactionsAsync(transactionUuids, modelUuid, jobId);
+        
+        // Manual async execution since we can't modify services
+        scoringJobService.createJob(jobId, transactionUuids.size());
+        
+        CompletableFuture.runAsync(() -> {
+            try {
+                for (UUID txUuid : transactionUuids) {
+                    try {
+                        transactionScoringService.scoreTransaction(txUuid, modelUuid);
+                        scoringJobService.incrementProcessed(jobId);
+                    } catch (Exception e) {
+                        log.error("Batch scoring failed for transaction {}: {}", txUuid, e.getMessage());
+                        scoringJobService.addError(jobId, txUuid, e.getMessage());
+                        scoringJobService.incrementProcessed(jobId);
+                    }
+                }
+                scoringJobService.markCompleted(jobId);
+            } catch (Exception e) {
+                log.error("Batch scoring job {} failed: {}", jobId, e.getMessage());
+                scoringJobService.markFailed(jobId, e.getMessage());
+            }
+        });
 
         var response = ScoringJobStatusResponse.builder()
                 .jobId(jobId)
-                .status("SUBMITTED")
-                .message("Scoring job submitted")
+                .status("RUNNING")
+                .message("Scoring job in progress")
                 .build();
         return ResponseEntity.accepted().body(response);
     }
@@ -142,7 +198,7 @@ public class ModelDeploymentController {
     @GetMapping("/score/status/{jobId}")
     public ResponseEntity<ScoringJobStatus> getScoringStatus(@PathVariable UUID jobId) {
         log.info("Getting scoring job status: {}", jobId);
-        var status = deploymentService.getScoringJobStatus(jobId);
+        var status = scoringJobService.getJob(jobId);
         if (status == null) {
             return ResponseEntity.notFound().build();
         }
@@ -154,18 +210,18 @@ public class ModelDeploymentController {
      */
     @PostMapping("/backfill")
     public ResponseEntity<Map<String, Object>> startBackfill() {
-        if (deploymentService.isBackfillRunning()) {
+        if (backfillScoringService.isBackfillRunning()) {
             return ResponseEntity.ok(Map.of(
                     "status", "ALREADY_RUNNING",
-                    "jobId", deploymentService.getCurrentBackfillJobId(),
+                    "jobId", backfillScoringService.getCurrentBackfillJobId(),
                     "message", "Backfill is already in progress"));
         }
 
-        deploymentService.processAllExistingTransactions();
+        UUID jobId = backfillScoringService.startBackfillForDeployedModel();
 
         return ResponseEntity.ok(Map.of(
                 "status", "STARTED",
-                "jobId", deploymentService.getCurrentBackfillJobId(),
+                "jobId", jobId,
                 "message", "Backfill started. All existing transactions will be processed in the background."));
     }
 
@@ -175,7 +231,26 @@ public class ModelDeploymentController {
     @GetMapping("/backfill/status")
     public ResponseEntity<Map<String, Object>> getBackfillStatus() {
         return ResponseEntity.ok(Map.of(
-                "isRunning", deploymentService.isBackfillRunning(),
-                "jobId", deploymentService.getCurrentBackfillJobId()));
+                "isRunning", backfillScoringService.isBackfillRunning(),
+                "jobId", backfillScoringService.getCurrentBackfillJobId() != null ? 
+                         backfillScoringService.getCurrentBackfillJobId() : "NONE"));
+    }
+
+    /**
+     * Get model drift status
+     */
+    @GetMapping("/drift/status")
+    public ResponseEntity<Map<String, Object>> getDriftStatus() {
+        log.info("Getting model drift status");
+        return ResponseEntity.ok(driftMonitoringService.getDriftStatus());
+    }
+
+    /**
+     * Trigger manual drift check
+     */
+    @PostMapping("/drift/check")
+    public ResponseEntity<Map<String, Object>> checkDrift() {
+        log.info("Triggering manual drift check");
+        return ResponseEntity.ok(driftMonitoringService.checkModelDrift());
     }
 }

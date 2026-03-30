@@ -18,6 +18,7 @@ public class DeploymentResponse {
     private String deployedByEmail;
     private String deployedByName;
     private LocalDateTime deploymentDate;
+    private LocalDateTime undeploymentDate;
     private String status;
     private Map<String, Object> performanceAtDeployment;
     private String notes;
