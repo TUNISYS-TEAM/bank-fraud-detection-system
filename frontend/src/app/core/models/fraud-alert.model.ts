@@ -23,6 +23,24 @@ export interface FraudAlertResponse {
   transactionCategory: string;
   clientName?: string;
   accountNumber?: string;
+  fraudReason?: any; // Can be StructuredFraudReason
+}
+
+export interface FraudContribution {
+  type: string;
+  factor: string;
+  description: string;
+  impact_points: number;
+  factor_display: string;
+}
+
+export interface StructuredFraudReason {
+  summary: string;
+  contributions: FraudContribution[];
+  primary_factor: string;
+  total_risk_points: number;
+  threshold_critical: number;
+  primary_factor_display: string;
 }
 
 export interface AlertStatsResponse {

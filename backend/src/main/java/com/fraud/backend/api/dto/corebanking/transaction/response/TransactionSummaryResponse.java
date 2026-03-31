@@ -22,4 +22,5 @@ public class TransactionSummaryResponse {
     private BigDecimal fraudScore;
     private JsonNode fraudReason;  
     private String accountNumber;
+    private String clientName;
 }

@@ -4,7 +4,7 @@ import com.fraud.backend.api.dto.frauddetection.dataset.request.DatasetUpdateReq
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetCleanResponse;
 import com.fraud.backend.data.enums.datasets.DatasetStatus;
 import com.fraud.backend.data.enums.datasets.DatasetType;
-import com.fraud.backend.data.service.frauddetection.DatasetService;
+import com.fraud.backend.data.service.frauddetection.analysis.DatasetService;
 import com.fraud.backend.api.dto.frauddetection.dataset.DatasetMapper;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetResponse;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetPreviewResponse;

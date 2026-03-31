@@ -3,7 +3,8 @@ package com.fraud.backend.api.controller.frauddetection;
 import com.fraud.backend.api.dto.frauddetection.model.request.TrainingJobRequest;
 import com.fraud.backend.api.dto.frauddetection.model.response.ModelMetricsResponse;
 import com.fraud.backend.api.dto.frauddetection.model.response.TrainingJobResponse;
-import com.fraud.backend.data.service.frauddetection.ModelTrainingService;
+import com.fraud.backend.data.service.frauddetection.training.ModelTrainingService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../../environments/environment';
+import { AuthStore } from '../../../../../core/store/auth.store';
 import { FeatherModule } from 'angular-feather';
 
 export interface CreateRoleData {
@@ -31,6 +32,7 @@ export class RoleCreateModalComponent implements OnInit {
 
   private fb = inject(FormBuilder);
   private http = inject(HttpClient);
+  private authStore = inject(AuthStore);
 
   // Signals
   isVisible = signal(true);
@@ -98,6 +100,7 @@ export class RoleCreateModalComponent implements OnInit {
     this.http.post(`${environment.apiUrl}/roles`, roleData).subscribe({
       next: (response) => {
         this.isLoading.set(false);
+        this.authStore.refreshUserProfile();
         this.roleCreated.emit(roleData);
         this.closeModal();
       },

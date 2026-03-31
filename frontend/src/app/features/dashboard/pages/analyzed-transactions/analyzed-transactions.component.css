@@ -1,0 +1,27 @@
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  .animate-fadeIn {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+  
+  /* Additional Styles if needed */
+  :host {
+    display: block;
+  }
+  
+  .group:hover .text-mono {
+    transition: color 0.3s ease;
+  }
+  
+  /* Smooth transitions for charts */
+  #scoreDistChart, #timeSeriesChart {
+    transition: all 0.3s ease;
+  }
+  
+  /* Badge Styles (Matching dashboard pattern) */
+  .badge-low { background-color: #d1fae5; color: #047857; border-color: #a7f3d0; }
+  .badge-medium { background-color: #fef3c7; color: #b45309; border-color: #fde68a; }
+  .badge-high { background-color: #fee2e2; color: #b91c1c; border-color: #fecaca; }

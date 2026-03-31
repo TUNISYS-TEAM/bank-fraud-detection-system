@@ -1,8 +1,9 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.monitoring;
 
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
 import com.fraud.backend.data.entity.frauddetection.ModelDeploymentHistory;
 import com.fraud.backend.data.entity.frauddetection.ModelML;
+import com.fraud.backend.data.repository.corebanking.TransactionRepository;
 import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelDeploymentHistoryRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
@@ -29,10 +30,12 @@ public class ModelDriftMonitoringService {
     private final ModelMLRepository modelMLRepository;
     private final ModelDeploymentHistoryRepository deploymentHistoryRepository;
     private final FraudAlertRepository fraudAlertRepository;
+    private final TransactionRepository transactionRepository;
 
-    private static final double PERFORMANCE_DEGRADATION_THRESHOLD = 0.15; // 15% degradation
-    private static final double CRITICAL_DEGRADATION_THRESHOLD = 0.25;    // 25% degradation
-    private static final int MINIMUM_PREDICTIONS_FOR_DRIFT_CHECK = 100;
+    private static final double PERFORMANCE_DEGRADATION_THRESHOLD = 0.15; // 15% degradation (Warning)
+    private static final double CRITICAL_DEGRADATION_THRESHOLD = 0.20;    // 20% degradation (Critical)
+    private static final int MINIMUM_ALERTS_FOR_PERFORMANCE_CHECK = 5;
+    private static final int MINIMUM_TRANSACTIONS_FOR_DRIFT_CHECK = 10;
     private static final double DEFAULT_CLASSIFICATION_THRESHOLD = 0.5;
 
     /**
@@ -65,28 +68,49 @@ public class ModelDriftMonitoringService {
 
         LocalDateTime weekAgo = LocalDateTime.now().minusDays(7);
 
-        List<FraudAlert> recentAlerts = fraudAlertRepository
-                .findByModelUsedAndCreatedAtAfter(model, weekAgo);
-
-        if (recentAlerts.size() < MINIMUM_PREDICTIONS_FOR_DRIFT_CHECK) {
-            log.info("Not enough alerts ({}) for drift analysis. Minimum required: {}",
-                    recentAlerts.size(), MINIMUM_PREDICTIONS_FOR_DRIFT_CHECK);
+        // 1. Transaction-based Distribution Drift (Independent of alerts)
+        long totalRecentTransactions = transactionRepository.countByModelAndCreatedAtAfter(model, weekAgo);
+        
+        if (totalRecentTransactions < MINIMUM_TRANSACTIONS_FOR_DRIFT_CHECK) {
+            log.info("Not enough global transactions ({}) for drift analysis. Minimum required: {}",
+                    totalRecentTransactions, MINIMUM_TRANSACTIONS_FOR_DRIFT_CHECK);
 
             return Map.of(
                     "status", "INSUFFICIENT_DATA",
-                    "alerts_count", recentAlerts.size(),
-                    "minimum_required", MINIMUM_PREDICTIONS_FOR_DRIFT_CHECK
+                    "transactions_count", totalRecentTransactions,
+                    "minimum_required", MINIMUM_TRANSACTIONS_FOR_DRIFT_CHECK
             );
         }
 
-        Map<String, Double> currentMetrics = calculateCurrentPerformance(recentAlerts, DEFAULT_CLASSIFICATION_THRESHOLD);
-
+        // 2. Alert-based Performance Drift
+        List<FraudAlert> recentAlerts = fraudAlertRepository.findByModelUsedAndCreatedAtAfter(model, weekAgo);
+        
+        Map<String, Double> currentMetrics;
+        if (recentAlerts.size() >= MINIMUM_ALERTS_FOR_PERFORMANCE_CHECK) {
+            currentMetrics = calculateCurrentPerformance(recentAlerts, DEFAULT_CLASSIFICATION_THRESHOLD);
+        } else {
+            log.info("Not enough alerts ({}) for performance analysis. Skipping supervised metrics.", recentAlerts.size());
+            currentMetrics = new HashMap<>(); // Will only contain global distribution score
+        }
+        
         Map<String, Object> baselineMetrics = deployment.getPerformanceAtDeployment();
         if (baselineMetrics == null) {
             baselineMetrics = new HashMap<>();
         }
 
-        Map<String, Object> driftAnalysis = analyzeDrift(baselineMetrics, currentMetrics, recentAlerts.size());
+        // Calcul du drift de distribution sur un échantillon global représentatif
+        // La taille de la fenêtre est alignée dynamiquement sur celle du dataset de validation (test_rows)
+        int validationSize = extractValidationSize(model);
+        
+        double globalAvgScore = transactionRepository.findRecentAverageFraudScoreByModelId(model.getId(), validationSize)
+                .orElse(currentMetrics.getOrDefault("avg_fraud_score", 0.0));
+        
+        log.info("Drift Calculation - Window Size: {}, Baseline Avg: {}, Global Production Avg: {}, Alerts Sample Size: {}", 
+                validationSize, baselineMetrics.get("avg_fraud_score"), globalAvgScore, recentAlerts.size());
+        
+        currentMetrics.put("avg_fraud_score", globalAvgScore);
+
+        Map<String, Object> driftAnalysis = analyzeDrift(baselineMetrics, currentMetrics, recentAlerts.size(), (int)totalRecentTransactions);
 
         updateModelDriftMetadata(model, driftAnalysis);
 
@@ -197,51 +221,75 @@ public class ModelDriftMonitoringService {
      */
     private Map<String, Object> analyzeDrift(Map<String, Object> baseline,
                                              Map<String, Double> current,
-                                             int sampleSize) {
+                                             int alertsCount,
+                                             int transactionsCount) {
 
         Map<String, Object> analysis = new HashMap<>();
 
-        double baselinePrecision = getDoubleFromMapFlexible(baseline, List.of("precision"), 0.0);
-        double baselineRecall = getDoubleFromMapFlexible(baseline, List.of("recall"), 0.0);
+        // 1. Performance Drift (supervised)
         double baselineF1 = getDoubleFromMapFlexible(baseline, List.of("f1_score", "f1Score"), 0.0);
+        double currentF1 = current.getOrDefault("f1_score", -1.0);
 
-        double currentPrecision = current.getOrDefault("precision", 0.0);
-        double currentRecall = current.getOrDefault("recall", 0.0);
-        double currentF1 = current.getOrDefault("f1_score", 0.0);
+        String performanceStatus = "UNKNOWN";
+        double f1Drift = 0.0;
 
-        double precisionDrift = calculateDrift(baselinePrecision, currentPrecision);
-        double recallDrift = calculateDrift(baselineRecall, currentRecall);
-        double f1Drift = calculateDrift(baselineF1, currentF1);
+        if (currentF1 >= 0) {
+            f1Drift = calculateDrift(baselineF1, currentF1);
+            if (f1Drift <= -CRITICAL_DEGRADATION_THRESHOLD) {
+                performanceStatus = "CRITICAL";
+            } else if (f1Drift <= -PERFORMANCE_DEGRADATION_THRESHOLD) {
+                performanceStatus = "WARNING";
+            } else {
+                performanceStatus = "NORMAL";
+            }
+        } else {
+            performanceStatus = "INSUFFICIENT_DATA";
+        }
 
-        double overallDrift = (precisionDrift * 0.3) + (recallDrift * 0.3) + (f1Drift * 0.4);
+        // 2. Score Distribution Drift (unsupervised/drift)
+        double baselineAvgScore = getDoubleFromMapFlexible(baseline, List.of("avg_fraud_score", "avgFraudScore"), 0.5);
+        double currentAvgScore = current.getOrDefault("avg_fraud_score", baselineAvgScore);
+        
+        double scoreDrift = Math.abs(calculateDrift(baselineAvgScore, currentAvgScore));
+        String distributionStatus = scoreDrift > 0.15 ? "WARNING" : "NORMAL";
 
+        // Global status
         String driftStatus;
         boolean needsRetraining;
 
-        if (overallDrift <= -CRITICAL_DEGRADATION_THRESHOLD) {
+        if ("CRITICAL".equals(performanceStatus)) {
             driftStatus = "CRITICAL_DRIFT";
             needsRetraining = true;
-        } else if (overallDrift <= -PERFORMANCE_DEGRADATION_THRESHOLD) {
+        } else if ("WARNING".equals(performanceStatus) || "WARNING".equals(distributionStatus)) {
             driftStatus = "WARNING";
             needsRetraining = true;
+        } else if ("NORMAL".equals(performanceStatus)) {
+            driftStatus = "NORMAL";
+            needsRetraining = false;
+        } else if ("INSUFFICIENT_DATA".equals(performanceStatus)) {
+            // No labels yet, base only on distribution/score drift
+            driftStatus = "NORMAL".equals(distributionStatus) ? "NORMAL" : "WARNING";
+            needsRetraining = "WARNING".equals(distributionStatus);
         } else {
             driftStatus = "NORMAL";
             needsRetraining = false;
         }
 
         analysis.put("drift_status", driftStatus);
-        analysis.put("overall_drift_percentage", round(overallDrift * 100, 2));
-        analysis.put("precision_drift", round(precisionDrift * 100, 2));
-        analysis.put("recall_drift", round(recallDrift * 100, 2));
+        analysis.put("performance_status", performanceStatus);
+        analysis.put("distribution_status", distributionStatus);
+        analysis.put("overall_drift_percentage", round(Math.max(Math.max(0, -f1Drift), scoreDrift) * 100, 2));
         analysis.put("f1_drift", round(f1Drift * 100, 2));
-        analysis.put("baseline_metrics", baseline);
-        analysis.put("current_metrics", current);
-        analysis.put("sample_size", sampleSize);
+        analysis.put("score_distribution_drift", round(scoreDrift * 100, 2));
+        analysis.put("alerts_sample_size", alertsCount);
+        analysis.put("distribution_sample_size", transactionsCount);
         analysis.put("checked_at", LocalDateTime.now().toString());
         analysis.put("needs_retraining", needsRetraining);
+        analysis.put("status", "SUCCESS");
 
         return analysis;
     }
+
 
     /**
      * Calculate drift as a relative change
@@ -306,7 +354,9 @@ public class ModelDriftMonitoringService {
         if (hyperparameters == null || !hyperparameters.containsKey("_driftHistory")) {
             return Map.of(
                     "status", "NO_DRIFT_DATA",
-                    "message", "No drift checks have been performed yet"
+                    "message", "No drift checks have been performed yet",
+                    "model_name", model.getModelName(),
+                    "last_check", hyperparameters != null ? hyperparameters.getOrDefault("_deployedAt", LocalDateTime.now().toString()) : LocalDateTime.now().toString()
             );
         }
 
@@ -314,14 +364,40 @@ public class ModelDriftMonitoringService {
         List<Map<String, Object>> driftHistory =
                 (List<Map<String, Object>>) hyperparameters.get("_driftHistory");
 
+        Object lastCheck = hyperparameters.get("_lastDriftCheck");
+        String lastCheckStr = (lastCheck == null || "Never".equals(lastCheck))
+                ? hyperparameters.getOrDefault("_deployedAt", LocalDateTime.now().toString()).toString()
+                : lastCheck.toString();
+
         return Map.of(
                 "current_status", hyperparameters.getOrDefault("_currentDriftStatus", "UNKNOWN"),
                 "needs_retraining", hyperparameters.getOrDefault("_needsRetraining", false),
-                "last_check", hyperparameters.getOrDefault("_lastDriftCheck", "Never"),
+                "last_check", lastCheckStr,
                 "drift_history", driftHistory,
                 "model_name", model.getModelName(),
                 "model_version", model.getVersion()
         );
+
+    }
+
+    private int extractValidationSize(ModelML model) {
+        try {
+            Map<String, Object> params = model.getHyperparameters();
+            if (params != null && params.containsKey("_trainingResults")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> results = (Map<String, Object>) params.get("_trainingResults");
+                if (results.containsKey("training_info")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> info = (Map<String, Object>) results.get("training_info");
+                    if (info.containsKey("test_rows")) {
+                        return ((Number) info.get("test_rows")).intValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not extract validation size, using default 1000: {}", e.getMessage());
+        }
+        return 1000;
     }
 
     private double getDoubleFromMapFlexible(Map<String, Object> map, List<String> keys, double defaultValue) {

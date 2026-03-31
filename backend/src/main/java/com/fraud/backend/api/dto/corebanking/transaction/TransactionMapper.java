@@ -71,6 +71,8 @@ public class TransactionMapper {
                 .fraudScore(transaction.getFraudScore())
                 .fraudReason(summaryFraudReason)  // Simplified version for summary
                 .accountNumber(transaction.getAccount() != null ? transaction.getAccount().getAccountNumber() : null)
+                .clientName(transaction.getAccount() != null && transaction.getAccount().getClient() != null ? 
+                        transaction.getAccount().getClient().getFullName() : "Unknown Client")
                 .build();
     }
 

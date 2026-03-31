@@ -26,6 +26,7 @@ const PERMISSION_ICONS: Record<string, string> = {
   'MANAGE_SETTINGS': 'sliders',
   'ACCESS_DATASETS': 'database',
   'ACCESS_CLIENTS_ACCOUNTS': 'users',
+  'ACCESS_ANALYZED_TRANSACTIONS': 'activity',
   'ACCESS_TRAINING_DATA': 'database'
 };
 
@@ -49,6 +50,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   'MANAGE_SETTINGS': 'Paramètres',
   'ACCESS_DATASETS': 'Datasets',
   'ACCESS_CLIENTS_ACCOUNTS': 'Clients & Comptes',
+  'ACCESS_ANALYZED_TRANSACTIONS': 'Transactions Analysées',
   'ACCESS_TRAINING_DATA': 'Données d\'Entraînement'
 };
 
@@ -64,6 +66,7 @@ const PERMISSION_ORDER: Record<string, number> = {
   'ACCESS_MESSAGES': 60,
   'ACCESS_DATASETS': 61,
   'ACCESS_CLIENTS_ACCOUNTS': 62,
+  'ACCESS_ANALYZED_TRANSACTIONS': 63,
   'ACCESS_ADMINISTRATION': 70,
   'MANAGE_USERS': 71,
   'MANAGE_ROLES': 72,

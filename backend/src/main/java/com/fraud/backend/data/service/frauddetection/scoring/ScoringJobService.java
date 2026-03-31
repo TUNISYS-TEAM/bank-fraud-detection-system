@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.scoring;
 
 import com.fraud.backend.api.dto.frauddetection.model.response.ScoringJobStatus;
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;

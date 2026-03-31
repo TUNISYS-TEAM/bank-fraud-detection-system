@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.training;
 
 import com.fraud.backend.data.entity.frauddetection.ModelML;
 

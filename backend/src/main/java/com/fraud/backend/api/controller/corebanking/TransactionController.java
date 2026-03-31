@@ -69,6 +69,16 @@ public class TransactionController {
                 transactionService.getFraudulent(pageable).map(transactionMapper::toSummaryResponse));
     }
 
+    @GetMapping("/analyzed")
+    public ResponseEntity<Page<TransactionSummaryResponse>> getAnalyzed(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("transactionDate").descending());
+        return ResponseEntity.ok(
+                transactionService.getAnalyzed(pageable).map(transactionMapper::toSummaryResponse));
+    }
+
     @GetMapping("/meta/statuses")
     public ResponseEntity<java.util.List<String>> getAllStatuses() {
         return ResponseEntity.ok(transactionService.getAllStatuses());
@@ -84,5 +94,10 @@ public class TransactionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
         return ResponseEntity.ok(transactionService.getTimeSeriesStats(start, end));
+    }
+
+    @GetMapping("/stats/analyzed-global")
+    public ResponseEntity<java.util.Map<String, Object>> getGlobalAnalyzedStats() {
+        return ResponseEntity.ok(transactionService.getGlobalAnalyzedStats());
     }
 }

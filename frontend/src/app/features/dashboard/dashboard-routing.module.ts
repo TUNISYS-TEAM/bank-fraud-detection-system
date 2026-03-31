@@ -10,6 +10,7 @@ import { SimulationComponent } from './pages/simulation/simulation.component';
 import { MessagesComponent } from './pages/messaging/messaging.component';
 import { TrainDataComponent } from './pages/train-data/train-data.component';
 import { DatasetsComponent } from './pages/datasets/datasets.component';
+import { AnalyzedTransactionsComponent } from './pages/analyzed-transactions/analyzed-transactions.component';
 
 const routes: Routes = [
   {
@@ -25,6 +26,7 @@ const routes: Routes = [
       { path: 'simulation', component: SimulationComponent },
       { path: 'messages', component: MessagesComponent },
       { path: 'training-data', component: TrainDataComponent },
+      { path: 'analyzed-transactions', component: AnalyzedTransactionsComponent },
       { path: 'datasets', component: DatasetsComponent },
       {
         path: 'clients-accounts',

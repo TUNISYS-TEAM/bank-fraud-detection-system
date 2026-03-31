@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.deployment;
 
 import com.fraud.backend.api.dto.frauddetection.model.response.DeploymentResponse;
 import com.fraud.backend.api.dto.frauddetection.model.response.ModelSummaryResponse;
@@ -7,13 +7,15 @@ import com.fraud.backend.data.entity.frauddetection.ModelDeploymentHistory;
 import com.fraud.backend.data.entity.frauddetection.ModelML;
 import com.fraud.backend.data.repository.frauddetection.ModelDeploymentHistoryRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
+import com.fraud.backend.data.service.frauddetection.scoring.BackfillScoringService;
+import com.fraud.backend.data.service.frauddetection.training.ModelProvider;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -213,6 +215,20 @@ public class ModelDeploymentService implements ModelProvider {
         snapshot.put("precision", model.getPrecision());
         snapshot.put("recall", model.getRecall());
         snapshot.put("f1Score", model.getF1Score());
+        
+        // Get average fraud score from training results if available
+        double avgScore = 0.5;
+        if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingResults")) {
+            Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters().get("_trainingResults");
+            if (trainingResults.containsKey("metrics")) {
+                Map<String, Object> metrics = (Map<String, Object>) trainingResults.get("metrics");
+                if (metrics.containsKey("avg_fraud_score")) {
+                    avgScore = ((Number) metrics.get("avg_fraud_score")).doubleValue();
+                }
+            }
+        }
+        snapshot.put("avg_fraud_score", avgScore);
+        
         snapshot.put("version", model.getVersion());
         snapshot.put("modelName", model.getModelName());
         snapshot.put("modelType", model.getModelType());

@@ -16,4 +16,6 @@ public interface ModelDeploymentHistoryRepository extends JpaRepository<ModelDep
     Optional<ModelDeploymentHistory> findFirstByModel_ModelUuidAndStatusOrderByDeploymentDateDesc(UUID modelUuid, String status);
     
     List<ModelDeploymentHistory> findAllByOrderByDeploymentDateDesc();
+
+    void deleteByModel(com.fraud.backend.data.entity.frauddetection.ModelML model);
 }

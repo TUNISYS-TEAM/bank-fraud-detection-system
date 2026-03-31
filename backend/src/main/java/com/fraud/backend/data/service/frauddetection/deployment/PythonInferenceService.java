@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.deployment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fraud.backend.data.entity.corebanking.ClientBehavior;

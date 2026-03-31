@@ -392,6 +392,7 @@ def main():
                 'recall': float(recall),
                 'f1_score': float(f1),
                 'auc_roc': float(auc_roc),
+                'avg_fraud_score': float(y_test_proba.mean()),
             },
             'confusion_matrix': {
                 'true_negatives': int(cm[0, 0]),

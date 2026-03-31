@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.scoring;
 
 import com.fraud.backend.api.dto.frauddetection.model.response.ScoringJobStatus;
 import com.fraud.backend.data.entity.corebanking.Account;
@@ -6,6 +6,8 @@ import com.fraud.backend.data.entity.corebanking.Transaction;
 import com.fraud.backend.data.entity.frauddetection.ModelML;
 import com.fraud.backend.data.repository.corebanking.AccountRepository;
 import com.fraud.backend.data.repository.corebanking.TransactionRepository;
+import com.fraud.backend.data.service.frauddetection.training.ModelProvider;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;

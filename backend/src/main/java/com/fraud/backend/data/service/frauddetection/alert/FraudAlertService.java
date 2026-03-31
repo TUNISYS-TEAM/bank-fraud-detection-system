@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.alert;
 
 import com.fraud.backend.api.dto.frauddetection.fraudalert.FraudAlertMapper;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.request.UpdateAlertStatusRequest;

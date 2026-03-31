@@ -42,6 +42,7 @@ public class FraudAlertMapper {
             builder.transactionChannel(alert.getTransaction().getChannel() != null ? 
                 alert.getTransaction().getChannel().toString() : null);
             builder.transactionCategory(alert.getTransaction().getMerchantCategory());
+            builder.fraudReason(alert.getTransaction().getFraudReason());
             
             if (alert.getTransaction().getAccount() != null) {
                 builder.accountNumber(alert.getTransaction().getAccount().getAccountNumber());

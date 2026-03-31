@@ -5,8 +5,9 @@ import com.fraud.backend.api.dto.messaging.MessageMapper;
 import com.fraud.backend.api.dto.messaging.request.SendMessageRequest;
 import com.fraud.backend.api.dto.messaging.request.ModelValidationActionDTO;
 import com.fraud.backend.data.entity.messaging.Message;
+import com.fraud.backend.data.service.frauddetection.training.ModelTrainingService;
 import com.fraud.backend.data.service.messaging.MessageService;
-import com.fraud.backend.data.service.frauddetection.ModelTrainingService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

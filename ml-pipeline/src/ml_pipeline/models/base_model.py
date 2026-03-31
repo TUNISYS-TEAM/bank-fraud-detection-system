@@ -135,6 +135,7 @@ class FraudBaseModel(ABC):
             "f2": float(fbeta_score(y_true, y_pred, beta=2, zero_division=0)),
             "precision": float(precision_score(y_true, y_pred, zero_division=0)),
             "recall": float(recall_score(y_true, y_pred, zero_division=0)),
+            "avg_fraud_score": float(scores.mean()),
             "n_flagged": int(y_pred.sum()),
             "fraud_rate": float(y_true.mean()),
             "fit_time_sec": self.fit_time_,

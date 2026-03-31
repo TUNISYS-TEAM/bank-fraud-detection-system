@@ -4,7 +4,8 @@ import com.fraud.backend.api.dto.frauddetection.fraudalert.request.UpdateAlertSt
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.AlertStatsResponse;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.FraudAlertResponse;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.TimeSeriesDataResponse;
-import com.fraud.backend.data.service.frauddetection.FraudAlertService;
+import com.fraud.backend.data.service.frauddetection.alert.FraudAlertService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;

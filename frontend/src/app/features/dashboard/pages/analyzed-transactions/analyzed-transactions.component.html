@@ -1,0 +1,246 @@
+<div class="space-y-6 p-4">
+    <!-- Standardized Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-800 subpixel-antialiased">Analyse des flux & Scoring</h1>
+        <p class="mt-1 text-lg text-gray-500 font-medium">
+          Suivi en temps réel et évaluation des risques pour l'ensemble des transactions traitées.
+        </p>
+      </div>
+    </div>
+  
+    <!-- Standalone KPI Cards -->
+    <div *ngIf="!isLoading() && transactions().length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+      <app-cards [data]="totalAnalyzedCard()"></app-cards>
+      <app-cards [data]="alertsCard()"></app-cards>
+      <app-cards [data]="riskScoreCard()"></app-cards>
+      <app-cards [data]="alertRateCard()"></app-cards>
+    </div>
+  
+    <!-- Global Analytics Container -->
+    <div *ngIf="!isLoading() && transactions().length > 0" class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-8">
+      <!-- Container Header -->
+      <div class="px-8 py-6 border-b border-gray-200 bg-gray-50/50">
+        <div class="text-left">
+          <h3 class="text-2xl font-bold text-gray-900 subpixel-antialiased">Analytique des Transactions</h3>
+          <p class="text-sm text-gray-500 mt-1">Segmentation et indicateurs de performance des analyses de fraude</p>
+        </div>
+      </div>
+  
+      <div class="p-8 space-y-8">
+        <!-- 2x2 Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <!-- Chart 1: Répartition du Risque -->
+          <div class="bg-white p-7 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all group/chart">
+            <div class="flex items-center justify-between mb-8">
+              <div class="text-left">
+                <h3 class="text-xl font-bold text-slate-800 subpixel-antialiased">Répartition du Risque</h3>
+                <p class="text-sm text-slate-400 font-medium mt-1">Segmentation des transactions par niveau de dangerosité</p>
+              </div>
+              <div class="p-3 bg-emerald-50 text-emerald-600 rounded-2xl transition-all duration-500">
+                <i-feather name="bar-chart-2" class="w-6 h-6"></i-feather>
+              </div>
+            </div>
+            <div id="scoreDistChart" class="w-full h-[350px]"></div>
+          </div>
+  
+          <!-- Chart 2: Volume des Analyses -->
+          <div class="bg-white p-7 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all group/chart">
+            <div class="flex items-center justify-between mb-8">
+              <div class="text-left">
+                <h3 class="text-xl font-bold text-slate-800 subpixel-antialiased">Volume des Analyses</h3>
+                <p class="text-sm text-slate-400 font-medium mt-1">Évolution temporelle des transactions scorées (24h)</p>
+              </div>
+              <div class="p-3 bg-blue-50 text-blue-600 rounded-2xl transition-all duration-500">
+                <i-feather name="trending-up" class="w-6 h-6"></i-feather>
+              </div>
+            </div>
+            <div id="timeSeriesChart" class="w-full h-[350px]"></div>
+          </div>
+
+          <!-- Chart 3: Répartition par Canal -->
+          <div class="bg-white p-7 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all group/chart">
+            <div class="flex items-center justify-between mb-8">
+              <div class="text-left">
+                <h3 class="text-xl font-bold text-slate-800 subpixel-antialiased">Analyse des Canaux</h3>
+                <p class="text-sm text-slate-400 font-medium mt-1">Classification des sources de transactions analysées</p>
+              </div>
+              <div class="p-3 bg-indigo-50 text-indigo-600 rounded-2xl transition-all duration-500">
+                <i-feather name="share-2" class="w-6 h-6"></i-feather>
+              </div>
+            </div>
+            <div id="channelChart" class="w-full h-[350px]"></div>
+          </div>
+  
+          <!-- Chart 4: Exposition Financière -->
+          <div class="bg-white p-7 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all group/chart">
+            <div class="flex items-center justify-between mb-8">
+              <div class="text-left">
+                <h3 class="text-xl font-bold text-slate-800 subpixel-antialiased">Exposition Financière</h3>
+                <p class="text-sm text-slate-400 font-medium mt-1">Volume monétaire total à risque par segment (TND)</p>
+              </div>
+              <div class="p-3 bg-amber-50 text-amber-600 rounded-2xl transition-all duration-500">
+                <i-feather name="dollar-sign" class="w-6 h-6"></i-feather>
+              </div>
+            </div>
+            <div id="exposureChart" class="w-full h-[350px]"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  
+  <!-- Empty State -->
+  <div *ngIf="!isLoading() && transactions().length === 0" 
+       class="bg-white rounded-[2rem] p-16 shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center animate-fadeIn">
+    <div class="p-6 bg-blue-50 rounded-full mb-6">
+      <i-feather name="database" class="w-12 h-12 text-blue-500"></i-feather>
+    </div>
+    <h3 class="text-2xl font-bold text-gray-800 mb-2 subpixel-antialiased">Aucun rapport d'analyse disponible</h3>
+    <p class="text-gray-500 max-w-md">
+      Les transactions évaluées par le moteur de scoring apparaîtront ici dès que les analyses seront finalisées.
+    </p>
+  </div>
+    
+    <!-- Content Area (Relative and Min-Height to prevent scroll jump) -->
+    <div class="relative mt-12 min-h-[850px]">
+      <!-- Loading Overlay -->
+      <div *ngIf="isLoading()" 
+           class="absolute inset-0 z-20 bg-white/60 backdrop-blur-[2px] rounded-[2rem] flex flex-col items-center justify-center transition-all duration-300">
+        <div class="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 flex flex-col items-center gap-4">
+          <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent"></div>
+          <p class="text-gray-900 font-bold text-sm">Mise à jour des données...</p>
+        </div>
+      </div>
+    
+      <!-- Transactions Table Container (Always in DOM to maintain height) -->
+      <div class="space-y-8">
+        <!-- Data Table Section -->
+        <div class="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all">
+          <div class="pl-8 pr-16 py-6 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
+            <div class="flex items-center space-x-3 text-left">
+              <div>
+                <h3 class="text-2xl font-bold text-gray-900 tracking-tight">Historique des Analyses</h3>
+                <p class="text-sm text-gray-500 mt-1">Détail des transactions scorées individuellement par le modèle</p>
+              </div>
+            </div>
+            
+            <div class="flex-1 flex items-center justify-end space-x-6 ml-8">
+              <!-- Search Bar -->
+              <div class="max-w-xl flex-1 relative">
+                <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                  <i-feather name="search" class="w-4 h-4 text-gray-400"></i-feather>
+                </div>
+                <input type="text" 
+                       (ngModelChange)="onSearchChange($event)" [ngModel]="searchQuery()"
+                       class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none hover:bg-gray-50/50"
+                       placeholder="Rechercher par ID, client ou compte...">
+              </div>
+
+              <!-- Vertical Separator -->
+              <div class="h-8 w-px bg-gray-200"></div>
+
+              <!-- Risk Level Filter -->
+              <div class="relative min-w-[180px]">
+                <select [ngModel]="riskFilter()" (ngModelChange)="onRiskFilterChange($event)"
+                        class="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none cursor-pointer transition-all hover:bg-gray-50/50">
+                  <option value="all">Tous les risques</option>
+                  <option value="LOW">Faible</option>
+                  <option value="MEDIUM">Moyen</option>
+                  <option value="HIGH">Élevé</option>
+                  <option value="CRITICAL">Critique</option>
+                </select>
+                <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                  <i-feather name="chevron-down" class="w-4 h-4 text-gray-400"></i-feather>
+                </div>
+              </div>
+            </div>
+          </div>
+    
+          <div class="overflow-x-auto min-h-[400px]">
+            <table class="w-full">
+              <thead class="bg-gray-50/80">
+                <tr>
+                  <th class="px-6 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest">ID</th>
+                  <th class="px-6 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest">Client & Compte</th>
+                  <th class="px-6 py-4 text-center text-[11px] font-bold text-gray-400 uppercase tracking-widest">Date & Heure</th>
+                  <th class="px-6 py-4 text-center text-[11px] font-bold text-gray-400 uppercase tracking-widest">Montant</th>
+                  <th class="px-6 py-4 text-center text-[11px] font-bold text-gray-400 uppercase tracking-widest">Score de Fraude</th>
+                  <th class="px-6 py-4 text-center text-[11px] font-bold text-gray-400 uppercase tracking-widest">Niveau de Risque</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50 bg-white">
+                <!-- Data Rows -->
+                <tr *ngFor="let tx of filteredTransactions()" class="group hover:bg-gray-50/50 transition-colors">
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-[13px] font-mono font-bold text-gray-400 group-hover:text-blue-600 transition-colors">#{{ tx.id }}</div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="text-[14px] font-bold text-slate-800">{{ tx.clientName }}</div>
+                    <div class="text-[11px] text-gray-400">{{ tx.accountNumber }}</div>
+                  </td>
+                  <td class="px-6 py-4 text-center text-[13px] text-gray-600">
+                    {{ formatDate(tx.transactionDate) }}
+                  </td>
+                  <td class="px-6 py-4 text-center">
+                    <span class="text-[14px] font-medium text-slate-900">{{ tx.amount | number:'1.2-2' }}</span>
+                    <span class="text-[10px] font-medium text-gray-400 ml-1">TND</span>
+                  </td>
+                  <td class="px-6 py-4 text-center">
+                     <div class="flex items-center justify-center gap-3">
+                          <div class="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div class="h-full transition-all duration-500" 
+                                   [style.width.%]="(tx.fraudScore || 0) * 100"
+                                   [ngClass]="(tx.fraudScore || 0) > 0.7 ? 'bg-rose-500' : ((tx.fraudScore || 0) > 0.3 ? 'bg-amber-500' : 'bg-emerald-500')">
+                              </div>
+                          </div>
+                          <span class="text-[13px] font-black w-10 text-right">{{ ((tx.fraudScore || 0) * 100) | number:'1.1-1' }}%</span>
+                     </div>
+                  </td>
+                  <td class="px-6 py-4 text-center">
+                    <span [ngClass]="getRiskClass(tx.fraudScore || 0)"
+                          class="px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl border shadow-sm">
+                      {{ getRiskLevel(tx.fraudScore || 0) }}
+                    </span>
+                  </td>
+                </tr>
+
+                <!-- Empty State -->
+                <tr *ngIf="filteredTransactions().length === 0 && !isLoading()">
+                  <td colspan="6" class="px-6 py-24 text-center">
+                    <div class="flex flex-col items-center justify-center space-y-4">
+                      <div class="p-6 bg-gray-50 rounded-full">
+                        <i-feather name="search" class="w-12 h-12 text-gray-300"></i-feather>
+                      </div>
+                      <div>
+                        <p class="text-lg font-bold text-slate-800">Aucun résultat trouvé</p>
+                        <p class="text-sm text-gray-400 mt-1">Ajustez vos filtres ou votre recherche pour trouver ce que vous cherchez.</p>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+    
+          <!-- Pagination Section -->
+          <div class="px-8 py-5 border-t border-gray-100 bg-white flex items-center justify-between">
+            <div class="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+              Affichage de {{ filteredTransactions().length }} sur {{ totalElements() }} résultats
+            </div>
+            <div class="flex gap-2">
+              <button (click)="onPageChange(currentPage() - 1)" [disabled]="currentPage() === 0"
+                      class="px-4 py-2.5 text-[13px] font-bold border border-gray-200 text-gray-600 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all flex items-center gap-2.5 shadow-sm active:scale-95">
+                <i-feather name="chevron-left" class="w-4 h-4"></i-feather>
+                Précédent
+              </button>
+              <button (click)="onPageChange(currentPage() + 1)" [disabled]="currentPage() >= totalPages() - 1"
+                      class="px-4 py-2.5 text-[13px] font-bold border border-gray-200 text-gray-600 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all flex items-center gap-2.5 shadow-sm active:scale-95">
+                Suivant
+                <i-feather name="chevron-right" class="w-4 h-4"></i-feather>
+              </button>
+            </div>
+          </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -112,11 +112,12 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   // Model Drift tracking
   modelDriftData = signal<any>(null);
   isLoadingDrift = signal(false);
-  driftThreshold = 5;
-  driftAlert = signal<{ show: boolean; message: string; driftPercentage: number }>({
+  driftThreshold = 15;
+  driftAlert = signal<{ show: boolean; message: string; driftPercentage: number; level: 'critical' | 'warning' | 'info' | 'success' }>({
     show: false,
     message: '',
-    driftPercentage: 0
+    driftPercentage: 0,
+    level: 'success'
   });
   deploymentHistory: any[] = [];
   validatedModels: any[] = [];
@@ -298,7 +299,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   });
 
   constructor() {
-    // Use effect with manual initialization instead of writing to signals
+    // FIX: Use effect with manual initialization instead of writing to signals
     effect(() => {
       const selected = this.filteredSelectedModels();
       // Use setTimeout to avoid signal writes during effect execution
@@ -311,7 +312,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       }, 0);
     });
 
-    // For drift tracking - use effect without writing to signals directly
+    // FIX: For drift tracking - use effect without writing to signals directly
     effect(() => {
       const deployedModel = this.activeDeployedModel();
       if (this.isManager() && deployedModel) {
@@ -344,7 +345,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     return this.isAccordionOpenSignal();
   }
 
-  loadModels(): void {
+  loadModels(callback?: () => void): void {
     this.isLoading.set(true);
 
     let url = `${environment.apiUrl}/v1/fraud-detection/models/training/my-models?page=${this.currentPage()}&size=${this.pageSize()}`;
@@ -378,6 +379,8 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           const toSelect = transformedModels.slice(0, Math.min(3, transformedModels.length));
           this.selectedModels.set(toSelect);
         }
+
+        if (callback) callback();
       },
       error: (error) => {
         console.error('Error loading models:', error);
@@ -387,44 +390,35 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   }
 
   loadActiveDeployedModel(): void {
-    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/active`).subscribe({
-      next: (response: any) => {
-        this.activeDeployedModel.set(response);
-      },
-      error: (error) => {
-        if (error.status === 404) {
-          console.log('No model currently deployed');
-          this.activeDeployedModel.set(null);
-        } else {
-          console.error('Error loading active deployed model:', error);
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/active`)
+      .subscribe({
+        next: (response: any) => {
+          this.activeDeployedModel.set(response);
+        },
+        error: () => { 
           this.activeDeployedModel.set(null);
         }
-      }
-    });
+      });
   }
 
   loadDeploymentHistory(): void {
-    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/history`).subscribe({
-      next: (response: any) => {
-        this.deploymentHistory = response.data || response || [];
-      },
-      error: (error) => {
-        console.error('Error loading deployment history:', error);
-        this.deploymentHistory = [];
-      }
-    });
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/history`)
+      .subscribe({
+        next: (response: any) => {
+          this.deploymentHistory = response.data || response || [];
+        },
+        error: () => { }
+      });
   }
 
   loadValidatedModels(): void {
-    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/validated-models`).subscribe({
-      next: (response: any) => {
-        this.validatedModels = response.data || response || [];
-      },
-      error: (error) => {
-        console.error('Error loading validated models:', error);
-        this.validatedModels = [];
-      }
-    });
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/validated-models`)
+      .subscribe({
+        next: (response: any) => {
+          this.validatedModels = response.data || response || [];
+        },
+        error: () => { }
+      });
   }
 
   isModelDeployed(modelUuid: string): boolean {
@@ -451,10 +445,13 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     this.http.post(`${environment.apiUrl}/v1/fraud-detection/deployment/deploy`, request)
       .subscribe({
         next: () => {
-          alert(`Modèle "${model.modelName}" déployé avec succès !`);
           this.loadActiveDeployedModel();
-          this.loadModels();
           this.isDeploying.set(false);
+          this.loadModels(() => {
+            setTimeout(() => {
+              alert(`Modèle "${model.modelName}" déployé avec succès !`);
+            }, 100);
+          });
         },
         error: (error) => {
           alert(`Erreur lors du déploiement: ${error.error?.message || 'Unknown error'}`);
@@ -484,10 +481,14 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     this.http.post(`${environment.apiUrl}/v1/fraud-detection/deployment/undeploy?modelUuid=${currentModel.modelUuid}`, {})
       .subscribe({
         next: () => {
-          alert(`Modèle "${currentModel.modelName}" retiré avec succès !`);
+          this.activeDeployedModel.set(null);
           this.loadActiveDeployedModel();
-          this.loadModels();
           this.isUndeploying.set(false);
+          this.loadModels(() => {
+            setTimeout(() => {
+              alert(`Modèle "${currentModel.modelName}" retiré avec succès !`);
+            }, 100);
+          });
         },
         error: (error) => {
           alert(`Erreur lors du retrait: ${error.error?.message || 'Unknown error'}`);
@@ -1094,114 +1095,75 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   loadModelDriftData(): void {
     if (!this.isManager() || !this.activeDeployedModel()) {
-      this.isLoadingDrift.set(false);
       return;
     }
 
     this.isLoadingDrift.set(true);
-    const currentModel = this.activeDeployedModel();
-    const currentModelUuid = currentModel.modelUuid;
+    
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/drift/status`).subscribe({
+      next: (response: any) => {
+        if (response.status === 'NO_DRIFT_DATA' || response.status === 'NO_ACTIVE_MODEL') {
+          this.generateFallbackDriftDataFromModel(this.activeDeployedModel());
+          return;
+        }
 
-    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/history`).subscribe({
-      next: (historyResponse: any) => {
-        this.http.get(`${environment.apiUrl}/v1/fraud-detection/models/training/${currentModelUuid}/metrics`).subscribe({
-          next: (metricsResponse: any) => {
-            const driftData = this.calculateDriftFromHistory(historyResponse, metricsResponse, currentModel);
-            this.modelDriftData.set(driftData);
-            this.updateDriftAlert(driftData);
-            this.isLoadingDrift.set(false);
-            setTimeout(() => this.initDriftChart(), 100);
-          },
-          error: (error) => {
-            console.error('Error loading model metrics:', error);
-            this.generateFallbackDriftDataFromModel(currentModel);
-          }
-        });
+        const driftData = this.transformBackendDriftData(response);
+        this.modelDriftData.set(driftData);
+        this.updateDriftAlert(driftData);
+        this.isLoadingDrift.set(false);
+        setTimeout(() => this.initDriftChart(), 100);
       },
       error: (error) => {
-        console.error('Error loading deployment history for drift:', error);
-        this.generateFallbackDriftDataFromModel(currentModel);
+        console.error('Error loading drift data:', error);
+        this.generateFallbackDriftDataFromModel(this.activeDeployedModel());
       }
     });
   }
 
-  private calculateDriftFromHistory(historyResponse: any, metricsResponse: any, currentModel: any): any {
-    const history = historyResponse.data || historyResponse || [];
-    const performanceOverTime = this.extractPerformanceFromHistory(history);
-    const currentMetrics = metricsResponse.metrics || metricsResponse || currentModel.metrics || {};
+  triggerManualDriftCheck(): void {
+    if (!this.isManager()) return;
+    
+    this.isLoadingDrift.set(true);
+    this.http.post(`${environment.apiUrl}/v1/fraud-detection/deployment/drift/check`, {}).subscribe({
+      next: () => {
+        this.loadModelDriftData();
+        // Show a brief success notification if you have a toast system, or just reload
+      },
+      error: (error) => {
+        console.error('Error triggering drift check:', error);
+        alert('Erreur lors du déclenchement de l\'analyse de dérive');
+        this.isLoadingDrift.set(false);
+      }
+    });
+  }
 
-    const initialF1Score = performanceOverTime.length > 0 ? performanceOverTime[0].f1_score : currentMetrics.f1_score || 0.85;
-    const currentF1Score = currentMetrics.f1_score || 0.85;
-    const driftPercentage = Math.max(0, (initialF1Score - currentF1Score) * 100);
+  private transformBackendDriftData(response: any): any {
+    const history = response.drift_history || [];
+    const driftValues = history.map((h: any) => h.overall_drift_percentage || 0);
+    const periods = history.map((h: any) => {
+      const date = new Date(h.checked_at);
+      return date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric', hour: '2-digit' });
+    });
 
-    const periods = this.generatePeriodsFromHistory(history);
-    const driftValues = this.generateDriftValuesFromHistory(history, currentMetrics);
+    // Ensure we have at least 5 points for the chart if possible, or just what we have
+    const lastPoint = history.length > 0 ? history[history.length - 1] : null;
 
     return {
       periods: periods,
       driftValues: driftValues,
       threshold: this.driftThreshold,
-      currentDrift: driftPercentage,
-      isCritical: driftPercentage >= this.driftThreshold,
-      recommendations: this.getRecommendationsBasedOnDrift(driftPercentage),
-      performanceMetrics: {
-        f1_score: currentMetrics.f1_score || 0,
-        precision: currentMetrics.precision || 0,
-        recall: currentMetrics.recall || 0,
-        auc_roc: currentMetrics.auc_roc || 0
-      },
-      dataPoints: performanceOverTime,
-      alertLevel: this.getAlertLevel(driftPercentage),
-      modelName: currentModel.modelName,
-      deploymentDate: currentModel.deployedAt || new Date().toISOString()
+      currentDrift: lastPoint?.overall_drift_percentage || 0,
+      isCritical: response.current_status === 'CRITICAL_DRIFT',
+      recommendations: this.getRecommendationsBasedOnDrift(lastPoint?.overall_drift_percentage || 0, response.current_status),
+      performanceMetrics: lastPoint?.current_metrics || {},
+      dataPoints: history,
+      alertLevel: this.getAlertLevel(lastPoint?.overall_drift_percentage || 0),
+      modelName: response.model_name,
+      deploymentDate: response.last_check
     };
   }
 
-  private extractPerformanceFromHistory(history: any[]): any[] {
-    if (!history || history.length === 0) return [];
-    return history.map((record: any, index: number) => ({
-      date: record.timestamp || record.deployedAt || record.date,
-      f1_score: record.metrics?.f1_score || record.f1Score || 0.85 - (index * 0.01),
-      precision: record.metrics?.precision || record.precision || 0.83 - (index * 0.01),
-      recall: record.metrics?.recall || record.recall || 0.87 - (index * 0.01),
-      transactions_processed: record.transactionsProcessed || 0
-    })).reverse();
-  }
-
-  private generatePeriodsFromHistory(history: any[]): string[] {
-    if (!history || history.length === 0) {
-      return this.generatePeriods(5);
-    }
-    const periods: string[] = [];
-    const recentHistory = history.slice(-5);
-    recentHistory.forEach((record: any) => {
-      const date = record.timestamp ? new Date(record.timestamp) : new Date();
-      periods.push(date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' }));
-    });
-    while (periods.length < 5) {
-      periods.unshift(`S-${5 - periods.length}`);
-    }
-    return periods;
-  }
-
-  private generateDriftValuesFromHistory(history: any[], currentMetrics: any): number[] {
-    const values: number[] = [];
-    if (history && history.length > 0) {
-      const initialMetrics = history[0]?.metrics || {};
-      const initialF1 = initialMetrics.f1_score || 0.85;
-      history.slice(-5).forEach((record: any) => {
-        const recordF1 = record.metrics?.f1_score || 0.85;
-        const drift = Math.max(0, (initialF1 - recordF1) * 100);
-        values.push(drift);
-      });
-    }
-    const currentF1 = currentMetrics.f1_score || 0.85;
-    const initialF1 = history[0]?.metrics?.f1_score || 0.85;
-    const currentDrift = Math.max(0, (initialF1 - currentF1) * 100);
-    values.push(currentDrift);
-    while (values.length < 5) values.unshift(0);
-    return values.slice(-5);
-  }
+  // Remove obsolete manual calculation helpers
 
   private generateFallbackDriftDataFromModel(model: any): void {
     const modelMetrics = model.metrics || {};
@@ -1254,8 +1216,8 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   private getAlertLevel(driftPercentage: number): string {
     if (driftPercentage >= this.driftThreshold) return 'critical';
-    if (driftPercentage >= this.driftThreshold * 0.7) return 'warning';
-    if (driftPercentage >= this.driftThreshold * 0.4) return 'info';
+    if (driftPercentage >= this.driftThreshold * 0.9) return 'warning';
+    if (driftPercentage >= this.driftThreshold * 0.7) return 'info';
     return 'success';
   }
 
@@ -1265,35 +1227,37 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       this.driftAlert.set({
         show: true,
         message: `ALERTE CRITIQUE: Dérive à ${drift.toFixed(1)}% - Le modèle a dépassé le seuil critique de ${this.driftThreshold}%. Un réentraînement immédiat est recommandé.`,
-        driftPercentage: drift
+        driftPercentage: drift,
+        level: 'critical'
       });
-    } else if (drift >= this.driftThreshold * 0.7) {
+    } else if (drift >= this.driftThreshold) { // This part will be warning if we use a second threshold, keeping consistent with backend
       this.driftAlert.set({
         show: true,
         message: `ATTENTION: Dérive à ${drift.toFixed(1)}% - La dérive du modèle approche du seuil critique de ${this.driftThreshold}%. Planifiez un réentraînement avec les données récentes.`,
-        driftPercentage: drift
+        driftPercentage: drift,
+        level: 'warning'
       });
-    } else if (drift >= this.driftThreshold * 0.4) {
+    } else if (drift >= this.driftThreshold * 0.8) {
       this.driftAlert.set({
         show: true,
-        message: `INFORMATION: Dérive détectée à ${drift.toFixed(1)}% - Surveillez l'évolution de la performance. Une légère dégradation est observée.`,
-        driftPercentage: drift
+        message: `Une variation de ${drift.toFixed(1)}% a été observée. Le modèle reste dans sa plage de stabilité, sous le seuil d’alerte de ${this.driftThreshold}%. Une surveillance régulière est recommandée.`,
+        driftPercentage: drift,
+        level: 'warning'
       });
     } else {
-      this.driftAlert.set({ show: false, message: '', driftPercentage: 0 });
+      this.driftAlert.set({ show: false, message: '', driftPercentage: 0, level: 'success' });
     }
   }
 
-  private getRecommendationsBasedOnDrift(driftPercentage: number): string[] {
-    if (driftPercentage >= this.driftThreshold) {
+  private getRecommendationsBasedOnDrift(driftPercentage: number, status?: string): string[] {
+    if (status === 'CRITICAL_DRIFT' || driftPercentage >= this.driftThreshold) {
       return [
-        'Reentraîner immédiatement le modèle avec les données récentes',
+        'Ré entraîner immédiatement le modèle avec les données récentes',
         'Analyser les changements dans la distribution des données entrantes',
         'Vérifier les performances sur les dernières transactions frauduleuses',
-        'Considérer l\'ajout de nouvelles features pour capturer les nouveaux patterns',
-        'Ajuster les hyperparamètres pour mieux généraliser'
+        'Réajuster les seuils de détection pour compenser la perte de précision'
       ];
-    } else if (driftPercentage >= this.driftThreshold * 0.7) {
+    } else if (status === 'WARNING' || driftPercentage >= this.driftThreshold * 0.7) {
       return [
         'Planifier un réentraînement dans les 2 prochaines semaines',
         'Analyser les segments où la performance diminue',
@@ -1309,7 +1273,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     } else {
       return [
         'Performance stable - continuer la surveillance régulière',
-        'Maintenir les logs pour analyse future',
+        'Maintenir les journaux (logs) pour analyse future',
         'Documenter les caractéristiques actuelles du modèle'
       ];
     }
@@ -1323,10 +1287,14 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     this.driftChart = echarts.init(chartDom);
     const data = this.modelDriftData();
 
+    const deploymentDateValue = data.deploymentDate;
+    const isInvalidDate = !deploymentDateValue || deploymentDateValue === 'Never' || isNaN(new Date(deploymentDateValue).getTime());
+    const displayDate = isInvalidDate ? 'Non spécifié' : new Date(deploymentDateValue).toLocaleDateString('fr-FR');
+
     const option = {
       title: {
         text: 'Dérive du Modèle (Model Drift)',
-        subtext: `Modèle: ${data.modelName || 'Non spécifié'} | Déployé le: ${new Date(data.deploymentDate).toLocaleDateString('fr-FR')}`,
+        subtext: `Modèle: ${data.modelName || 'Non spécifié'} | Déployé le: ${displayDate}`,
         left: 'center',
         top: 10,
         textStyle: { fontSize: 16, fontWeight: 'bold' },
@@ -1377,18 +1345,32 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         symbol: 'circle',
         symbolSize: 10,
         lineStyle: {
-          color: data.currentDrift >= this.driftThreshold ? '#ef4444' : '#f59e0b',
+          color: data.currentDrift >= this.driftThreshold ? '#dc2626' : 
+                 (data.currentDrift >= this.driftThreshold * 0.8 ? '#f59e0b' : '#10b981'),
           width: 3,
           shadowBlur: 10,
-          shadowColor: 'rgba(239, 68, 68, 0.3)'
+          shadowColor: data.currentDrift >= this.driftThreshold ? 'rgba(220, 38, 38, 0.3)' : 
+                       (data.currentDrift >= this.driftThreshold * 0.8 ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)')
         },
         itemStyle: {
-          color: data.currentDrift >= this.driftThreshold ? '#dc2626' : '#f97316',
+          color: (params: any) => {
+            const val = params.value;
+            if (val >= this.driftThreshold) return '#dc2626';
+            if (val >= this.driftThreshold * 0.8) return '#f59e0b';
+            return '#10b981';
+          },
           borderColor: '#ffffff',
           borderWidth: 2
         },
         areaStyle: {
-          color: data.currentDrift >= this.driftThreshold ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)'
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { 
+              offset: 0, 
+              color: data.currentDrift >= this.driftThreshold ? 'rgba(220, 38, 38, 0.2)' : 
+                     (data.currentDrift >= this.driftThreshold * 0.8 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)')
+            },
+            { offset: 1, color: 'transparent' }
+          ])
         },
         markLine: {
           data: [{
@@ -1405,7 +1387,12 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           formatter: (params: any) => params.value.toFixed(1) + '%',
           fontSize: 11,
           fontWeight: 'bold',
-          color: (params: any) => params.value >= this.driftThreshold ? '#dc2626' : '#f59e0b'
+          color: (params: any) => {
+            const val = params.value;
+            if (val >= this.driftThreshold) return '#dc2626';
+            if (val >= this.driftThreshold * 0.8) return '#f59e0b';
+            return '#10b981';
+          }
         }
       }]
     };

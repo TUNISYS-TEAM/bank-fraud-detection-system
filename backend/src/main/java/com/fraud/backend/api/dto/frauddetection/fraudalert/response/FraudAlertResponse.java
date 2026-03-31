@@ -40,4 +40,5 @@ public class FraudAlertResponse {
     private String transactionCategory;
     private String clientName;
     private String accountNumber;
+    private Object fraudReason;
 }

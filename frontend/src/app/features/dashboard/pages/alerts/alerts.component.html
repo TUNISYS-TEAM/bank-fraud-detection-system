@@ -103,13 +103,16 @@
                     <tr class="bg-gray-50/50 text-left border-b border-gray-100">
                         <th class="pl-20 pr-8 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">ID
                             Transaction</th>
-                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type / Alerte
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type /
+                            Alerte
                         </th>
                         <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Montant</th>
                         <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
                             Score Risque</th>
-                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">Statut</th>
-                        <th class="pl-10 pr-32 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                            Statut</th>
+                        <th
+                            class="pl-10 pr-32 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
                             Actions</th>
                     </tr>
                 </thead>
@@ -136,28 +139,36 @@
                     @for (alert of alerts(); track alert.alertUuid) {
                     <tr class="hover:bg-gray-50 group/row cursor-pointer">
                         <td class="pl-20 pr-8 py-5">
-                            <span class="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-[11px] font-bold tracking-tight">
+                            <span
+                                class="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-[11px] font-bold tracking-tight">
                                 #TXN-{{ alert.transactionId }}
                             </span>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex flex-col">
-                                <span class="text-sm font-bold text-gray-800">{{ translateAlertType(alert.alertType) }}</span>
-                                <span class="text-[11px] text-gray-400 font-medium">{{ alert.createdAt | date:'dd MMM yyyy, HH:mm' }}</span>
+                                <span class="text-sm font-bold text-gray-800">{{ translateAlertType(alert.alertType)
+                                    }}</span>
+                                <span class="text-[11px] text-gray-400 font-medium">{{ alert.createdAt | date:'dd MMM
+                                    yyyy, HH:mm' }}</span>
                             </div>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex flex-col">
-                                <span class="text-sm font-semibold text-slate-800">{{ alert.transactionAmount | currency:(alert.transactionCurrency || 'TND'):'symbol':'1.2-2' }}</span>
-                                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{{ alert.transactionChannel }}</span>
+                                <span class="text-sm font-semibold text-slate-800">{{ alert.transactionAmount |
+                                    currency:(alert.transactionCurrency || 'TND'):'symbol':'1.2-2' }}</span>
+                                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{{
+                                    alert.transactionChannel }}</span>
                             </div>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex justify-center">
                                 <div [ngClass]="getRiskBadgeClass(alert.riskLevel)" class="risk-badge-base">
-                                    <i-feather [name]="getRiskIcon(alert.riskLevel)" style="width: 13px; height: 13px; stroke-width: 2.5px;"></i-feather>
-                                    <span class="font-black text-[10px] tracking-tight">{{ translateRisk(alert.riskLevel) }}</span>
-                                    <span class="font-black text-[11px] ml-[2px]">({{ (alert.fraudScore * 100).toFixed(0) }}%)</span>
+                                    <i-feather [name]="getRiskIcon(alert.riskLevel)"
+                                        style="width: 13px; height: 13px; stroke-width: 2.5px;"></i-feather>
+                                    <span class="font-black text-[10px] tracking-tight">{{
+                                        translateRisk(alert.riskLevel) }}</span>
+                                    <span class="font-black text-[11px] ml-[2px]">({{ (alert.fraudScore *
+                                        100).toFixed(0) }}%)</span>
                                 </div>
                             </div>
                         </td>
@@ -172,7 +183,7 @@
                                 <button (click)="openDetails(alert)"
                                     class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all hover:scale-110"
                                     title="Examiner l'alerte">
-                                    <i-feather name="eye" class="w-4 h-4"></i-feather>
+                                    <i-feather name="eye" style="width: 14px; height: 14px;"></i-feather>
                                 </button>
                             </div>
                         </td>
@@ -204,9 +215,6 @@
     </div>
 </div>
 
-<app-alert-details-modal 
-    [isOpen]="isDetailsOpen()" 
-    [alert]="selectedAlert()" 
-    (close)="closeDetails()" 
+<app-alert-details-modal [isOpen]="isDetailsOpen()" [alert]="selectedAlert()" (close)="closeDetails()"
     (action)="handleAlertAction($event)">
 </app-alert-details-modal>

@@ -84,7 +84,7 @@ export class OverviewService {
         return {
           activeAlerts: totalAlerts,
           activeAlertsTrend: activeAlertsTrend,
-          fraudRate: (totalFraud / totalTransactions) * 100,
+          fraudRate: totalTransactions > 0 ? (totalFraud / totalTransactions) * 100 : 0,
           fraudRateTrend: fraudRateTrend,
           criticalTransactions: alertStats.critical || 0,
           activeModel: activeModel ? {

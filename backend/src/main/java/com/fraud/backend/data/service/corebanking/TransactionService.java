@@ -4,6 +4,7 @@ import com.fraud.backend.data.entity.corebanking.Transaction;
 import com.fraud.backend.data.enums.transactions.TransactionChannel;
 import com.fraud.backend.data.enums.transactions.TransactionStatus;
 import com.fraud.backend.data.repository.corebanking.TransactionRepository;
+import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ import java.util.List;
 public class TransactionService {
 
     private final TransactionRepository transactionRepository;
+    private final FraudAlertRepository fraudAlertRepository;
 
     public Page<Transaction> getAll(Pageable pageable) {
         return transactionRepository.findAll(pageable);
@@ -46,6 +48,10 @@ public class TransactionService {
         return transactionRepository.findByIsFraudTrue(pageable);
     }
 
+    public Page<Transaction> getAnalyzed(Pageable pageable) {
+        return transactionRepository.findByFraudScoreIsNotNull(pageable);
+    }
+
     public Page<Transaction> getRecentByAccount(Long accountId, LocalDateTime since, Pageable pageable) {
         return transactionRepository.findByAccountIdAndTransactionDateAfter(accountId, since, pageable);
     }
@@ -53,6 +59,11 @@ public class TransactionService {
     public Page<Transaction> search(String status, String channel,
             LocalDateTime start, LocalDateTime end,
             Pageable pageable) {
+        // Optimisation: si tout est null, findAll direct
+        if ((status == null || status.isBlank()) && (channel == null || channel.isBlank()) && start == null && end == null) {
+            return transactionRepository.findAll(pageable);
+        }
+
         TransactionStatus s = null;
         if (status != null && !status.isBlank()) {
             try {
@@ -144,5 +155,44 @@ public class TransactionService {
         }
 
         return finalResults;
+    }
+
+    public java.util.Map<String, Object> getGlobalAnalyzedStats() {
+        long totalAnalyzed = transactionRepository.countByFraudScoreIsNotNull();
+        long criticalAlerts = fraudAlertRepository.countByRiskLevel("CRITICAL"); 
+        long totalAlerts = fraudAlertRepository.count();
+        Double avgScore = transactionRepository.getAverageFraudScore().orElse(0.0);
+        
+        // Nouvelle répartition par canal
+        List<Object[]> channelStats = transactionRepository.countByChannel();
+        java.util.Map<String, Long> channelMap = new java.util.HashMap<>();
+        for (Object[] row : channelStats) {
+            if (row[0] != null) {
+                channelMap.put(row[0].toString(), ((Number) row[1]).longValue());
+            }
+        }
+
+        // Nouvelle exposition financière
+        List<Object[]> amountStatsList = transactionRepository.sumAmountByRiskScore();
+        double[] amountByRisk = new double[4];
+        if (amountStatsList != null && !amountStatsList.isEmpty()) {
+            Object[] amountStats = amountStatsList.get(0);
+            if (amountStats != null && amountStats.length >= 4) {
+                amountByRisk[0] = amountStats[0] != null ? ((Number) amountStats[0]).doubleValue() : 0.0 ;
+                amountByRisk[1] = amountStats[1] != null ? ((Number) amountStats[1]).doubleValue() : 0.0 ;
+                amountByRisk[2] = amountStats[2] != null ? ((Number) amountStats[2]).doubleValue() : 0.0 ;
+                amountByRisk[3] = amountStats[3] != null ? ((Number) amountStats[3]).doubleValue() : 0.0 ;
+            }
+        }
+
+        java.util.Map<String, Object> stats = new java.util.HashMap<>();
+        stats.put("totalAnalyzed", totalAnalyzed);
+        stats.put("alerts", totalAlerts);
+        stats.put("criticalAlerts", criticalAlerts);
+        stats.put("avgRiskScore", avgScore);
+        stats.put("channelDistribution", channelMap);
+        stats.put("amountExposure", amountByRisk);
+        
+        return stats;
     }
 }

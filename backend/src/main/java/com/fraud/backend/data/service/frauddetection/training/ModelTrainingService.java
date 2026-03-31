@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.training;
 
 import com.fraud.backend.api.dto.frauddetection.model.request.TrainingJobRequest;
 import com.fraud.backend.api.dto.frauddetection.model.response.ModelMetricsResponse;
@@ -13,6 +13,7 @@ import com.fraud.backend.data.repository.frauddetection.CommentRepository;
 import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
 import com.fraud.backend.data.entity.frauddetection.Comment;
 import com.fraud.backend.data.repository.frauddetection.DatasetRepository;
+import com.fraud.backend.data.repository.frauddetection.ModelDeploymentHistoryRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
 import com.fraud.backend.data.service.storage.StorageService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -45,6 +46,7 @@ public class ModelTrainingService {
     private final DatasetRepository datasetRepository;
     private final ModelMLRepository modelMLRepository;
     private final CommentRepository commentRepository;
+    private final ModelDeploymentHistoryRepository modelDeploymentHistoryRepository;
     private final KeycloakMappingRepository keycloakMappingRepository;
     private final StorageService storageService;
     private final ObjectMapper objectMapper;
@@ -246,6 +248,14 @@ public class ModelTrainingService {
             } catch (Exception e) {
                 log.warn("Failed to delete ONNX file from MinIO: {}", e.getMessage());
             }
+        }
+
+        // Supprimer d'abord l'historique de dérive et les commentaires pour éviter les erreurs de clé étrangère (FK constraints)
+        modelDeploymentHistoryRepository.deleteByModel(model);
+        
+        List<Comment> comments = commentRepository.findByModelId(model.getId());
+        if (!comments.isEmpty()) {
+            commentRepository.deleteAll(comments);
         }
 
         modelMLRepository.delete(model);

@@ -77,4 +77,78 @@ export class AlertDetailsModalComponent {
       minute: '2-digit'
     });
   }
+
+  isObject(val: any): boolean {
+    return typeof val === 'object' && val !== null && !Array.isArray(val);
+  }
+
+  asStructuredReason(reason: any): any {
+    if (reason && reason.summary && Array.isArray(reason.contributions)) {
+      return reason;
+    }
+    return null;
+  }
+
+  getFraudReasons(reasons: any): {key: string, value: any}[] {
+    if (!reasons) return [];
+    if (this.asStructuredReason(reasons)) return []; // Handle separately in template
+    if (this.isObject(reasons)) {
+      return Object.keys(reasons).map(key => ({
+        key: key,
+        value: reasons[key]
+      }));
+    }
+    return [{key: 'Raison', value: reasons}];
+  }
+
+  getImpactColor(points: number): string {
+    if (points >= 50) return 'text-indigo-600 bg-indigo-50 border-indigo-200';
+    if (points >= 20) return 'text-indigo-500 bg-indigo-50/60 border-indigo-100';
+    return 'text-indigo-400 bg-indigo-50/40 border-indigo-50';
+  }
+
+  fixEncoding(str: string | undefined): string {
+    if (!str) return '';
+    try {
+      // Common hack to fix UTF-8 mangled as ISO-8859-1
+      return decodeURIComponent(escape(str));
+    } catch (e) {
+      // Fallback if it's not actually mangled or double encoded
+      return str;
+    }
+  }
+
+  sanitizeReason(reason: any): any {
+    if (!reason) return null;
+    if (typeof reason === 'string') return this.fixEncoding(reason);
+    
+    // Deep clone and fix encoding in all string fields
+    const sanitized = JSON.parse(JSON.stringify(reason));
+    
+    if (sanitized.summary) {
+      sanitized.summary = this.fixEncoding(sanitized.summary);
+    }
+    
+    if (Array.isArray(sanitized.contributions)) {
+      sanitized.contributions = sanitized.contributions.map((c: any) => ({
+        ...c,
+        description: this.fixEncoding(c.description),
+        factor_display: this.fixEncoding(c.factor_display)
+      }));
+    }
+    
+    return sanitized;
+  }
+
+  getSummaryParts(summary: string | undefined): {level: string, text: string} {
+    if (!summary) return {level: '', text: ''};
+    const parts = summary.split(':');
+    if (parts.length > 1) {
+      return {
+        level: this.translateRisk(parts[0].trim()),
+        text: parts.slice(1).join(':').trim()
+      };
+    }
+    return {level: '', text: summary};
+  }
 }

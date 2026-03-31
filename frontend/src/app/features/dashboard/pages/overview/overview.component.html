@@ -161,11 +161,11 @@
                             </span>
                         </td>
                         <td class="pl-8 pr-12 py-5 text-center">
-                            <div class="flex items-center justify-center opacity-0 group-hover/row:opacity-100">
+                            <div class="flex items-center justify-center">
                                 <button (click)="openDetails(alert, true); $event.stopPropagation()"
                                     class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all hover:scale-110"
                                     title="Examiner l'alerte">
-                                    <i-feather name="eye" class="w-4 h-4"></i-feather>
+                                    <i-feather name="eye" style="width: 14px; height: 14px;"></i-feather>
                                 </button>
                             </div>
                         </td>
@@ -225,15 +225,21 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-12 pb-12 px-1">
         <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="px-8 py-6 border-b border-gray-100 mb-8 bg-gray-50/20">
-                <h3 class="text-2xl font-bold text-slate-900 tracking-tight">Dernières Anomalies</h3>
-                <p class="text-sm text-slate-500 font-medium mt-1">Alertes nécessitant une attention immédiate</p>
+            <div class="px-8 py-6 border-b border-gray-100 mb-8 bg-gray-50/20 flex items-center justify-between">
+                <div>
+                    <h3 class="text-2xl font-bold text-slate-900 tracking-tight">Dernières Anomalies</h3>
+                    <p class="text-sm text-slate-500 font-medium mt-1">Alertes nécessitant une attention immédiate</p>
+                </div>
+                <button 
+                    [routerLink]="['/dashboard/alerts']"
+                    class="px-6 py-2.5 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 text-slate-600 hover:text-blue-600 rounded-2xl text-[13px] font-bold transition-all shadow-sm">
+                    Voir tout
+                </button>
             </div>
-
             <div class="px-8 pb-8 space-y-4">
                 @for (alert of latestAlerts(); track alert.alertUuid) {
                 <div
-                    class="group flex items-center justify-between p-5 rounded-2xl hover:bg-slate-50 border border-transparent hover:border-slate-100">
+                    class="group flex items-center justify-between p-5 rounded-2xl hover:bg-slate-50/50 border border-transparent hover:border-slate-100 transition-all">
                     <div class="flex flex-col gap-1.5">
                         <div class="flex items-center gap-3">
                             <span class="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-bold tracking-tight">
@@ -265,9 +271,10 @@
                     </div>
 
                     <button (click)="openDetails(alert)"
-                        class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all opacity-0 group-hover:opacity-100 hover:scale-110"
+                        class="px-4 py-2 bg-white text-slate-700 hover:text-blue-600 border border-slate-200 hover:border-blue-200 hover:bg-blue-50/30 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all hover:scale-105 flex items-center gap-2 shadow-sm group/btn"
                         title="Examiner l'alerte">
-                        <i-feather name="eye" class="w-5 h-5"></i-feather>
+                        <i-feather name="eye" style="width: 12px; height: 12px; stroke-width: 3px;" class="text-slate-400 group-hover/btn:text-blue-500"></i-feather>
+                        <span>Examiner</span>
                     </button>
                 </div>
                 } @empty {

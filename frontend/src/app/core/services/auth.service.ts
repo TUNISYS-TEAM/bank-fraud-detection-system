@@ -79,8 +79,8 @@ export class AuthService {
   // ──────────────────────────────────────────────────────────────────────────
   // LOAD USER PROFILE
   // ──────────────────────────────────────────────────────────────────────────
-  loadUserProfile(email?: string): Observable<AuthUser> {
-    if (this.currentUser && (!email || this.currentUser.email === email)) {
+  loadUserProfile(email?: string, force: boolean = false): Observable<AuthUser> {
+    if (!force && this.currentUser && (!email || this.currentUser.email === email)) {
       return of(this.currentUser);
     }
 

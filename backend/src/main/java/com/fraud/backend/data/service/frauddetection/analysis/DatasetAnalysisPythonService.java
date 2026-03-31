@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.analysis;
 
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetAnalysisResponse;
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetCleanResponse;

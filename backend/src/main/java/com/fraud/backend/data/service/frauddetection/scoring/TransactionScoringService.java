@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.frauddetection;
+package com.fraud.backend.data.service.frauddetection.scoring;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +11,10 @@ import com.fraud.backend.data.repository.corebanking.ClientBehaviorRepository;
 import com.fraud.backend.data.repository.corebanking.TransactionRepository;
 import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
+import com.fraud.backend.data.service.frauddetection.deployment.PythonInferenceService;
+import com.fraud.backend.data.service.frauddetection.monitoring.ModelDriftMonitoringService;
+import com.fraud.backend.data.service.frauddetection.training.ModelProvider;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
