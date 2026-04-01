@@ -14,6 +14,7 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -22,13 +23,16 @@ public class KeycloakService {
 
     private final Keycloak keycloak;
     private final KeycloakProperties keycloakProperties;
+    private final EmailService emailService;
+    
+    // Store OTP codes temporarily (in production, use Redis with TTL)
+    private final ConcurrentHashMap<String, OTPData> otpStore = new ConcurrentHashMap<>();
 
-    // Realm Ressource
     private RealmResource getRealm() {
         return keycloak.realm(keycloakProperties.getRealm());
     }
 
-    // Creation user
+    // ==================== CREATE USER ====================
     public String createUser(String email, String firstName, String lastName, String password, String role) {
         UserRepresentation user = new UserRepresentation();
         user.setEnabled(true);
@@ -36,7 +40,7 @@ public class KeycloakService {
         user.setUsername(email);
         user.setFirstName(firstName);
         user.setLastName(lastName);
-        user.setEmailVerified(true);
+        user.setEmailVerified(false);  // Email NOT verified initially
 
         try (Response response = getRealm().users().create(user)) {
             if (response.getStatus() != 201) {
@@ -49,7 +53,7 @@ public class KeycloakService {
             setPassword(keycloakId, password);
             assignRole(keycloakId, role);
 
-            log.info("User created in Keycloak with id: {}", keycloakId);
+            log.info("User created in Keycloak with id: {} (email verification pending)", keycloakId);
             return keycloakId;
         }
     }
@@ -60,7 +64,6 @@ public class KeycloakService {
         credential.setType(CredentialRepresentation.PASSWORD);
         credential.setValue(newPassword);
         credential.setTemporary(false);
-
         getRealm().users().get(keycloakId).resetPassword(credential);
         log.info("Password set for user with id: {}", keycloakId);
     }
@@ -71,28 +74,26 @@ public class KeycloakService {
         getRealm().users().get(keycloakId).roles().realmLevel().add(List.of(role));
     }
 
-    // supprimer role
+    // Remove role
     public void removeRole(String keycloakId, String roleName) {
         RoleRepresentation role = getRealm().roles().get(roleName).toRepresentation();
         getRealm().users().get(keycloakId).roles().realmLevel().remove(List.of(role));
         log.info("Role {} removed from Keycloak user: {}", roleName, keycloakId);
     }
 
-    // modifier utilisateur
+    // Update user
     public void updateUser(String keycloakId, String firstName, String lastName, String email) {
         UserResource userResource = getRealm().users().get(keycloakId);
         UserRepresentation user = userResource.toRepresentation();
-
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setEmail(email);
         user.setUsername(email);
-
         userResource.update(user);
         log.info("User updated in Keycloak: {}", keycloakId);
     }
 
-    // activer ou desactiver utilisateur
+    // Enable / Disable user
     public void enableUser(String keycloakId) {
         UserResource userResource = getRealm().users().get(keycloakId);
         UserRepresentation user = userResource.toRepresentation();
@@ -109,29 +110,137 @@ public class KeycloakService {
         log.info("User disabled in Keycloak: {}", keycloakId);
     }
 
-    // Supprimer utilisateur
+    // Delete user
     public void deleteUser(String keycloakId) {
         getRealm().users().get(keycloakId).remove();
         log.info("User deleted from Keycloak: {}", keycloakId);
     }
 
-    // ========== Role Management Methods ==========
+    // ==================== EMAIL VERIFICATION WITH OTP ====================
+    
+    /**
+     * Generate and send OTP to user's email
+     */
+    public String generateAndSendOTP(String email, String firstName) {
+        String otp = String.format("%06d", (int)(Math.random() * 1000000));
+        
+        // Store OTP with expiration (5 minutes)
+        otpStore.put(email, new OTPData(otp, System.currentTimeMillis() + 300000));
+        
+        // Send OTP via email
+        try {
+            emailService.sendOtpEmail(email, otp, firstName);
+            log.info("OTP email sent successfully to: {}", email);
+        } catch (Exception e) {
+            log.error("Failed to send OTP email to {}: {}", email, e.getMessage());
+            // Still log OTP for development debugging
+            log.info("OTP for {}: {} (expires in 5 minutes)", email, otp);
+        }
+        
+        return otp;
+    }
+    
+    /**
+     * Verify OTP code
+     */
+    public boolean verifyOTP(String email, String code) {
+        OTPData otpData = otpStore.get(email);
+        if (otpData == null) {
+            log.warn("No OTP found for email: {}", email);
+            return false;
+        }
+        
+        if (System.currentTimeMillis() > otpData.expiry) {
+            otpStore.remove(email);
+            log.warn("OTP expired for email: {}", email);
+            return false;
+        }
+        
+        boolean isValid = otpData.code.equals(code);
+        if (isValid) {
+            otpStore.remove(email);
+            log.info("OTP verified successfully for email: {}", email);
+        } else {
+            log.warn("Invalid OTP attempt for email: {}", email);
+        }
+        
+        return isValid;
+    }
+    
+    /**
+     * Check if user's email is verified in Keycloak
+     */
+    public boolean isEmailVerified(String keycloakUserId) {
+        try {
+            UserRepresentation user = getRealm().users().get(keycloakUserId).toRepresentation();
+            boolean verified = user.isEmailVerified() != null && user.isEmailVerified();
+            log.debug("Email verification status for {}: {}", keycloakUserId, verified);
+            return verified;
+        } catch (Exception e) {
+            log.error("Failed to check email verification status: {}", e.getMessage());
+            return false;
+        }
+    }
 
-    // Création de rôle dans Keycloak
+    /**
+     * Check if user's email is verified by email address
+     */
+    public boolean isEmailVerifiedByEmail(String email) {
+        try {
+            List<UserRepresentation> users = getRealm().users().search(email, true);
+            if (users.isEmpty()) {
+                return false;
+            }
+            UserRepresentation user = users.get(0);
+            boolean verified = user.isEmailVerified() != null && user.isEmailVerified();
+            log.debug("Email verification status for {}: {}", email, verified);
+            return verified;
+        } catch (Exception e) {
+            log.error("Failed to check email verification status: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Manually mark email as verified in Keycloak
+     */
+    public void markEmailAsVerified(String keycloakUserId, String email, String firstName) {
+        try {
+            UserResource userResource = getRealm().users().get(keycloakUserId);
+            UserRepresentation user = userResource.toRepresentation();
+            user.setEmailVerified(true);
+            // Remove the VERIFY_EMAIL required action
+            List<String> requiredActions = user.getRequiredActions();
+            if (requiredActions != null) {
+                requiredActions.remove("VERIFY_EMAIL");
+                user.setRequiredActions(requiredActions);
+            }
+            userResource.update(user);
+            
+            // Send verification success email
+            try {
+                emailService.sendVerificationSuccessEmail(email, firstName);
+                log.info("Verification success email sent to: {}", email);
+            } catch (Exception e) {
+                log.warn("Failed to send success email to {}: {}", email, e.getMessage());
+            }
+            
+            log.info("Email successfully marked as verified for user: {}", keycloakUserId);
+        } catch (Exception e) {
+            log.error("Failed to mark email as verified for {}: {}", keycloakUserId, e.getMessage());
+            throw new RuntimeException("Erreur lors de la vérification de l'email", e);
+        }
+    }
+
+    // ==================== ROLE MANAGEMENT ====================
     public String createRole(String roleName, String description) {
         RoleRepresentation role = new RoleRepresentation();
         role.setName(roleName);
         role.setDescription(description);
-
         getRealm().roles().create(role);
-
-        // Trouver l'ID du rôle créé
-        RoleRepresentation createdRole = getRealm().roles().get(roleName).toRepresentation();
-
-        return createdRole.getName();
+        return roleName;
     }
 
-    // Mise à jour de rôle dans Keycloak
     public void updateRole(String roleName, String description) {
         RoleRepresentation role = getRealm().roles().get(roleName).toRepresentation();
         role.setDescription(description);
@@ -139,24 +248,20 @@ public class KeycloakService {
         log.info("Role updated in Keycloak: {}", roleName);
     }
 
-    // Suppression de rôle dans Keycloak
     public void deleteRole(String roleName) {
         getRealm().roles().deleteRole(roleName);
         log.info("Role deleted from Keycloak: {}", roleName);
     }
 
-    // Trouver tous les rôles
     public List<RoleRepresentation> getAllRoles() {
         return getRealm().roles().list();
     }
 
-    // Trouver un rôle par son nom
     public RoleRepresentation getRole(String roleName) {
         return getRealm().roles().get(roleName).toRepresentation();
     }
 
-    // Settings
-    // Sync session timeout (in minutes) to Keycloak realm
+    // ==================== REALM SETTINGS ====================
     public void updateSessionTimeout(int timeoutMinutes) {
         RealmRepresentation realm = getRealm().toRepresentation();
         int seconds = timeoutMinutes * 60;
@@ -167,7 +272,6 @@ public class KeycloakService {
         log.info("Keycloak session timeout updated to {} minutes", timeoutMinutes);
     }
 
-    // Sync max login attempts to Keycloak brute force protection
     public void updateMaxLoginAttempts(int maxAttempts) {
         RealmRepresentation realm = getRealm().toRepresentation();
         realm.setBruteForceProtected(true);
@@ -176,12 +280,10 @@ public class KeycloakService {
         log.info("Keycloak max login attempts updated to {}", maxAttempts);
     }
 
-    // Sync password expiry to Keycloak password policy
     public void updatePasswordExpiryDays(int days) {
         RealmRepresentation realm = getRealm().toRepresentation();
         String currentPolicy = realm.getPasswordPolicy();
 
-        // Remove existing forceExpiredPasswordChange if present
         String cleaned = currentPolicy == null ? ""
                 : currentPolicy.replaceAll("forceExpiredPasswordChange\\(\\d+\\)", "").trim();
 
@@ -192,5 +294,16 @@ public class KeycloakService {
         realm.setPasswordPolicy(newPolicy);
         getRealm().update(realm);
         log.info("Keycloak password expiry updated to {} days", days);
+    }
+
+    // OTP Data holder
+    private static class OTPData {
+        final String code;
+        final long expiry;
+        
+        OTPData(String code, long expiry) {
+            this.code = code;
+            this.expiry = expiry;
+        }
     }
 }

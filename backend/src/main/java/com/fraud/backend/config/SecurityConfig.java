@@ -9,6 +9,8 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -31,7 +33,12 @@ public class SecurityConfig {
                 "/api-docs/**",
                 "/actuator/**",
                 "/auth/**",
-                "/api/auth/**",
+                "/api/auth/login", 
+                "/api/auth/csrf",   
+                "/api/auth/request-otp",     
+                "/api/auth/verify-otp",       
+                "/api/auth/resend-verification", 
+                "/api/messages/**",
                 "/public/**",
                 "/error",
                 "/ws/**",
@@ -40,31 +47,52 @@ public class SecurityConfig {
 
         private final CookieBearerTokenResolver cookieBearerTokenResolver;
 
-        // Constructor injection
         public SecurityConfig(CookieBearerTokenResolver cookieBearerTokenResolver) {
                 this.cookieBearerTokenResolver = cookieBearerTokenResolver;
         }
 
         @Bean
         public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                // Configure CSRF with proper cookie settings
+                CookieCsrfTokenRepository csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+                csrfTokenRepository.setCookiePath("/");
+                
+                csrfTokenRepository.setCookieCustomizer(cookie -> {
+                    cookie.httpOnly(false);
+                    cookie.secure(true);
+                    cookie.sameSite("Strict");
+                    cookie.path("/");
+                });
+
+                CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
+                requestHandler.setCsrfRequestAttributeName(null);
+
                 http
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                                .csrf(csrf -> csrf.disable())
+                                .csrf(csrf -> csrf
+                                        .csrfTokenRepository(csrfTokenRepository)
+                                        .csrfTokenRequestHandler(requestHandler)
+                                        .ignoringRequestMatchers(
+                                                "/ws/**", 
+                                                "/api/ws/**", 
+                                                "/api/auth/login",
+                                                "/api/auth/request-otp",
+                                                "/api/auth/verify-otp",
+                                                "/api/auth/resend-verification"
+                                        )
+                                )
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2ResourceServer(oauth2 -> oauth2
-                                                .bearerTokenResolver(cookieBearerTokenResolver) // Use the injected
-                                                                                                // field
+                                                .bearerTokenResolver(cookieBearerTokenResolver)
                                                 .jwt(jwt -> jwt.jwtAuthenticationConverter(
                                                                 jwtAuthenticationConverter())));
 
                 return http.build();
         }
-
-        // NO BEAN METHOD FOR cookieBearerTokenResolver HERE!
 
         @Bean
         public CorsConfigurationSource corsConfigurationSource() {
@@ -72,9 +100,23 @@ public class SecurityConfig {
                 configuration.setAllowedOrigins(Arrays.asList("http://localhost:4200"));
                 configuration.setAllowedMethods(
                                 Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
-                configuration.setAllowedHeaders(Arrays.asList("authorization", "content-type", "x-auth-token",
-                                "x-xsrf-token", "x-requested-with", "accept", "origin"));
-                configuration.setExposedHeaders(Arrays.asList("Set-Cookie", "Authorization", "X-XSRF-TOKEN"));
+                configuration.setAllowedHeaders(Arrays.asList(
+                        "authorization", 
+                        "content-type", 
+                        "x-auth-token",
+                        "x-xsrf-token", 
+                        "x-requested-with", 
+                        "accept", 
+                        "origin", 
+                        "x-csrf-token",
+                        "X-XSRF-TOKEN"
+                ));
+                configuration.setExposedHeaders(Arrays.asList(
+                        "Set-Cookie", 
+                        "Authorization", 
+                        "X-XSRF-TOKEN", 
+                        "X-CSRF-TOKEN"
+                ));
                 configuration.setAllowCredentials(true);
                 configuration.setMaxAge(3600L);
 

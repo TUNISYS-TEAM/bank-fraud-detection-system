@@ -1,5 +1,6 @@
 package com.fraud.backend.config.websocket;
 
+import com.fraud.backend.config.security.SessionCacheService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -16,9 +17,11 @@ import org.springframework.stereotype.Component;
 public class AuthChannelInterceptor implements ChannelInterceptor {
 
     private final JwtDecoder jwtDecoder;
+    private final SessionCacheService sessionCacheService; 
 
-    public AuthChannelInterceptor(JwtDecoder jwtDecoder) {
+    public AuthChannelInterceptor(JwtDecoder jwtDecoder, SessionCacheService sessionCacheService) {
         this.jwtDecoder = jwtDecoder;
+        this.sessionCacheService = sessionCacheService;
     }
 
     @Override
@@ -29,16 +32,17 @@ public class AuthChannelInterceptor implements ChannelInterceptor {
             String token = null;
             String tokenSource = null;
 
-            // 1st: cookie set during HTTP handshake by CookieHandshakeInterceptor
-            Object sessionToken = accessor.getSessionAttributes() != null
-                    ? accessor.getSessionAttributes().get("token")
+            // 1. Get sessionId from handshake attributes
+            Object sessionIdObj = accessor.getSessionAttributes() != null
+                    ? accessor.getSessionAttributes().get("sessionId")
                     : null;
-            if (sessionToken instanceof String s && !s.isBlank()) {
-                token = s;
-                tokenSource = "cookie";
+
+            if (sessionIdObj instanceof String sessionId && !sessionId.isBlank()) {
+                token = sessionCacheService.getAccessToken(sessionId);
+                tokenSource = "session_id (Caffeine cache)";
             }
 
-            // 2nd: Authorization header sent in STOMP CONNECT frame
+            // 2. Fallback: Authorization header in STOMP CONNECT frame
             if (token == null) {
                 String authHeader = accessor.getFirstNativeHeader("Authorization");
                 if (authHeader != null && authHeader.startsWith("Bearer ")) {
@@ -54,11 +58,11 @@ public class AuthChannelInterceptor implements ChannelInterceptor {
                     accessor.setUser(() -> subject);
                     log.info("WebSocket CONNECT authenticated via {} for subject: {}", tokenSource, subject);
                 } catch (JwtException e) {
-                    log.error("WebSocket CONNECT rejected: invalid token from {}", tokenSource);
+                    log.error("WebSocket CONNECT rejected: invalid token from {}", tokenSource, e);
                     throw new IllegalArgumentException("Invalid token");
                 }
             } else {
-                log.error("WebSocket CONNECT rejected: no token found in cookie or Authorization header");
+                log.error("WebSocket CONNECT rejected: no token found in session_id or Authorization header");
                 throw new IllegalArgumentException("No token found");
             }
         }

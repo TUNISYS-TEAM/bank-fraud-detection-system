@@ -13,12 +13,12 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 
 import java.util.List;
 import java.util.UUID;
@@ -31,7 +31,8 @@ public class UserController {
     private final UserService userService;
     private final UserMapper userMapper;
 
-    // GET /api/users
+    // ==================== BASIC CRUD ====================
+
     @GetMapping
     public ResponseEntity<Page<UserSummaryResponse>> getAll(
             @RequestParam(defaultValue = "0") int page,
@@ -42,35 +43,31 @@ public class UserController {
                 userService.getAllUsers(pageable).map(userMapper::toSummaryResponse));
     }
 
-    // GET /api/users/count/active
     @GetMapping("/count/active")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Long> getActiveCount() {
         return ResponseEntity.ok(userService.countActiveUsers());
     }
 
-    // GET /api/users/{id}
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(userMapper.toResponse(userService.getById(id)));
     }
 
-    // GET /api/users/uuid/{uuid}
     @GetMapping("/uuid/{uuid}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> getByUuid(@PathVariable UUID uuid) {
         return ResponseEntity.ok(userMapper.toResponse(userService.getByUuid(uuid)));
     }
 
-    // GET /api/users/email/{email}
     @GetMapping("/email/{email}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<UserResponse> getByEmail(@PathVariable String email) {
         return ResponseEntity.ok(userMapper.toResponse(userService.getByEmail(email)));
     }
 
-    // POST /api/users
+    // ==================== CREATE USER ====================
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
@@ -89,7 +86,7 @@ public class UserController {
                                 request.getManagerId())));
     }
 
-    // PUT /api/users/{id}
+    // ==================== UPDATE ====================
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
@@ -108,7 +105,7 @@ public class UserController {
                                 request.getManagerId())));
     }
 
-    // PATCH /api/users/{id}/role
+    // ==================== ROLE & MANAGER ====================
     @PatchMapping("/{id}/role")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> changeRole(@PathVariable Long id,
@@ -117,7 +114,6 @@ public class UserController {
                 userService.changeRole(id, request.getRoleId())));
     }
 
-    // PATCH /api/users/{id}/manager
     @PatchMapping("/{id}/manager")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> changeManager(@PathVariable Long id,
@@ -126,7 +122,31 @@ public class UserController {
                 userService.changeManager(id, request.getManagerId())));
     }
 
-    // GET /api/users/available-managers
+    // ==================== EMAIL VERIFICATION (NEW) ====================
+
+    /**
+     * Verify email using the code sent by Keycloak
+     * Call this when user enters the verification code/link
+     */
+    @PostMapping("/{id}/verify-email")
+    @PreAuthorize("isAuthenticated()")   // or hasRole('ADMIN') if you prefer
+    public ResponseEntity<Void> verifyEmail(@PathVariable Long id) {
+        userService.verifyEmail(id);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Resend verification email
+     */
+    @PostMapping("/{id}/resend-verification")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> resendVerificationEmail(@PathVariable Long id) {
+        userService.resendVerificationEmail(id);
+        return ResponseEntity.ok().build();
+    }
+
+    // ==================== OTHER OPERATIONS ====================
+
     @GetMapping("/available-managers")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UserSummaryResponse>> getAvailableManagers() {
@@ -136,7 +156,6 @@ public class UserController {
                         .toList());
     }
 
-    // GET /api/users/{id}/subordinates
     @GetMapping("/{id}/subordinates")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UserSummaryResponse>> getSubordinates(@PathVariable Long id) {
@@ -146,7 +165,6 @@ public class UserController {
                         .toList());
     }
 
-    // PATCH /api/users/{id}/activate
     @PatchMapping("/{id}/activate")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> activate(@PathVariable Long id) {
@@ -154,7 +172,6 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    // PATCH /api/users/{id}/deactivate
     @PatchMapping("/{id}/deactivate")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deactivate(@PathVariable Long id) {
@@ -162,7 +179,6 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    // DELETE /api/users/{id}
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
@@ -170,7 +186,6 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    // GET /api/users/by-role/{roleId}
     @GetMapping("/by-role/{roleId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<UserSummaryResponse>> getByRoleId(

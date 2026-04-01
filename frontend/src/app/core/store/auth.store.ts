@@ -1,10 +1,11 @@
 import { signalStore, withState, withComputed, withMethods, patchState } from '@ngrx/signals';
 import { computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { tap, map, switchMap, catchError } from 'rxjs/operators';
 import { AuthService } from '../services/auth.service';
 import { AuthUser, LoginRequest, MenuItem, UserRole } from '../models/auth.model';
+import { HttpErrorResponse } from '@angular/common/http';
 
 const PERMISSION_ICONS: Record<string, string> = {
   'ACCESS_OVERVIEW': 'grid',
@@ -62,7 +63,6 @@ const PERMISSION_ORDER: Record<string, number> = {
   'ACCESS_ALERTS': 40,
   'ACCESS_PERFORMANCE': 50,
   'ACCESS_SIMULATION': 55,
-
   'ACCESS_MESSAGES': 60,
   'ACCESS_DATASETS': 61,
   'ACCESS_CLIENTS_ACCOUNTS': 62,
@@ -224,18 +224,15 @@ export const AuthStore = signalStore(
 
   withMethods((store, authService = inject(AuthService), router = inject(Router)) => ({
 
-    // ──────────────────────────────────────────────────────────────────────
-    // LOGIN
-    // ──────────────────────────────────────────────────────────────────────
-    login(credentials: LoginRequest): void {
+    login(credentials: LoginRequest): Observable<{ user: AuthUser }> {
       if (store.loading()) {
-        return;
+        return throwError(() => new Error('Login already in progress'));
       }
 
       patchState(store, { loading: true, error: null });
 
-      authService.login(credentials).subscribe({
-        next: ({ user }) => {
+      return authService.login(credentials).pipe(
+        tap(({ user }) => {
           patchState(store, {
             user,
             isAuthenticated: true,
@@ -243,28 +240,37 @@ export const AuthStore = signalStore(
             error: null
           });
           router.navigate(['/dashboard/overview']);
-        },
-        error: (error) => {
-          const msg = error.message || 'Erreur de connexion';
-          patchState(store, { loading: false, error: msg });
+        }),
+        catchError((error: HttpErrorResponse) => {
+          // Clear loading state for all errors
+          patchState(store, { loading: false });
+
+          // For email not verified, just pass through without setting error message
+          if (error.status === 403 && error.error?.error === 'EMAIL_NOT_VERIFIED') {
+            return throwError(() => error);
+          }
+
+          // For other errors, set error message
+          const msg = error.error?.message || error.message || 'Erreur de connexion';
+          patchState(store, { error: msg });
 
           setTimeout(() => {
             if (store.error() === msg) {
               patchState(store, { error: null });
             }
           }, 5000);
-        }
-      });
+
+          return throwError(() => error);
+        })
+      );
     },
 
-    // ──────────────────────────────────────────────────────────────────────
-    // RESTORE SESSION
-    // ──────────────────────────────────────────────────────────────────────
     restoreSession(): Observable<boolean> {
+      patchState(store, { loading: true });
+
       return authService.checkSession().pipe(
         switchMap((isValid) => {
           if (isValid) {
-            patchState(store, { loading: true });
             return authService.loadUserProfile().pipe(
               tap((user) => {
                 patchState(store, {
@@ -275,7 +281,8 @@ export const AuthStore = signalStore(
                 });
               }),
               map(() => true),
-              catchError(() => {
+              catchError((error) => {
+                console.error('Failed to load user profile after valid session:', error);
                 patchState(store, { loading: false });
                 return of(false);
               })
@@ -285,7 +292,8 @@ export const AuthStore = signalStore(
             return of(false);
           }
         }),
-        catchError(() => {
+        catchError((error) => {
+          console.error('Session restoration failed:', error);
           patchState(store, { loading: false });
           return of(false);
         })
@@ -302,7 +310,6 @@ export const AuthStore = signalStore(
             });
           },
           error: () => {
-            // Even if CSRF fails, try to restore session
             this.restoreSession().subscribe(() => {
               authService.setupAutoRefresh();
               resolve();
@@ -312,19 +319,12 @@ export const AuthStore = signalStore(
       });
     },
 
-    // ──────────────────────────────────────────────────────────────────────
-    // LOGOUT
-    // ──────────────────────────────────────────────────────────────────────
     logout(): void {
       patchState(store, { loading: true });
 
       authService.logout().subscribe({
-        next: () => {
-          this.clearSession();
-        },
-        error: () => {
-          this.clearSession();
-        }
+        next: () => this.clearSession(),
+        error: () => this.clearSession()
       });
     },
 
@@ -337,9 +337,6 @@ export const AuthStore = signalStore(
       patchState(store, { error: null });
     },
 
-    // ──────────────────────────────────────────────────────────────────────
-    // PERMISSIONS
-    // ──────────────────────────────────────────────────────────────────────
     hasPermission(permissionName: string): boolean {
       if (permissionName === 'ACCESS_OVERVIEW' || permissionName === 'ACCESS_MESSAGES') return true;
       return store.permissionNames().includes(permissionName);
@@ -364,18 +361,12 @@ export const AuthStore = signalStore(
       patchState(store, { loading });
     },
 
-    // ──────────────────────────────────────────────────────────────────────
-    // REFRESH USER PROFILE - FIXED (removed email parameter)
-    // ──────────────────────────────────────────────────────────────────────
     refreshUserProfile(): void {
       patchState(store, { loading: true });
 
       authService.loadUserProfile().subscribe({
         next: (user) => {
-          patchState(store, {
-            user,
-            loading: false
-          });
+          patchState(store, { user, loading: false });
         },
         error: (err) => {
           console.error('Error refreshing profile:', err);

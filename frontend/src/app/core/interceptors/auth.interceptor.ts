@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HttpErrorResponse } from '@angular/common/http';
-import { Observable, throwError, BehaviorSubject, EMPTY } from 'rxjs';
+import { Observable, throwError, BehaviorSubject } from 'rxjs';
 import { catchError, filter, take, switchMap } from 'rxjs/operators';
 import { AuthService } from '../services/auth.service';
 import { Router } from '@angular/router';
@@ -13,13 +13,10 @@ export class AuthInterceptor implements HttpInterceptor {
   private refreshTokenSubject = new BehaviorSubject<any>(null);
 
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    // Clone request with credentials and headers
-    // Clone request with credentials
     let headers: any = {
       'Accept': 'application/json'
     };
 
-    // Only set Content-Type to application/json if not sending FormData
     if (!(req.body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
@@ -29,24 +26,18 @@ export class AuthInterceptor implements HttpInterceptor {
       setHeaders: headers
     });
 
-
     return next.handle(authReq).pipe(
       catchError((error: HttpErrorResponse) => {
-        // SILENTLY IGNORE 401 for session check on app startup
-        // This prevents the console error when no user is logged in
-        if (error.status === 401 && req.url.includes('/api/auth/me')) {
-          // Return EMPTY to complete silently without error
-          return EMPTY;
-        }
-
-        // Don't refresh on 401 for auth endpoints
+        // 🔥 Exclude /api/auth/me from refresh attempts – it's just a session check
         if (error.status === 401 &&
-          !req.url.includes('/api/auth/login') &&
-          !req.url.includes('/api/auth/csrf') &&
-          !req.url.includes('/api/auth/refresh')) {
+            !req.url.includes('/api/auth/login') &&
+            !req.url.includes('/api/auth/csrf') &&
+            !req.url.includes('/api/auth/refresh') &&
+            !req.url.includes('/api/auth/me')) {
           return this.handle401Error(authReq, next);
         }
 
+        // Pass through all other errors (including 401 on /api/auth/me)
         return throwError(() => error);
       })
     );
@@ -65,6 +56,7 @@ export class AuthInterceptor implements HttpInterceptor {
         }),
         catchError((err) => {
           this.isRefreshing = false;
+          this.refreshTokenSubject.next(null);
           this.router.navigate(['/auth/login']);
           return throwError(() => err);
         })

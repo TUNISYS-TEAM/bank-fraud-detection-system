@@ -1,4 +1,4 @@
-import { Component, inject, computed, signal, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { Component, inject, computed, signal, OnInit, OnDestroy, HostListener, AfterViewInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import * as echarts from 'echarts';
 import { forkJoin, of, Subscription, interval } from 'rxjs';
@@ -40,7 +40,7 @@ interface TimeSeriesPoint {
   templateUrl: './overview.component.html',
   styleUrl: './overview.component.css',
 })
-export class OverviewComponent implements OnInit, OnDestroy {
+export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   readonly authStore = inject(AuthStore);
 
   private overviewService = inject(OverviewService);
@@ -51,15 +51,19 @@ export class OverviewComponent implements OnInit, OnDestroy {
 
   userRole = signal<UserRole | null>(null);
   isLoading = signal(true);
+  private adminChartsInitialized = false;
 
   @HostListener('window:resize')
   onResize(): void {
+    // Only resize charts that actually exist
     this.fraudEvolutionChart?.resize();
     this.riskDistributionChart?.resize();
-    this.requestChart?.resize();
-    this.responseTimeChart?.resize();
-    this.cpuMemoryChart?.resize();
-    this.systemHealthChart?.resize();
+    if (this.isAdmin() && this.adminChartsInitialized) {
+      this.requestChart?.resize();
+      this.responseTimeChart?.resize();
+      this.cpuMemoryChart?.resize();
+      this.systemHealthChart?.resize();
+    }
   }
 
   isAdmin = computed(() => this.userRole() === 'ADMIN');
@@ -326,6 +330,18 @@ export class OverviewComponent implements OnInit, OnDestroy {
     }
   }
 
+  ngAfterViewInit(): void {
+    // Admin charts will be initialized after data loads, but we can also check here
+    // if admin and charts not yet initialized, try again after a short delay
+    if (this.isAdmin() && !this.adminChartsInitialized) {
+      setTimeout(() => {
+        if (this.isAdmin() && !this.adminChartsInitialized) {
+          this.initAllCharts();
+        }
+      }, 500);
+    }
+  }
+
   ngOnDestroy(): void {
     this.disposeFraudCharts();
     this.disposeAdminCharts();
@@ -380,14 +396,16 @@ export class OverviewComponent implements OnInit, OnDestroy {
 
     this.overviewService.getTransactionTimeSeries().subscribe({
       next: (data) => {
-        setTimeout(() => this.initFraudEvolutionChart(data), 0);
+        setTimeout(() => this.initFraudEvolutionChart(data), 100);
       },
-      error: () => {},
+      error: () => {
+        this.isLoadingCharts.set(false);
+      },
     });
 
     this.overviewService.getRiskDistribution().subscribe({
       next: (data) => {
-        setTimeout(() => this.initRiskDistributionChart(data), 0);
+        setTimeout(() => this.initRiskDistributionChart(data), 100);
         this.isLoadingCharts.set(false);
       },
       error: () => {
@@ -398,9 +416,12 @@ export class OverviewComponent implements OnInit, OnDestroy {
 
   private initFraudEvolutionChart(data: any[]): void {
     const chartDom = document.getElementById('fraudEvolutionChart');
-    if (!chartDom) return;
+    if (!chartDom || !data || data.length === 0) return;
 
-    this.fraudEvolutionChart?.dispose();
+    if (this.fraudEvolutionChart) {
+      this.fraudEvolutionChart.dispose();
+    }
+    
     this.fraudEvolutionChart = echarts.init(chartDom, null, { renderer: 'svg' });
 
     const dates = data.map((item) => {
@@ -489,9 +510,12 @@ export class OverviewComponent implements OnInit, OnDestroy {
 
   private initRiskDistributionChart(data: any[]): void {
     const chartDom = document.getElementById('riskDistributionChart');
-    if (!chartDom) return;
+    if (!chartDom || !data || data.length === 0) return;
 
-    this.riskDistributionChart?.dispose();
+    if (this.riskDistributionChart) {
+      this.riskDistributionChart.dispose();
+    }
+    
     this.riskDistributionChart = echarts.init(chartDom, null, { renderer: 'svg' });
 
     const riskOrder = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -707,16 +731,22 @@ export class OverviewComponent implements OnInit, OnDestroy {
     this.loadSystemMetrics();
     this.loadMetricsHistory();
 
-    this.metricsSubscription = interval(5000)
-      .pipe(switchMap(() => this.systemMetricsService.getSystemMetrics()))
-      .subscribe({
-        next: (metrics) => {
-          this.systemMetrics.set(metrics);
-          this.updateHistoricalData();
-          this.refreshSystemCharts();
-        },
-        error: () => {},
-      });
+    setTimeout(() => {
+      this.metricsSubscription = interval(5000)
+        .pipe(switchMap(() => this.systemMetricsService.getSystemMetrics()))
+        .subscribe({
+          next: (metrics) => {
+            this.systemMetrics.set(metrics);
+            this.updateHistoricalData();
+            if (this.adminChartsInitialized) {
+              this.refreshSystemCharts();
+            }
+          },
+          error: (err) => {
+            console.error('Error fetching metrics:', err);
+          },
+        });
+    }, 1000);
   }
 
   private loadSystemMetrics(): void {
@@ -725,28 +755,32 @@ export class OverviewComponent implements OnInit, OnDestroy {
         this.systemMetrics.set(metrics);
         this.updateHistoricalData();
       },
-      error: () => {},
+      error: (err) => {
+        console.error('Error loading system metrics:', err);
+      },
     });
   }
 
   private loadMetricsHistory(): void {
     this.systemMetricsService.getMetricsHistory(60).subscribe({
       next: (history) => {
-        this.requestHistory.set(history.requestsPerSecond);
-        this.responseTimeHistory.set(history.responseTime);
-        this.cpuHistory.set(history.cpuUsage);
-        this.memoryHistory.set(history.memoryUsage);
+        this.requestHistory.set(history.requestsPerSecond || []);
+        this.responseTimeHistory.set(history.responseTime || []);
+        this.cpuHistory.set(history.cpuUsage || []);
+        this.memoryHistory.set(history.memoryUsage || []);
 
-        if (!this.chartsInitialized) {
+        if (!this.adminChartsInitialized) {
+          // Wait a bit for the DOM to be ready, then initialize charts
           setTimeout(() => {
             this.initAllCharts();
-            this.chartsInitialized = true;
           }, 200);
         } else {
           this.refreshSystemCharts();
         }
       },
-      error: () => {},
+      error: (err) => {
+        console.error('Error loading metrics history:', err);
+      },
     });
   }
 
@@ -780,7 +814,7 @@ export class OverviewComponent implements OnInit, OnDestroy {
     this.isLoading.set(true);
     this.apiError.set(null);
 
-    const apiBaseUrl = environment.apiUrl || '';
+    const apiBaseUrl = environment.apiUrl;
 
     forkJoin({
       recent: this.http.get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`).pipe(
@@ -794,7 +828,8 @@ export class OverviewComponent implements OnInit, OnDestroy {
         }
         this.isLoading.set(false);
       },
-      error: () => {
+      error: (err) => {
+        console.error('Error loading all data:', err);
         this.apiError.set('Impossible de charger les données.');
         this.isLoading.set(false);
       },
@@ -802,7 +837,7 @@ export class OverviewComponent implements OnInit, OnDestroy {
   }
 
   private refreshData(): void {
-    const apiBaseUrl = environment.apiUrl || '';
+    const apiBaseUrl = environment.apiUrl;
 
     this.http
       .get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`)
@@ -811,18 +846,40 @@ export class OverviewComponent implements OnInit, OnDestroy {
         next: (recent) => {
           if (recent && recent.length > 0) this.recentAlerts.set(recent);
         },
-        error: () => {},
+        error: (err) => {
+          console.error('Error refreshing data:', err);
+        },
       });
   }
 
+  // =========================================================
+  // ADMIN CHART METHODS (guarded by isAdmin())
+  // =========================================================
   private initAllCharts(): void {
+    if (!this.isAdmin()) return;
+    // Avoid double initialization
+    if (this.adminChartsInitialized) return;
+
+    // Check if the required DOM elements exist; if not, retry after a short delay
+    const requestEl = document.getElementById('requestChart');
+    const responseEl = document.getElementById('responseTimeChart');
+    const cpuEl = document.getElementById('cpuMemoryChart');
+    const healthEl = document.getElementById('systemHealthChart');
+    if (!requestEl || !responseEl || !cpuEl || !healthEl) {
+      console.debug('Admin chart containers not yet in DOM, will retry');
+      setTimeout(() => this.initAllCharts(), 200);
+      return;
+    }
+
     this.initRequestChart();
     this.initResponseTimeChart();
     this.initCpuMemoryChart();
     this.initSystemHealthChart();
+    this.adminChartsInitialized = true;
   }
 
   private refreshSystemCharts(): void {
+    if (!this.isAdmin() || !this.adminChartsInitialized) return;
     this.updateRequestChart();
     this.updateResponseTimeChart();
     this.updateCpuMemoryChart();
@@ -830,6 +887,7 @@ export class OverviewComponent implements OnInit, OnDestroy {
   }
 
   private disposeAdminCharts(): void {
+    if (!this.isAdmin()) return;
     this.requestChart?.dispose();
     this.responseTimeChart?.dispose();
     this.cpuMemoryChart?.dispose();
@@ -839,14 +897,17 @@ export class OverviewComponent implements OnInit, OnDestroy {
     this.responseTimeChart = null;
     this.cpuMemoryChart = null;
     this.systemHealthChart = null;
-    this.chartsInitialized = false;
+    this.adminChartsInitialized = false;
   }
 
   private initRequestChart(): void {
     const chartDom = document.getElementById('requestChart');
-    if (!chartDom) return;
+    if (!chartDom) return; // silently skip, already checked in initAllCharts
 
-    this.requestChart?.dispose();
+    if (this.requestChart) {
+      this.requestChart.dispose();
+    }
+    
     this.requestChart = echarts.init(chartDom);
     this.updateRequestChart();
 
@@ -859,6 +920,8 @@ export class OverviewComponent implements OnInit, OnDestroy {
     if (!this.requestChart) return;
 
     const data = this.requestHistory();
+    if (data.length === 0) return;
+
     this.requestChart.setOption(
       {
         title: {
@@ -893,7 +956,10 @@ export class OverviewComponent implements OnInit, OnDestroy {
     const chartDom = document.getElementById('responseTimeChart');
     if (!chartDom) return;
 
-    this.responseTimeChart?.dispose();
+    if (this.responseTimeChart) {
+      this.responseTimeChart.dispose();
+    }
+    
     this.responseTimeChart = echarts.init(chartDom);
     this.updateResponseTimeChart();
 
@@ -906,6 +972,8 @@ export class OverviewComponent implements OnInit, OnDestroy {
     if (!this.responseTimeChart) return;
 
     const data = this.responseTimeHistory();
+    if (data.length === 0) return;
+
     this.responseTimeChart.setOption(
       {
         title: {
@@ -940,7 +1008,10 @@ export class OverviewComponent implements OnInit, OnDestroy {
     const chartDom = document.getElementById('cpuMemoryChart');
     if (!chartDom) return;
 
-    this.cpuMemoryChart?.dispose();
+    if (this.cpuMemoryChart) {
+      this.cpuMemoryChart.dispose();
+    }
+    
     this.cpuMemoryChart = echarts.init(chartDom);
     this.updateCpuMemoryChart();
 
@@ -954,6 +1025,8 @@ export class OverviewComponent implements OnInit, OnDestroy {
 
     const cpuData = this.cpuHistory();
     const memoryData = this.memoryHistory();
+    
+    if (cpuData.length === 0 && memoryData.length === 0) return;
 
     this.cpuMemoryChart.setOption(
       {
@@ -995,7 +1068,10 @@ export class OverviewComponent implements OnInit, OnDestroy {
     const chartDom = document.getElementById('systemHealthChart');
     if (!chartDom) return;
 
-    this.systemHealthChart?.dispose();
+    if (this.systemHealthChart) {
+      this.systemHealthChart.dispose();
+    }
+    
     this.systemHealthChart = echarts.init(chartDom);
     this.updateSystemHealthChart();
 

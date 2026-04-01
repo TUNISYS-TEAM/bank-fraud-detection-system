@@ -495,15 +495,18 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.showReplyInput = false;
     this.replyContent.set('');
 
-    const details = this.parseValidationContent(message.content);
-    if (details && details.modelUuid) {
-      this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${details.modelUuid}/metrics`).subscribe({
-        next: (response) => {
-          this.selectedModelStatus.set(response.status);
-          this.selectedModelComment.set(response.validationComment || response.comment);
-        },
-        error: (err) => console.error('Error fetching model status:', err)
-      });
+    // Only try to fetch model details if it's a validation message
+    if (message.messageType === 'VALIDATION') {
+      const details = this.parseValidationContent(message.content);
+      if (details && details.modelUuid) {
+        this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${details.modelUuid}/metrics`).subscribe({
+          next: (response) => {
+            this.selectedModelStatus.set(response.status);
+            this.selectedModelComment.set(response.validationComment || response.comment);
+          },
+          error: (err) => console.error('Error fetching model status:', err)
+        });
+      }
     }
 
     if (!message.isRead && (message.receiverEmail === this.authStore.userEmail() || message.receiverId === this.authStore.userId())) {
@@ -635,10 +638,17 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   isValidationRequest(message: any): boolean {
     if (!message || !message.content) return false;
+    // Only check if messageType is VALIDATION or if content looks like JSON
+    if (message.messageType === 'VALIDATION') return true;
+    
     try {
       let content = message.content.trim();
-      const data = JSON.parse(content);
-      return data && data.modelUuid !== undefined;
+      // Check if it starts with { or [ (JSON object or array)
+      if (content.startsWith('{') || content.startsWith('[')) {
+        const data = JSON.parse(content);
+        return data && data.modelUuid !== undefined;
+      }
+      return false;
     } catch (e) {
       return false;
     }
@@ -689,9 +699,15 @@ export class MessagesComponent implements OnInit, OnDestroy {
   parseValidationContent(content: string): any {
     try {
       if (!content) return null;
-      return JSON.parse(content);
+      // Trim and check if it looks like JSON
+      const trimmed = content.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        return JSON.parse(trimmed);
+      }
+      // Not JSON, return null
+      return null;
     } catch (e) {
-      console.error('Error parsing validation content:', e);
+      console.debug('Content is not JSON:', content);
       return null;
     }
   }

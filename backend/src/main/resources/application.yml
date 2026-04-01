@@ -6,6 +6,23 @@ spring:
       enabled: true
       file-size-threshold: 2KB
       location: ${java.io.tmpdir}
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: fraudguard8@gmail.com
+    password: fyxn surn gsxh vsmp
+    from-name: FraudGuard Support
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
   
   datasource:
     url: jdbc:postgresql://localhost:5432/fraud_db?reWriteBatchedInserts=true
@@ -53,7 +70,7 @@ keycloak:
   server-url: http://localhost:8180
   realm: fraud-detection
   client-id: fraud-backend
-  client-secret: yloe1V8ENKLqE3eXrlJyy4eCyzp0bIQw
+  client-secret: lflj9JalFanJGQxJP6zLk6HcXE2Wqw2i
   admin-username: admin
   admin-password: admin
 

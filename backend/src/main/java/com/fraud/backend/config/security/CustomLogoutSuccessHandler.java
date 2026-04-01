@@ -2,6 +2,7 @@ package com.fraud.backend.config.security;
 
 import com.fraud.backend.data.service.accessmanagement.UserSessionService;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -19,24 +20,31 @@ import java.io.IOException;
 public class CustomLogoutSuccessHandler implements LogoutSuccessHandler {
 
     private final UserSessionService userSessionService;
+    private final SessionCacheService sessionCacheService;
 
     @Override
     public void onLogoutSuccess(HttpServletRequest request,
-                               HttpServletResponse response,
-                               Authentication authentication) throws IOException, ServletException {
-        
+                                HttpServletResponse response,
+                                Authentication authentication) throws IOException, ServletException {
+
         if (authentication != null && authentication.getPrincipal() instanceof DefaultOidcUser oidcUser) {
             String sessionId = oidcUser.getIdToken().getClaim("session_state");
-            
+
             try {
                 userSessionService.endSessionByKeycloakId(sessionId);
-                log.info("Session ended for user: {}", oidcUser.getEmail());
+                sessionCacheService.endSession(sessionId);           // ← instant revocation
+                log.info("Session fully terminated for user: {}", oidcUser.getEmail());
             } catch (Exception e) {
                 log.error("Failed to end session for user: {}", oidcUser.getEmail(), e);
             }
         }
-        
-        // Redirect to logout page or home
+
+        // Clear the session_id cookie
+        Cookie cookie = new Cookie("session_id", "");
+        cookie.setMaxAge(0);
+        cookie.setPath("/");
+        response.addCookie(cookie);
+
         response.sendRedirect("/logout-success");
     }
 }
