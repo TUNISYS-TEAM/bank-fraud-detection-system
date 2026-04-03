@@ -8,7 +8,6 @@
     </div>
 
     <!-- KPI Cards Section -->
-    <!-- KPI Cards Section -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
         @for (cardData of kpiCards(); track cardData.label) {
         <app-cards [data]="cardData" class="animate-fadeIn"></app-cards>
@@ -18,9 +17,10 @@
     <!-- Table Container -->
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-8">
         <!-- Search and Filters Header -->
-        <div class="px-8 py-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white">
+        <div
+            class="px-8 py-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white">
             <h2 class="text-lg font-semibold text-gray-700 whitespace-nowrap">Liste des Datasets</h2>
-            
+
             <div class="flex-1 flex items-center justify-end space-x-12">
                 <!-- Search & Filters -->
                 <div class="max-w-2xl flex-1 flex items-center space-x-4">
@@ -38,7 +38,8 @@
                         class="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white/80 text-sm font-medium text-gray-700">
                         <option value="ALL">Tous types</option>
                         @for (type of datasetTypes(); track type) {
-                            <option [value]="type">{{ type === 'TRANSACTIONS_TRAIN' ? 'Transactions (Train)' : type }}</option>
+                        <option [value]="type">{{ type === 'TRANSACTIONS_TRAIN' ? 'Transactions (Train)' : type }}
+                        </option>
                         }
                     </select>
 
@@ -89,14 +90,23 @@
             <table class="w-full">
                 <thead class="bg-gray-50/50">
                     <tr class="border-b border-gray-200">
-                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
-                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Taille</th>
-                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lignes</th>
-                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Import</th>
-                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visibilité</th>
-                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID
+                        </th>
+                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom
+                        </th>
+                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type
+                        </th>
+                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Taille</th>
+                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Lignes</th>
+                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Import</th>
+                        <th class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Visibilité</th>
+                        <th
+                            class="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-right">
+                            Actions</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-100">
@@ -122,7 +132,8 @@
                             </div>
                         </td>
                         <td class="px-8 py-4">
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border transition-all duration-300"
+                            <span
+                                class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border transition-all duration-300"
                                 [ngClass]="{
                                     'bg-emerald-50 text-emerald-700 border-emerald-100': dataset.type === 'TRANSACTIONS_TRAIN',
                                     'bg-indigo-50 text-indigo-700 border-indigo-100': dataset.type === 'TRANSACTIONS_TRAIN_ENRICHED',
@@ -130,11 +141,11 @@
                                     'bg-purple-50 text-purple-700 border-purple-100': dataset.type === 'CLIENTS',
                                     'bg-blue-50 text-blue-700 border-blue-100': dataset.type === 'ACCOUNTS'
                                 }">
-                                {{ dataset.type === 'TRANSACTIONS_TRAIN' ? 'Train' : 
-                                   dataset.type === 'TRANSACTIONS_TRAIN_ENRICHED' ? 'Train Enrichi' :
-                                   dataset.type === 'TRANSACTIONS_VAL' ? 'Validation' : 
-                                   dataset.type === 'CLIENTS' ? 'Clients' : 
-                                   dataset.type === 'ACCOUNTS' ? 'Comptes' : dataset.type }}
+                                {{ dataset.type === 'TRANSACTIONS_TRAIN' ? 'Train' :
+                                dataset.type === 'TRANSACTIONS_TRAIN_ENRICHED' ? 'Train Enrichi' :
+                                dataset.type === 'TRANSACTIONS_VAL' ? 'Validation' :
+                                dataset.type === 'CLIENTS' ? 'Clients' :
+                                dataset.type === 'ACCOUNTS' ? 'Comptes' : dataset.type }}
                             </span>
                         </td>
                         <td class="px-8 py-4">
@@ -154,16 +165,17 @@
                             </div>
                         </td>
                         <td class="px-8 py-4">
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border transition-all duration-300"
+                            <span
+                                class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border transition-all duration-300"
                                 [ngClass]="getVisibilityClass(dataset.visibility)">
-                                <span class="w-1.5 h-1.5 rounded-full mr-1.5"
-                                    [class.bg-green-500]="dataset.visibility"
+                                <span class="w-1.5 h-1.5 rounded-full mr-1.5" [class.bg-green-500]="dataset.visibility"
                                     [class.bg-gray-400]="!dataset.visibility"></span>
                                 {{ getVisibilityLabel(dataset.visibility) }}
                             </span>
                         </td>
                         <td class="px-8 py-4 text-right">
-                            <div class="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div
+                                class="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button (click)="openViewModal(dataset)"
                                     class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all transform hover:scale-110"
                                     title="Voir les données">
@@ -197,7 +209,8 @@
                     <tr>
                         <td colspan="8" class="px-8 py-16 text-center text-gray-500 border-b border-gray-100">
                             <div class="inline-flex p-3 bg-gray-50 rounded-2xl mb-4">
-                                <svg class="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg class="w-12 h-12 text-gray-300" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                                         d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                                 </svg>
@@ -250,7 +263,8 @@
                     <span class="px-3 py-1.5 text-gray-400">...</span>
                     } @else {
                     <button (click)="onPageChange(page - 1)" [class.bg-indigo-600]="currentPage() === page - 1"
-                        [class.text-white]="currentPage() === page - 1" [class.text-gray-700]="currentPage() !== page - 1"
+                        [class.text-white]="currentPage() === page - 1"
+                        [class.text-gray-700]="currentPage() !== page - 1"
                         [class.hover:bg-gray-100]="currentPage() !== page - 1"
                         class="min-w-[36px] h-9 px-2 rounded-lg text-sm font-medium transition-colors">
                         {{ page }}
@@ -281,7 +295,7 @@
 
 <!-- Modals -->
 @if (showCreateModal()) {
-<app-dataset-create-modal (close)="closeCreateModal()" (datasetUploaded)="onDatasetUploaded()">
+<app-dataset-create-modal [allowedTypes]="[datasetType.CLIENTS, datasetType.ACCOUNTS, datasetType.TRANSACTIONS_VAL]" (close)="closeCreateModal()" (datasetUploaded)="onDatasetUploaded()">
 </app-dataset-create-modal>
 }
 

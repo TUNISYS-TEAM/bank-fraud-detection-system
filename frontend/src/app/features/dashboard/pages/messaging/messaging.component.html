@@ -1,126 +1,55 @@
-<div
-    class="flex flex-col bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden h-[calc(100vh-50px)]">
+<div class="flex flex-col bg-white rounded-[2.5rem] shadow-xl border border-gray-100 overflow-hidden h-[calc(100vh-5px)] animate-in fade-in zoom-in-95 duration-700">
 
     <!-- ======================================================= -->
-    <!-- TOOLBAR                                                 -->
+    <!-- PREMIUM TOOLBAR                                         -->
     <!-- ======================================================= -->
-    <div class="flex-shrink-0 border-b border-gray-100 bg-white/80 backdrop-blur-sm">
-        <div class="flex items-center px-4 py-2 justify-between">
+    <div class="flex-shrink-0 border-b border-gray-100 bg-white/60 backdrop-blur-xl z-20">
+        <div class="flex items-center px-6 py-3 justify-between">
 
             <!-- Left side - actions -->
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-2">
 
-                <!-- Compose button -->
-                @if (ribbonCollapsed()) {
+                <!-- Compose button - Premium Gradient -->
                 <button (click)="currentTab.set('compose'); selectedMessage.set(null); clearSelection()"
-                    class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-sm font-medium transition-all shadow-sm hover:shadow">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                    </svg>
-                    <span>Nouveau message</span>
+                    class="group relative inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-indigo-200 hover:shadow-indigo-300 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <i-feather name="plus" class="relative z-10 font-black" [style.width.px]="15" [style.height.px]="15"></i-feather>
+                    <span class="relative z-10">Nouveau message</span>
                 </button>
-                } @else {
-                <button (click)="currentTab.set('compose'); selectedMessage.set(null); clearSelection()"
-                    class="flex flex-col items-center px-3 py-1.5 rounded-xl hover:bg-indigo-50 transition-colors group min-w-[64px]">
-                    <svg class="w-5 h-5 text-gray-500 group-hover:text-indigo-600 transition-colors" fill="none"
-                        stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    <span class="text-xs text-gray-600 mt-1 group-hover:text-indigo-600">Nouveau</span>
-                </button>
-                }
+
 
                 <div class="w-px h-8 bg-gray-200 mx-1"></div>
 
                 <!-- Delete button -->
                 <button (click)="deleteSelected()" [disabled]="selectedMessages().size === 0"
                     class="flex items-center transition-colors rounded-xl disabled:cursor-not-allowed disabled:opacity-40">
-                    @if (ribbonCollapsed()) {
-                    <span class="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-red-50 transition-colors"
+                    <span class="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-red-50 transition-colors"
                         [title]="'Supprimer'">
-                        <svg class="w-5 h-5 transition-colors" [class.text-gray-400]="selectedMessages().size === 0"
-                            [class.text-red-500]="selectedMessages().size > 0" fill="none" stroke="currentColor"
-                            viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        <i-feather name="trash-2" class="transition-colors" [class.text-gray-300]="selectedMessages().size === 0"
+                            [class.text-red-500]="selectedMessages().size > 0" [style.width.px]="18" [style.height.px]="18"></i-feather>
                     </span>
-                    } @else {
-                    <span class="flex flex-col items-center px-3 py-1.5 rounded-xl min-w-[64px] transition-colors"
-                        [class.hover:bg-red-50]="selectedMessages().size > 0">
-                        <svg class="w-5 h-5 transition-colors" [class.text-gray-400]="selectedMessages().size === 0"
-                            [class.text-red-500]="selectedMessages().size > 0" fill="none" stroke="currentColor"
-                            viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        <span class="text-xs mt-1 transition-colors"
-                            [class.text-gray-400]="selectedMessages().size === 0"
-                            [class.text-red-500]="selectedMessages().size > 0">Supprimer</span>
-                    </span>
-                    }
                 </button>
 
                 <!-- Archive / Restore button -->
-                <button (click)="archiveSelected()" [disabled]="selectedMessages().size === 0"
+                <button (click)="archiveSelected()" [disabled]="selectedMessages().size === 0 || currentTab() === 'sent'"
                     class="flex items-center transition-colors rounded-xl disabled:cursor-not-allowed disabled:opacity-40">
-                    @if (ribbonCollapsed()) {
                     <span
-                        class="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-gray-100 transition-colors"
-                        [title]="currentTab() === 'archived' ? 'Restaurer' : 'Archiver'">
-                        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            @if (currentTab() === 'archived') {
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M3 10h10a8 8 0 018 8v2M3 10l5-5m-5 5l5 5" />
-                            } @else {
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                            }
-                        </svg>
+                        class="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-gray-100 transition-colors"
+                        [title]="currentTab() === 'sent' ? 'Archivage indisponible pour les envoyés' : (currentTab() === 'archived' ? 'Restaurer' : 'Archiver')">
+                        <i-feather name="archive" class="text-gray-500" [style.width.px]="18" [style.height.px]="18"></i-feather>
                     </span>
-                    } @else {
-                    <span class="flex flex-col items-center px-3 py-1.5 rounded-xl min-w-[64px] transition-colors"
-                        [class.hover:bg-primary-50]="selectedMessages().size > 0">
-                        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            @if (currentTab() === 'archived') {
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M3 10h10a8 8 0 018 8v2M3 10l5-5m-5 5l5 5" />
-                            } @else {
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                            }
-                        </svg>
-                        <span class="text-xs text-gray-500 mt-1">{{ currentTab() === 'archived' ? 'Restaurer' :
-                            'Archiver' }}</span>
-                    </span>
-                    }
                 </button>
 
                 <div class="w-px h-8 bg-gray-200 mx-1"></div>
 
                 <!-- Read/unread toggle -->
-                <button (click)="toggleReadSelected()" [disabled]="selectedMessages().size === 0"
+                <button (click)="toggleReadSelected()" [disabled]="selectedMessages().size === 0 || currentTab() === 'sent'"
                     class="flex items-center transition-colors rounded-xl disabled:cursor-not-allowed disabled:opacity-40">
-                    @if (ribbonCollapsed()) {
                     <span
-                        class="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-gray-100 transition-colors"
-                        [title]="'Lu / non lu'">
-                        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
+                        class="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-gray-100 transition-colors"
+                        [title]="currentTab() === 'sent' ? 'Non disponible pour les envoyés' : 'Lu / non lu'">
+                        <i-feather name="mail" class="text-gray-500" [style.width.px]="18" [style.height.px]="18"></i-feather>
                     </span>
-                    } @else {
-                    <span class="flex flex-col items-center px-3 py-1.5 rounded-xl min-w-[64px] transition-colors"
-                        [class.hover:bg-gray-100]="selectedMessages().size > 0">
-                        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        <span class="text-xs text-gray-500 mt-1">Lu / non lu</span>
-                    </span>
-                    }
                 </button>
 
                 <!-- Selection badge -->
@@ -155,88 +84,60 @@
     <!-- ======================================================= -->
     <div class="flex flex-1 overflow-hidden min-h-0">
 
-        <!-- Left sidebar -->
-        <div class="w-64 flex-shrink-0 border-r border-gray-100 bg-gray-50/50 flex flex-col">
-            <nav class="flex-1 p-3 space-y-1">
+        <!-- Left sidebar (Refined Navigation) -->
+        <div class="w-64 flex-shrink-0 border-r border-gray-100 bg-gray-50/30 flex flex-col z-10">
+            <nav class="flex-1 p-4 space-y-2">
 
                 <!-- Inbox -->
                 <button (click)="switchTab('inbox')"
-                    class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all whitespace-nowrap"
-                    [class.bg-white]="currentTab() === 'inbox'" [class.shadow-sm]="currentTab() === 'inbox'"
-                    [class.border]="currentTab() === 'inbox'" [class.border-indigo-100]="currentTab() === 'inbox'"
-                    [class.text-indigo-700]="currentTab() === 'inbox'" [class.font-medium]="currentTab() === 'inbox'"
-                    [class.text-gray-600]="currentTab() !== 'inbox'" [class.hover:bg-white]="currentTab() !== 'inbox'"
-                    [class.hover:shadow-sm]="currentTab() !== 'inbox'">
+                    class="group w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm transition-all duration-300 border border-transparent"
+                    [ngClass]="currentTab() === 'inbox' ? 'bg-white text-indigo-700 border-indigo-100 shadow-sm font-bold' : 'text-gray-600 hover:bg-white hover:shadow-sm hover:text-indigo-600'">
                     <div class="flex items-center gap-3">
-                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
+                        <i-feather name="inbox" class="flex-shrink-0" [style.width.px]="15" [style.height.px]="15"></i-feather>
                         <span>Boîte de réception</span>
                     </div>
                     @if (unreadCount() > 0) {
                     <span
-                        class="text-xs bg-indigo-600 text-white rounded-full px-2 py-0.5 min-w-[20px] text-center font-medium">
+                        class="text-[10px] rounded-full px-2 py-0.5 min-w-[20px] text-center font-black bg-indigo-600 text-white">
                         {{ unreadCount() }}
                     </span>
                     }
                 </button>
 
+
                 <!-- Sent -->
                 <button (click)="switchTab('sent')"
-                    class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all whitespace-nowrap"
-                    [class.bg-white]="currentTab() === 'sent'" [class.shadow-sm]="currentTab() === 'sent'"
-                    [class.border]="currentTab() === 'sent'" [class.border-indigo-100]="currentTab() === 'sent'"
-                    [class.text-indigo-700]="currentTab() === 'sent'" [class.font-medium]="currentTab() === 'sent'"
-                    [class.text-gray-600]="currentTab() !== 'sent'" [class.hover:bg-white]="currentTab() !== 'sent'"
-                    [class.hover:shadow-sm]="currentTab() !== 'sent'">
-                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
+                    class="group w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm transition-all duration-300 border border-transparent"
+                    [ngClass]="currentTab() === 'sent' ? 'bg-white text-indigo-700 border-indigo-100 shadow-sm font-bold' : 'text-gray-600 hover:bg-white hover:shadow-sm hover:text-indigo-600'">
+                    <i-feather name="send" class="flex-shrink-0" [style.width.px]="15" [style.height.px]="15"></i-feather>
                     <span>Messages envoyés</span>
                 </button>
 
-                <!-- Validation -->
+
+                <!-- Validation (Manager Only) -->
                 @if (isManager()) {
                 <button (click)="switchTab('validation')"
-                    class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all whitespace-nowrap"
-                    [class.bg-white]="currentTab() === 'validation'" [class.shadow-sm]="currentTab() === 'validation'"
-                    [class.border]="currentTab() === 'validation'"
-                    [class.border-indigo-100]="currentTab() === 'validation'"
-                    [class.text-indigo-700]="currentTab() === 'validation'"
-                    [class.font-medium]="currentTab() === 'validation'"
-                    [class.text-gray-600]="currentTab() !== 'validation'"
-                    [class.hover:bg-white]="currentTab() !== 'validation'"
-                    [class.hover:shadow-sm]="currentTab() !== 'validation'">
-                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Validation modèle</span>
+                    class="group w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm transition-all duration-300 border border-transparent"
+                    [ngClass]="currentTab() === 'validation' ? 'bg-white text-indigo-700 border-indigo-100 shadow-sm font-bold' : 'text-gray-600 hover:bg-white hover:shadow-sm hover:text-indigo-600'">
+                    <div class="flex items-center gap-3">
+                        <i-feather name="check-circle" class="flex-shrink-0" [style.width.px]="15" [style.height.px]="15"></i-feather>
+                        <span>Validation modèle</span>
+                    </div>
                     @if (validationUnreadCount() > 0) {
                     <span
-                        class="ml-auto text-xs bg-indigo-600 text-white rounded-full px-2 py-0.5 min-w-[20px] text-center font-medium">
+                        class="text-[10px] rounded-full px-2 py-0.5 min-w-[20px] text-center font-black bg-indigo-600 text-white">
                         {{ validationUnreadCount() }}
                     </span>
                     }
                 </button>
                 }
 
-                <!-- Archivage -->
+
+                <!-- Archive -->
                 <button (click)="switchTab('archived')"
-                    class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all whitespace-nowrap"
-                    [class.bg-white]="currentTab() === 'archived'" [class.shadow-sm]="currentTab() === 'archived'"
-                    [class.border]="currentTab() === 'archived'" [class.border-indigo-100]="currentTab() === 'archived'"
-                    [class.text-indigo-700]="currentTab() === 'archived'"
-                    [class.font-medium]="currentTab() === 'archived'"
-                    [class.text-gray-600]="currentTab() !== 'archived'"
-                    [class.hover:bg-white]="currentTab() !== 'archived'"
-                    [class.hover:shadow-sm]="currentTab() !== 'archived'">
-                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                    </svg>
+                    class="group w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm transition-all duration-300 border border-transparent"
+                    [ngClass]="currentTab() === 'archived' ? 'bg-white text-indigo-700 border-indigo-100 shadow-sm font-bold' : 'text-gray-600 hover:bg-white hover:shadow-sm hover:text-indigo-600'">
+                    <i-feather name="archive" class="flex-shrink-0" [style.width.px]="15" [style.height.px]="15"></i-feather>
                     <span>Archivage</span>
                 </button>
 
@@ -245,34 +146,38 @@
         <!-- Center + right panels -->
         <div class="flex flex-1 overflow-hidden min-h-0">
 
-            <!-- Message list side panel -->
+            <!-- Message list side panel (Refined List Design) -->
             @if (currentTab() !== 'compose' && currentTab() !== 'validation') {
-            <div class="w-[400px] flex-shrink-0 border-r border-gray-100 flex flex-col overflow-hidden bg-gray-50/30">
+            <div class="w-[380px] flex-shrink-0 border-r border-gray-100 flex flex-col overflow-hidden bg-white">
                 <!-- List header -->
-                <div class="p-6 border-b border-gray-100 bg-white flex flex-shrink-0 flex-col gap-2">
+                <div class="p-6 pb-4 flex flex-shrink-0 flex-col gap-4">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
                             <input type="checkbox"
-                                   class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                   [checked]="isAllSelected()"
-                                   (change)="toggleSelectAll($event)">
-                            <h2 class="text-sm font-semibold text-gray-900">
-                                {{ currentTab() === 'inbox' ? 'Boîte de réception' : (currentTab() === 'sent' ?
-                                'Messages envoyés' : 'Archivage') }}
+                                class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
+                                [checked]="isAllSelected()" (change)="toggleSelectAll($event)">
+                            <h2 class="text-xl font-black text-gray-900 tracking-tight">
+                                {{ currentTab() === 'inbox' ? 'Réception' : (currentTab() === 'sent' ?
+                                'Envoyés' : 'Archives') }}
                             </h2>
                         </div>
                         @if (currentTab() === 'inbox' && unreadCount() > 0) {
                         <button (click)="markAllAsRead()"
-                            class="text-xs text-indigo-600 hover:text-indigo-700 font-bold uppercase tracking-wider">
+                            class="text-[10px] text-indigo-600 hover:text-indigo-700 font-black uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full transition-all">
                             Tout marquer lu
                         </button>
                         }
                     </div>
-                    <p class="text-xs text-gray-400 ml-8 uppercase tracking-widest ">
-                        {{ (currentTab() === 'inbox' ? inbox().length : (currentTab() === 'sent' ? sent().length :
-                        archived().length)) }} message(s)
-                    </p>
+                    
+                    <!-- Search Bar -->
+                    <div class="relative group">
+                        <i-feather name="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-600 transition-colors" [style.width.px]="12" [style.height.px]="12"></i-feather>
+                        <input type="text" placeholder="Rechercher un message par nom ou objet..."
+                            (input)="onSearch($event)" [value]="searchQuery()"
+                            class="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-2xl text-sm focus:bg-white focus:border-indigo-100 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all placeholder:text-gray-400">
+                    </div>
                 </div>
+
 
                 <!-- Loading -->
                 @if (loading()) {
@@ -281,17 +186,22 @@
                 </div>
                 }
 
-                <!-- Inbox list -->
+                <!-- Inbox list (Premium Cards) -->
                 @if (!loading() && currentTab() === 'inbox') {
-                <div class="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0 bg-white">
-                    @for (message of inbox(); track message.messageUuid) {
-                    <div class="flex flex-col p-5 cursor-pointer transition-all hover:bg-gray-50 border-b border-gray-50 group relative"
-                        [ngClass]="{'bg-white': message.isRead, 'bg-indigo-50/20': !message.isRead}"
+                <div class="flex-1 overflow-y-auto px-4 py-2 space-y-3 bg-white scrollbar-thin">
+                    @for (message of filteredInbox(); track message.messageUuid) {
+                    <div class="group relative flex flex-col p-5 rounded-3xl transition-all duration-300 cursor-pointer border border-transparent"
+                        [ngClass]="{
+                            'bg-white shadow-sm hover:shadow-md hover:border-indigo-100 hover:-translate-y-0.5': message.isRead,
+                            'bg-indigo-50/40 border-indigo-100 shadow-sm hover:shadow-md hover:-translate-y-0.5': !message.isRead,
+                            'ring-2 ring-indigo-600 ring-offset-2': selectedMessage()?.messageUuid === message.messageUuid
+                        }"
                         (click)="selectMessage(message)">
 
                         <div class="flex items-start gap-4">
-                            <div class="mt-1 transition-opacity duration-200"
-                                [class.opacity-0]="!isMessageSelected(message.messageUuid)"
+                            <!-- Toggle Selection Box -->
+                            <div class="mt-4 transition-opacity duration-200"
+                                [class.opacity-0]="selectedMessages().size === 0"
                                 [class.group-hover:opacity-100]="true" (click)="$event.stopPropagation()">
                                 <input type="checkbox"
                                     class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
@@ -299,80 +209,82 @@
                                     (change)="toggleMessageSelection(message.messageUuid, $event)">
                             </div>
 
-                            <div class="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-black text-xs shadow-sm transition-all"
-                                [ngClass]="{'bg-indigo-50 text-indigo-600': message.isRead, 'bg-indigo-600 text-white': !message.isRead}">
-                                {{message.senderName.substring(0, 1)}}
+                            <!-- Avatar with Status -->
+                            <div class="relative shrink-0">
+                                <div class="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm transition-all duration-300"
+                                    [ngClass]="message.isRead ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 group-hover:scale-110'">
+                                    {{message.senderName.substring(0, 1)}}
+                                </div>
+                                @if (!message.isRead) {
+                                <div class="absolute -top-1.5 -right-1.5 w-4 h-4 bg-indigo-600 border-2 border-white rounded-full animate-pulse"></div>
+                                }
                             </div>
 
                             <div class="flex-1 min-w-0">
-                                <div class="flex justify-between items-baseline mb-0.5">
-                                    <h3 class="text-sm truncate pr-2 font-black text-gray-900">
+                                <div class="flex justify-between items-start mb-1">
+                                    <h3 class="text-sm font-black text-gray-900 truncate" [class.text-indigo-600]="!message.isRead">
                                         {{message.senderName}}
                                     </h3>
-                                    <span class="text-[10px] font-bold text-gray-400 whitespace-nowrap">
+                                    <span class="text-[10px] font-bold text-gray-400">
                                         {{message.createdAt | date:'HH:mm'}}
                                     </span>
                                 </div>
 
-                                <h4 class="text-[13px] mb-1 truncate font-medium text-gray-700"
-                                    [class.font-black]="!message.isRead" [class.text-indigo-600]="!message.isRead">
+                                <h4 class="text-[13px] font-bold text-gray-700 truncate mb-1" [class.text-gray-900]="!message.isRead">
                                     {{message.subject}}
                                 </h4>
 
-                                <p class="text-xs text-gray-400 line-clamp-1 leading-relaxed"
-                                    [class.text-gray-500]="!message.isRead">
+                                <p class="text-xs text-gray-400 line-clamp-1 leading-relaxed">
                                     {{getMessagePreview(message)}}
                                 </p>
                             </div>
-
-                            @if (!message.isRead) {
-                            <div
-                                class="w-2 h-2 bg-indigo-600 rounded-full flex-shrink-0 mt-2 shadow-sm animate-pulse-slow">
-                            </div>
-                            }
                         </div>
                     </div>
                     } @empty {
                     <div class="flex flex-col items-center justify-center h-full py-16 text-gray-300">
-                        <svg class="w-12 h-12 mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        <p class="text-sm">Aucun message</p>
+                        <div class="w-16 h-16 rounded-3xl bg-gray-50 flex items-center justify-center mb-4">
+                            <i-feather name="mail" class="w-8 h-8 opacity-20"></i-feather>
+                        </div>
+                        <p class="text-sm font-medium">Votre boîte est vide</p>
                     </div>
                     }
                 </div>
                 }
 
-                <!-- Sent list -->
+
+                <!-- Sent list (Premium Cards) -->
                 @if (!loading() && currentTab() === 'sent') {
-                <div class="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0 bg-white">
-                    @for (message of sent(); track message.messageUuid) {
-                    <div class="flex flex-col p-5 cursor-pointer transition-all hover:bg-gray-50 border-b border-gray-50 group relative"
+                <div class="flex-1 overflow-y-auto px-4 py-2 space-y-3 bg-white">
+                    @for (message of filteredSent(); track message.messageUuid) {
+                    <div class="group relative flex flex-col p-5 rounded-3xl transition-all duration-300 cursor-pointer border border-transparent bg-white shadow-sm hover:shadow-md hover:border-indigo-100 hover:-translate-y-0.5"
+                        [class.ring-2]="selectedMessage()?.messageUuid === message.messageUuid"
+                        [class.ring-indigo-600]="selectedMessage()?.messageUuid === message.messageUuid"
+                        [class.ring-offset-2]="selectedMessage()?.messageUuid === message.messageUuid"
                         (click)="selectMessage(message)">
                         <div class="flex items-start gap-4">
-                            <div class="mt-1 transition-opacity duration-200"
-                                [class.opacity-0]="!isMessageSelected(message.messageUuid)"
+                            <!-- Toggle Selection Box -->
+                            <div class="mt-4 transition-opacity duration-200"
+                                [class.opacity-0]="selectedMessages().size === 0"
                                 [class.group-hover:opacity-100]="true" (click)="$event.stopPropagation()">
                                 <input type="checkbox"
                                     class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
                                     [checked]="isMessageSelected(message.messageUuid)"
                                     (change)="toggleMessageSelection(message.messageUuid, $event)">
                             </div>
-                            <div
-                                class="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-black text-xs shadow-sm bg-indigo-50 text-indigo-600 transition-transform group-hover:scale-105">
+
+                            <div class="w-12 h-12 rounded-2xl bg-gray-100 text-gray-500 flex items-center justify-center font-black text-sm shadow-sm group-hover:scale-110 transition-transform">
                                 {{message.receiverName.substring(0, 1)}}
                             </div>
                             <div class="flex-1 min-w-0">
-                                <div class="flex justify-between items-baseline mb-0.5">
-                                    <h3 class="text-sm truncate pr-2 font-black text-gray-900">
+                                <div class="flex justify-between items-start mb-1">
+                                    <h3 class="text-sm font-black text-gray-900 truncate">
                                         {{message.receiverName}}
                                     </h3>
-                                    <span class="text-[10px] font-bold text-gray-400 whitespace-nowrap">
+                                    <span class="text-[10px] font-bold text-gray-400">
                                         {{message.createdAt | date:'HH:mm'}}
                                     </span>
                                 </div>
-                                <h4 class="text-[13px] mb-1 truncate font-medium text-gray-700">
+                                <h4 class="text-[13px] font-bold text-gray-700 truncate mb-1">
                                     {{message.subject}}
                                 </h4>
                                 <p class="text-xs text-gray-400 line-clamp-1 leading-relaxed">
@@ -383,45 +295,49 @@
                     </div>
                     } @empty {
                     <div class="flex flex-col items-center justify-center h-full py-16 text-gray-300">
-                        <svg class="w-12 h-12 mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
-                        <p class="text-sm">Aucun message envoyé</p>
+                        <div class="w-16 h-16 rounded-3xl bg-gray-50 flex items-center justify-center mb-4">
+                            <i-feather name="send" class="w-8 h-8 opacity-20"></i-feather>
+                        </div>
+                        <p class="text-sm font-medium">Aucun message envoyé</p>
                     </div>
                     }
                 </div>
                 }
+                
 
-                <!-- Archived list -->
+                <!-- Archived list (Premium Cards) -->
                 @if (!loading() && currentTab() === 'archived') {
-                <div class="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0 bg-white">
-                    @for (message of archived(); track message.messageUuid) {
-                    <div class="flex flex-col p-5 cursor-pointer transition-all hover:bg-gray-50 border-b border-gray-50 group relative"
+                <div class="flex-1 overflow-y-auto px-4 py-2 space-y-3 bg-white">
+                    @for (message of filteredArchived(); track message.messageUuid) {
+                    <div class="group relative flex flex-col p-5 rounded-3xl transition-all duration-300 cursor-pointer border border-transparent bg-white shadow-sm hover:shadow-md hover:border-gray-200 hover:-translate-y-0.5"
+                        [class.ring-2]="selectedMessage()?.messageUuid === message.messageUuid"
+                        [class.ring-indigo-600]="selectedMessage()?.messageUuid === message.messageUuid"
+                        [class.ring-offset-2]="selectedMessage()?.messageUuid === message.messageUuid"
                         (click)="selectMessage(message)">
                         <div class="flex items-start gap-4">
-                            <div class="mt-1 transition-opacity duration-200"
-                                [class.opacity-0]="!isMessageSelected(message.messageUuid)"
+                            <!-- Toggle Selection Box -->
+                            <div class="mt-4 transition-opacity duration-200"
+                                [class.opacity-0]="selectedMessages().size === 0"
                                 [class.group-hover:opacity-100]="true" (click)="$event.stopPropagation()">
                                 <input type="checkbox"
                                     class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
                                     [checked]="isMessageSelected(message.messageUuid)"
                                     (change)="toggleMessageSelection(message.messageUuid, $event)">
                             </div>
-                            <div
-                                class="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-black text-xs shadow-sm bg-gray-100 text-gray-600 transition-transform group-hover:scale-105">
+
+                            <div class="w-12 h-12 rounded-2xl bg-gray-50 text-gray-500 flex items-center justify-center font-black text-sm shadow-sm transition-transform group-hover:scale-105">
                                 {{message.senderName.substring(0, 1)}}
                             </div>
                             <div class="flex-1 min-w-0">
-                                <div class="flex justify-between items-baseline mb-0.5">
-                                    <h3 class="text-sm truncate pr-2 font-black text-gray-900">
+                                <div class="flex justify-between items-start mb-1">
+                                    <h3 class="text-sm font-black text-gray-900 truncate">
                                         {{message.senderName}}
                                     </h3>
-                                    <span class="text-[10px] font-bold text-gray-400 whitespace-nowrap">
+                                    <span class="text-[10px] font-bold text-gray-400">
                                         {{message.createdAt | date:'HH:mm'}}
                                     </span>
                                 </div>
-                                <h4 class="text-[13px] mb-1 truncate font-medium text-gray-700">
+                                <h4 class="text-[13px] font-bold text-gray-700 truncate mb-1">
                                     {{message.subject}}
                                 </h4>
                                 <p class="text-xs text-gray-400 line-clamp-1 leading-relaxed">
@@ -432,11 +348,10 @@
                     </div>
                     } @empty {
                     <div class="flex flex-col items-center justify-center h-full py-16 text-gray-300">
-                        <svg class="w-12 h-12 mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                        </svg>
-                        <p class="text-sm">Aucun message archivé</p>
+                        <div class="w-16 h-16 rounded-3xl bg-gray-50 flex items-center justify-center mb-4">
+                            <i-feather name="archive" class="w-8 h-8 opacity-20"></i-feather>
+                        </div>
+                        <p class="text-sm font-medium">Aucun message archivé</p>
                     </div>
                     }
                 </div>
@@ -955,14 +870,20 @@
                                     </div>
 
                                     <!-- Outside the colored card -->
-                                    <div class="mt-6 flex flex-col items-center gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                    <div
+                                        class="mt-6 flex flex-col items-center gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
                                         @if (selectedModelComment()) {
-                                        <div class="w-full bg-indigo-50/30 rounded-2xl p-6 text-left border border-indigo-100/50 shadow-sm backdrop-blur-sm">
+                                        <div
+                                            class="w-full bg-indigo-50/30 rounded-2xl p-6 text-left border border-indigo-100/50 shadow-sm backdrop-blur-sm">
                                             <div class="flex items-center gap-2 mb-3">
-                                                <i-feather name="message-square" class="w-4 h-4 text-indigo-400"></i-feather>
-                                                <span class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Observation Enregistrée</span>
+                                                <i-feather name="message-square"
+                                                    class="w-4 h-4 text-indigo-400"></i-feather>
+                                                <span
+                                                    class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Observation
+                                                    Enregistrée</span>
                                             </div>
-                                            <p class="text-[15px] font-medium leading-relaxed italic text-gray-700 pr-4">
+                                            <p
+                                                class="text-[15px] font-medium leading-relaxed italic text-gray-700 pr-4">
                                                 "{{ selectedModelComment() }}"
                                             </p>
                                         </div>
@@ -1050,22 +971,26 @@
 
                                 <div class="grid grid-cols-2 gap-x-6 gap-y-4 mb-8 pb-6 border-b border-indigo-100/30">
                                     <div class="flex flex-col">
-                                        <span class="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Modèle</span>
+                                        <span
+                                            class="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Modèle</span>
                                         <span class="text-sm font-black text-gray-900">{{details.modelName}}</span>
                                     </div>
 
                                     <div class="flex flex-col">
-                                        <span class="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Version</span>
+                                        <span
+                                            class="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Version</span>
                                         <span class="text-sm font-black text-indigo-600">v{{details.version}}</span>
                                     </div>
 
                                     <div class="flex flex-col">
-                                        <span class="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Algorithme</span>
+                                        <span
+                                            class="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Algorithme</span>
                                         <span class="text-sm font-black text-gray-900">{{details.modelType}}</span>
                                     </div>
 
                                     <div class="flex flex-col">
-                                        <span class="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Analyste</span>
+                                        <span
+                                            class="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Analyste</span>
                                         <span class="text-sm font-black text-gray-900">{{details.analystName}}</span>
                                     </div>
                                 </div>
@@ -1251,10 +1176,13 @@
                                 </div>
 
                                 @if (selectedModelComment()) {
-                                <div class="mt-4 p-5 bg-white border border-gray-100 rounded-2xl shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
+                                <div
+                                    class="mt-4 p-5 bg-white border border-gray-100 rounded-2xl shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
                                     <div class="flex items-center gap-2 mb-2 opacity-60">
                                         <i-feather name="message-circle" class="w-4 h-4 text-indigo-400"></i-feather>
-                                        <span class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Observations du Responsable</span>
+                                        <span
+                                            class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Observations
+                                            du Responsable</span>
                                     </div>
                                     <p class="text-[13px] font-semibold text-gray-700 leading-relaxed italic pr-6">
                                         "{{ selectedModelComment() }}"
@@ -1310,13 +1238,24 @@
                     </div>
                 </div>
                 } @else {
-                <div class="flex-1 flex flex-col items-center justify-center text-gray-300 bg-white">
-                    <svg class="w-20 h-20 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
-                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <p class="text-base">Sélectionnez un message pour le lire</p>
+                <div class="flex-1 flex flex-col items-center justify-center p-12 text-center bg-white relative overflow-hidden">
+                    <!-- Decorative background -->
+                    <div class="absolute inset-0 opacity-20"
+                        style="background-image: radial-gradient(circle at 2px 2px, #6366f1 1px, transparent 0); background-size: 32px 32px;">
+                    </div>
+                    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-50 rounded-full blur-3xl opacity-60"></div>
+
+                    <div class="relative z-10">
+                        <div class="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-indigo-200 animate-bounce-slow">
+                            <i-feather name="mail" class="w-10 h-10"></i-feather>
+                        </div>
+                        <h3 class="text-3xl font-black text-gray-900 tracking-tight mb-3">Votre messagerie</h3>
+                        <p class="max-w-xs mx-auto text-sm text-gray-500 font-medium leading-relaxed">
+                            Sélectionnez une conversation dans la liste pour commencer à échanger avec vos collaborateurs.
+                        </p>
+                    </div>
                 </div>
+
                 }
                 }
             </div>

@@ -105,6 +105,19 @@ public class ModelTrainingController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/finalize-test")
+    public ResponseEntity<TrainingJobResponse> finalizeTest(
+            @RequestBody TrainingJobResponse testResult) {
+        log.info("Finalizing test training result for job: {}", testResult.getJobUuid());
+        try {
+            TrainingJobResponse response = trainingService.finalizeTestTraining(testResult);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error finalizing test training: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to save test result: " + e.getMessage());
+        }
+    }
+
     @PatchMapping("/{modelUuid}/name")
     public ResponseEntity<Void> updateModelName(
             @PathVariable UUID modelUuid,

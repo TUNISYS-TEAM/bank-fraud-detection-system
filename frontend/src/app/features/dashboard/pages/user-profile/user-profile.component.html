@@ -1,0 +1,444 @@
+<div class="w-full px-6 py-8 animate-in fade-in slide-in-from-bottom-3 duration-500">
+
+  <!-- Loading State -->
+  @if (loading()) {
+  <div class="fixed inset-0 bg-white/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+    <div class="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+    <p class="mt-4 text-gray-500 font-medium">Chargement du profil...</p>
+  </div>
+  }
+
+  @if (!loading() && profile()) {
+
+  <!-- Profile Header Card -->
+  <div class="bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-gray-200 mb-8">
+    <!-- Header Background with Gradient & Pattern -->
+    <div class="h-14 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-500 relative overflow-hidden">
+      <div class="absolute inset-0 opacity-10"
+        style="background-image: radial-gradient(circle at 2px 2px, white 1px, transparent 0); background-size: 24px 24px;">
+      </div>
+    </div>
+
+    <div
+      class="flex flex-col md:flex-row items-center md:items-start px-8 pb-8 relative z-10 gap-6 text-center md:text-left">
+      <!-- Avatar (Half overlap) -->
+      <div class="relative group -mt-6">
+        <div
+          class="w-24 h-24 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-3xl font-bold border-4 border-white shadow-xl group-hover:scale-105 transition-transform duration-300">
+          {{ getInitials() | uppercase }}
+        </div>
+        <div class="absolute bottom-0 right-0 w-5 h-5 bg-green-500 border-[3px] border-white rounded-full"></div>
+      </div>
+
+      <!-- User Info (Safe below the banner) -->
+      <div class="flex-1 pt-8 pb-2">
+        <h1 class="text-xl font-extrabold text-gray-900 tracking-tight">{{ profile()?.firstName }} {{
+          profile()?.lastName }}</h1>
+        <p class="flex items-center justify-center md:justify-start gap-2 text-gray-500 font-medium mt-1 text-s">
+          <i-feather name="mail" style="width: 18px; height: 18px;"></i-feather>
+          {{ profile()?.email }}
+        </p>
+
+        <div class="flex flex-wrap items-center justify-center md:justify-start gap-5 mt-4">
+          <span
+            class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold uppercase tracking-wider">
+            <i-feather name="shield" style="width: 16px; height: 16px;"></i-feather>
+            {{ getRoleLabel(profile()?.roleName) }}
+          </span>
+          <span
+            class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider"
+            [ngClass]="profile()?.isActive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'">
+            <span class="w-2 h-2 rounded-full ring-2 ring-current ring-offset-2"
+              [ngClass]="profile()?.isActive ? 'bg-green-500' : 'bg-red-500'"></span>
+            {{ profile()?.isActive ? 'Actif' : 'Inactif' }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section Tabs -->
+  <div class="flex p-1.5 bg-gray-100/80 rounded-2xl mb-8 space-x-2">
+    <button (click)="activeSection.set('info')"
+      [ngClass]="activeSection() === 'info' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'"
+      class="flex-1 flex items-center justify-center gap-2 py-3 px-6 rounded-xl text-sm font-bold transition-all duration-200">
+      <i-feather name="user" style="width: 18px; height: 18px;"></i-feather>
+      Informations Personnelles
+    </button>
+    <button (click)="activeSection.set('security')"
+      [ngClass]="activeSection() === 'security' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'"
+      class="flex-1 flex items-center justify-center gap-2 py-3 px-6 rounded-xl text-sm font-bold transition-all duration-200">
+      <i-feather name="lock" style="width: 18px; height: 18px;"></i-feather>
+      Sécurité
+    </button>
+  </div>
+
+  <!-- ═══════════════════ PERSONAL INFO SECTION ═══════════════════ -->
+  @if (activeSection() === 'info') {
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+    <!-- Left: Editable Form -->
+    <div class="lg:col-span-2 bg-white rounded-3xl p-8 border border-gray-200 shadow-sm">
+      <div class="flex items-center gap-4 mb-10">
+        <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+          <i-feather name="edit-2" class="w-6 h-6"></i-feather>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-gray-900">Modifier mes informations</h2>
+          <p class="text-sm text-gray-400 mt-0.5">Mettez à jour vos données personnelles</p>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      @if (successMessage()) {
+      <div
+        class="flex items-center gap-3 p-4 mb-8 text-sm font-medium bg-green-50 text-green-700 rounded-2xl border border-green-100 animate-in fade-in slide-in-from-top-2 duration-300">
+        <i-feather name="check-circle" class="w-5 h-5"></i-feather>
+        {{ successMessage() }}
+      </div>
+      }
+      @if (errorMessage()) {
+      <div
+        class="flex items-center gap-3 p-4 mb-8 text-sm font-medium bg-red-50 text-red-700 rounded-2xl border border-red-100 animate-in fade-in slide-in-from-top-2 duration-300">
+        <i-feather name="alert-circle" class="w-5 h-5"></i-feather>
+        {{ errorMessage() }}
+      </div>
+      }
+
+      <form [formGroup]="profileForm" (ngSubmit)="saveProfile()" class="space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div class="space-y-1.5">
+            <label for="firstName" class="flex items-center gap-2 text-sm font-bold text-gray-700 ml-1">
+              <i-feather name="user" style="width: 16px; height: 16px;" class="text-gray-400"></i-feather>
+              Prénom
+            </label>
+            <input type="text" id="firstName" formControlName="firstName" placeholder="Votre prénom"
+              class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-gray-400 text-sm">
+            @if (profileForm.get('firstName')?.invalid && profileForm.get('firstName')?.touched) {
+            <span class="text-xs font-bold text-red-500 ml-1">Requis (min. 2 car.)</span>
+            }
+          </div>
+          <div class="space-y-1.5">
+            <label for="lastName" class="flex items-center gap-2 text-sm font-bold text-gray-700 ml-1">
+              <i-feather name="user" style="width: 16px; height: 16px;" class="text-gray-400"></i-feather>
+              Nom
+            </label>
+            <input type="text" id="lastName" formControlName="lastName" placeholder="Votre nom"
+              class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-gray-400 text-sm">
+            @if (profileForm.get('lastName')?.invalid && profileForm.get('lastName')?.touched) {
+            <span class="text-xs font-bold text-red-500 ml-1">Requis (min. 2 car.)</span>
+            }
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div class="space-y-1.5">
+            <label for="phoneNumber" class="flex items-center gap-2 text-sm font-bold text-gray-700 ml-1">
+              <i-feather name="phone" style="width: 16px; height: 16px;" class="text-gray-400"></i-feather>
+              Téléphone
+            </label>
+            <input type="tel" id="phoneNumber" formControlName="phoneNumber" placeholder="Ex: +216..."
+              [class.!border-red-500]="profileForm.get('phoneNumber')?.invalid && profileForm.get('phoneNumber')?.touched"
+              [ngClass]="{'focus:!ring-red-500/20': !!(profileForm.get('phoneNumber')?.invalid && profileForm.get('phoneNumber')?.touched)}"
+              class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-gray-400 text-sm">
+            @if (profileForm.get('phoneNumber')?.invalid) {
+            @if (profileForm.get('phoneNumber')?.hasError('required') && profileForm.get('phoneNumber')?.touched) {
+            <span class="text-xs font-bold text-red-500 ml-1 animate-in fade-in duration-300">Requis</span>
+            }
+            @if (profileForm.get('phoneNumber')?.hasError('pattern') && profileForm.get('phoneNumber')?.touched) {
+            <span class="text-xs font-bold text-red-500 ml-1 animate-in fade-in duration-300">Format invalide (8 à 15
+              chiffres)</span>
+            }
+            @if (profileForm.get('phoneNumber')?.hasError('phoneTaken')) {
+            <span class="text-xs font-bold text-red-500 ml-1 mt-1 block animate-in fade-in duration-300">Ce numéro est
+              déjà utilisé</span>
+            }
+            }
+          </div>
+          <div class="space-y-1.5">
+            <label for="dateOfBirth" class="flex items-center gap-2 text-sm font-bold text-gray-700 ml-1">
+              <i-feather name="calendar" style="width: 16px; height: 16px;" class="text-gray-400"></i-feather>
+              Date de naissance
+            </label>
+            <input type="date" id="dateOfBirth" formControlName="dateOfBirth"
+              class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-sm">
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label for="address" class="flex items-center gap-2 text-sm font-bold text-gray-700 ml-1">
+            <i-feather name="map-pin" style="width: 16px; height: 16px;" class="text-gray-400"></i-feather>
+            Adresse
+          </label>
+          <input type="text" id="address" formControlName="address" placeholder="Ville, pays..."
+            class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-gray-400 text-sm">
+        </div>
+
+        <div class="flex items-center justify-end gap-4 pt-6 border-t border-gray-50">
+          <button type="button" (click)="loadProfile()"
+            class="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-bold hover:bg-gray-50 transition-all flex items-center gap-2">
+            <i-feather name="rotate-ccw" style="width: 18px; height: 18px;"></i-feather>
+            Réinitialiser
+          </button>
+          <button type="submit" [disabled]="profileForm.invalid || saving()"
+            class="px-8 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:translate-y-0 flex items-center gap-2">
+            @if (saving()) {
+            <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+            Enregistrement...
+            } @else {
+            <i-feather name="check" style="width: 18px; height: 18px;"></i-feather>
+            Enregistrer
+            }
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Right: Account Details (Minimalist & Premium Style) -->
+    <div
+      class="bg-violet-50/40 rounded-3xl p-8 text-gray-900 border-t-4 border-indigo-600 shadow-sm relative overflow-hidden h-fit transition-all duration-300 hover:shadow-md">
+      <!-- Decorative Background Accent -->
+      <div class="absolute -top-12 -right-12 w-48 h-48 bg-indigo-500/5 rounded-full blur-2xl"></div>
+
+      <div class="flex items-center gap-4 mb-10 relative">
+        <div
+          class="w-12 h-12 rounded-2xl bg-white text-indigo-600 flex items-center justify-center shrink-0 shadow-sm border border-indigo-50">
+          <i-feather name="info" class="w-6 h-6"></i-feather>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-gray-900 leading-tight">Informations du Compte</h2>
+          <p class="text-xs text-slate-400 mt-1 font-medium">Gestion et sécurité de l'accès</p>
+        </div>
+      </div>
+
+      <div class="space-y-6 relative ml-1">
+        <div class="flex flex-col gap-1.5 pb-5 border-b border-gray-200">
+          <div class="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Identifiant Email</div>
+          <div class="font-bold text-sm text-indigo-950">{{ profile()?.email }}</div>
+        </div>
+
+        <div class="flex flex-col gap-1.5 pb-5 border-b border-gray-200">
+          <div class="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Rôle au sein de
+            l'entreprise</div>
+          <div class="flex items-center gap-2">
+            <span class="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wider border border-indigo-100/50">{{
+              getRoleLabel(profile()?.roleName) }}</span>
+          </div>
+        </div>
+
+        @if (profile()?.managerName) {
+        <div class="flex flex-col gap-1.5 pb-5 border-b border-gray-200">
+          <div class="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Responsable Hiérarchique
+          </div>
+          <div class="font-bold text-sm text-indigo-950">{{ profile()?.managerName }}</div>
+        </div>
+        }
+
+        <div class="flex flex-col gap-1.5 pb-5 border-b border-gray-200">
+          <div class="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Membre depuis</div>
+          <div class="font-bold text-sm text-indigo-950">{{ formatDate(profile()?.createdAt) }}</div>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <div class="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Dernière Connexion</div>
+          <div class="font-bold text-sm text-indigo-950 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]"></span>
+            {{ formatDateTime(profile()?.lastLogin) }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  }
+
+  <!-- ═══════════════════ SECURITY SECTION ═══════════════════ -->
+  @if (activeSection() === 'security') {
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+    <div class="lg:col-span-2 bg-white rounded-3xl p-8 border border-gray-200 shadow-sm">
+      <div class="flex items-center gap-4 mb-10">
+        <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+          <i-feather name="lock" class="w-6 h-6"></i-feather>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-gray-900">Changer le mot de passe</h2>
+          <p class="text-sm text-gray-400 mt-0.5">Assurez-vous d'utiliser un mot de passe robuste</p>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      @if (passwordSuccess()) {
+      <div
+        class="flex items-center gap-3 p-4 mb-8 text-sm font-medium bg-green-50 text-green-700 rounded-2xl border border-green-100 animate-in fade-in slide-in-from-top-2 duration-300">
+        <i-feather name="check-circle" class="w-5 h-5"></i-feather>
+        {{ passwordSuccess() }}
+      </div>
+      }
+      @if (passwordError()) {
+      <div
+        class="flex items-center gap-3 p-4 mb-8 text-sm font-medium bg-red-50 text-red-700 rounded-2xl border border-red-100 animate-in fade-in slide-in-from-top-2 duration-300">
+        <i-feather name="alert-circle" class="w-5 h-5"></i-feather>
+        {{ passwordError() }}
+      </div>
+      }
+
+      <form [formGroup]="passwordForm" (ngSubmit)="changePassword()" class="space-y-6">
+
+        <div class="space-y-1.5">
+          <label for="currentPassword" class="flex items-center gap-2 text-sm font-bold text-gray-700 ml-1">
+            <i-feather name="key" style="width: 16px; height: 16px;" class="text-gray-400"></i-feather>
+            Mot de passe actuel
+          </label>
+          <div class="relative group">
+            <input [type]="showCurrentPassword() ? 'text' : 'password'" id="currentPassword"
+              formControlName="currentPassword" placeholder="••••••••"
+              class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all pr-12 text-sm">
+            <button type="button" (click)="showCurrentPassword.set(!showCurrentPassword())"
+              class="absolute right-4 top-1/2 -translate-y-1/2 p-1 rounded-lg text-gray-400 hover:text-indigo-600 transition-colors">
+              <i-feather [name]="showCurrentPassword() ? 'eye-off' : 'eye'" style="width: 18px; height: 18px;"></i-feather>
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-1.5 pt-4">
+          <label for="newPassword" class="flex items-center gap-2 text-sm font-bold text-gray-700 ml-1">
+            <i-feather name="lock" style="width: 16px; height: 16px;" class="text-gray-400"></i-feather>
+            Nouveau mot de passe
+          </label>
+          <div class="relative group">
+            <input [type]="showNewPassword() ? 'text' : 'password'" id="newPassword" formControlName="newPassword"
+              placeholder="Min. 8 caractères"
+              class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all pr-12 text-sm">
+            <button type="button" (click)="showNewPassword.set(!showNewPassword())"
+              class="absolute right-4 top-1/2 -translate-y-1/2 p-1 rounded-lg text-gray-400 hover:text-indigo-600 transition-colors">
+              <i-feather [name]="showNewPassword() ? 'eye-off' : 'eye'" style="width: 18px; height: 18px;"></i-feather>
+            </button>
+          </div>
+
+          <!-- Strength indicator inside the layout naturally -->
+          @if (passwordForm.get('newPassword')?.value) {
+          <div class="flex items-center gap-3 mt-3 ml-1 animate-in fade-in duration-300">
+            <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div class="h-full transition-all duration-500 rounded-full" [ngClass]="{
+                     'bg-red-500 w-1/4': getPasswordStrength().class === 'strength-weak',
+                     'bg-amber-500 w-2/4': getPasswordStrength().class === 'strength-medium',
+                     'bg-green-500 w-3/4': getPasswordStrength().class === 'strength-strong',
+                     'bg-emerald-500 w-full': getPasswordStrength().class === 'strength-very-strong'
+                   }">
+              </div>
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest" [ngClass]="{
+                    'text-red-500': getPasswordStrength().class === 'strength-weak',
+                    'text-amber-500': getPasswordStrength().class === 'strength-medium',
+                    'text-green-500': getPasswordStrength().class === 'strength-strong',
+                    'text-emerald-500': getPasswordStrength().class === 'strength-very-strong'
+                  }">
+              {{ getPasswordStrength().label }}
+            </span>
+          </div>
+          }
+        </div>
+
+        <div class="space-y-1.5 pt-4">
+          <label for="confirmPassword" class="flex items-center gap-2 text-sm font-bold text-gray-700 ml-1">
+            <i-feather name="check-circle" style="width: 16px; height: 16px;" class="text-gray-400"></i-feather>
+            Confirmer le nouveau mot de passe
+          </label>
+          <div class="relative group">
+            <input [type]="showConfirmPassword() ? 'text' : 'password'" id="confirmPassword"
+              formControlName="confirmPassword" placeholder="••••••••"
+              class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all pr-12 text-sm">
+            <button type="button" (click)="showConfirmPassword.set(!showConfirmPassword())"
+              class="absolute right-4 top-1/2 -translate-y-1/2 p-1 rounded-lg text-gray-400 hover:text-indigo-600 transition-colors">
+              <i-feather [name]="showConfirmPassword() ? 'eye-off' : 'eye'" style="width: 18px; height: 18px;"></i-feather>
+            </button>
+          </div>
+          @if (passwordForm.hasError('passwordMismatch') && passwordForm.get('confirmPassword')?.touched) {
+          <span class="text-xs font-bold text-red-500 ml-1">Les mots de passe ne correspondent pas</span>
+          }
+        </div>
+
+        <div class="flex items-center justify-end gap-4 pt-8 border-t border-gray-50">
+          <button type="button" (click)="passwordForm.reset()"
+            class="px-6 py-2.5 rounded-xl text-gray-500 text-sm font-bold hover:bg-gray-50 transition-all">
+            Annuler
+          </button>
+          <button type="submit" [disabled]="passwordForm.invalid || changingPassword()"
+            class="px-8 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:translate-y-0 flex items-center gap-2">
+            @if (changingPassword()) {
+            <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+            Mise à jour...
+            } @else {
+            <i-feather name="lock" style="width: 18px; height: 18px;"></i-feather>
+            Changer le mot de passe
+            }
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Security Tips -->
+    <div class="bg-gray-50/80 rounded-3xl p-8 border border-gray-200 h-fit">
+      <div class="flex items-center gap-4 mb-10">
+        <div class="w-12 h-12 rounded-2xl bg-white text-indigo-600 flex items-center justify-center shadow-sm shrink-0">
+          <i-feather name="shield" class="w-6 h-6"></i-feather>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-gray-900">Protégez votre compte</h2>
+          <p class="text-sm text-gray-400 mt-0.5">Conseils pour la sécurité</p>
+        </div>
+      </div>
+
+      <div class="space-y-8">
+        <div class="flex gap-4">
+          <div class="w-8 h-8 rounded-lg bg-green-50 text-green-600 flex items-center justify-center shrink-0">
+            <i-feather name="check" style="width: 18px; height: 18px;"></i-feather>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-gray-900">Minimum 8 caractères</p>
+            <p class="text-xs text-gray-500 leading-relaxed mt-1">Plus le mot de passe est long, plus il est difficile à
+              deviner par brute-force.</p>
+          </div>
+        </div>
+
+        <div class="flex gap-4">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <i-feather name="hash" style="width: 18px; height: 18px;"></i-feather>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-gray-900">Complexité requise</p>
+            <p class="text-xs text-gray-500 leading-relaxed mt-1">Combinez majuscules, minuscules, chiffres et symboles
+              ($!#%...).</p>
+          </div>
+        </div>
+
+        <div class="flex gap-4">
+          <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+            <i-feather name="alert-triangle" style="width: 18px; height: 18px;"></i-feather>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-gray-900">Pas d'infos personnelles</p>
+            <p class="text-xs text-gray-500 leading-relaxed mt-1">Évitez d'inclure votre nom, date de naissance ou mots
+              prévisibles.</p>
+          </div>
+        </div>
+
+        <div class="flex gap-4">
+          <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+            <i-feather name="refresh-cw" style="width: 18px; height: 18px;"></i-feather>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-gray-900">Changement régulier</p>
+            <p class="text-xs text-gray-500 leading-relaxed mt-1">Il est recommandé de renouveler votre mot de passe
+              tous les 3 mois.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  }
+
+  }
+</div>

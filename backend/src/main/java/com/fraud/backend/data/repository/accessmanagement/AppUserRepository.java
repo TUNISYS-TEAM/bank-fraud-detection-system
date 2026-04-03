@@ -19,6 +19,10 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     boolean existsByEmail(String email);
 
+    boolean existsByPhoneNumberAndUuidNot(String phoneNumber, UUID uuid);
+
+    boolean existsByPhoneNumber(String phoneNumber);
+
     boolean existsByRoleId(Long roleId);
 
     @Query("SELECT u FROM AppUser u WHERE u.role.id = :roleId")

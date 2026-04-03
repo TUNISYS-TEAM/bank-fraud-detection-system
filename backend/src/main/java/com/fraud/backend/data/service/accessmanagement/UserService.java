@@ -152,8 +152,14 @@ public class UserService {
             String lastName, String phoneNumber, LocalDate dateOfBirth,
             String address, Long roleId, Boolean isActive, Long managerId) {
 
+        String normalizedPhone = normalizePhoneNumber(phoneNumber);
+
         if (appUserRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email déjà existant: " + email);
+        }
+
+        if (normalizedPhone != null && appUserRepository.existsByPhoneNumber(normalizedPhone)) {
+            throw new IllegalArgumentException("Numéro de téléphone déjà existant: " + normalizedPhone);
         }
 
         Role role = roleRepository.findById(roleId)
@@ -170,7 +176,7 @@ public class UserService {
                 .passwordHash(passwordEncoder.encode(password))
                 .firstName(firstName)
                 .lastName(lastName)
-                .phoneNumber(phoneNumber)
+                .phoneNumber(normalizedPhone)
                 .dateOfBirth(dateOfBirth)
                 .address(address)
                 .role(role)
@@ -202,8 +208,6 @@ public class UserService {
                 .build();
         keycloakMappingRepository.save(mapping);
 
-        // IMPORTANT: NO EMAIL SENT HERE - OTP will be sent on first login attempt
-
         if (!active) {
             try {
                 keycloakService.disableUser(keycloakId);
@@ -215,7 +219,8 @@ public class UserService {
         return savedUser;
     }
 
-    // ==================== EMAIL VERIFICATION METHODS (UPDATED FOR OTP) ====================
+    // ==================== EMAIL VERIFICATION METHODS (UPDATED FOR OTP)
+    // ====================
 
     /**
      * Called when user tries to login but email is not verified
@@ -244,15 +249,16 @@ public class UserService {
             log.warn("Invalid OTP for email: {}", email);
             return false;
         }
-        
+
         // Get user and mark email as verified in Keycloak
         AppUser user = getByEmail(email);
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + user.getId()));
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Keycloak mapping non trouvé pour l'utilisateur: " + user.getId()));
 
         keycloakService.markEmailAsVerified(mapping.getKeycloakId(), email, user.getFirstName());
         log.info("Email successfully verified via OTP for: {}", email);
-        
+
         return true;
     }
 
@@ -279,7 +285,8 @@ public class UserService {
     }
 
     /**
-     * Verify email using email address (for login flow) - kept for backward compatibility
+     * Verify email using email address (for login flow) - kept for backward
+     * compatibility
      * This now uses OTP
      */
     @Transactional
@@ -321,16 +328,30 @@ public class UserService {
         return null;
     }
 
-    // ==================== UPDATE, ROLE, MANAGER, DELETE METHODS ====================
+    // ==================== UPDATE, ROLE, MANAGER, DELETE METHODS
+    // ====================
     @Transactional
     public AppUser updateUser(Long id, String firstName, String lastName, String email,
             String phoneNumber, String address, LocalDate dateOfBirth,
             Long roleId, Boolean isActive, Long managerId) {
+
+        String normalizedPhone = normalizePhoneNumber(phoneNumber);
+
         AppUser user = getById(id);
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
                 .orElseThrow(
                         () -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
 
+        boolean emailChanged = !user.getEmail().equals(email);
+
+        if (emailChanged) {
+            Optional<AppUser> existingUserOpt = appUserRepository.findByEmail(email);
+            if (existingUserOpt.isPresent()) {
+                AppUser existingUser = existingUserOpt.get();
+                throw new IllegalArgumentException("Cet email existe déjà pour l'utilisateur "
+                        + existingUser.getFirstName() + " " + existingUser.getLastName());
+            }
+        }
         boolean roleChanged = roleId != null && !user.getRole().getId().equals(roleId);
         boolean activeChanged = isActive != null && user.getIsActive() != isActive;
         boolean managerChanged = managerId != null
@@ -365,10 +386,17 @@ public class UserService {
             user.setIsActive(isActive);
         }
 
+        // Check phone number uniqueness if it changed
+        if (normalizedPhone != null && !normalizedPhone.equals(user.getPhoneNumber())) {
+            if (appUserRepository.existsByPhoneNumberAndUuidNot(normalizedPhone, user.getUuid())) {
+                throw new IllegalArgumentException("Numéro de téléphone déjà existant: " + normalizedPhone);
+            }
+        }
+
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setEmail(email);
-        user.setPhoneNumber(phoneNumber);
+        user.setPhoneNumber(normalizedPhone);
         user.setAddress(address);
         user.setDateOfBirth(dateOfBirth);
 
@@ -475,6 +503,74 @@ public class UserService {
         return user.getRole().getId();
     }
 
+    // ==================== SELF-SERVICE PROFILE METHODS ====================
+
+    /**
+     * Update own profile (self-service) — only personal info, no
+     * role/active/manager changes
+     */
+    @Transactional
+    public AppUser updateProfile(String email, String firstName, String lastName,
+            String phoneNumber, String address, LocalDate dateOfBirth) {
+
+        String normalizedPhone = normalizePhoneNumber(phoneNumber);
+
+        AppUser user = getByEmail(email);
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Keycloak mapping non trouvé pour l'utilisateur: " + user.getId()));
+
+        // Update Keycloak (first/last name only — email stays the same)
+        keycloakService.updateUser(mapping.getKeycloakId(), firstName, lastName, email);
+
+        // Check phone number uniqueness if it changed
+        if (normalizedPhone != null && !normalizedPhone.equals(user.getPhoneNumber())) {
+            if (appUserRepository.existsByPhoneNumberAndUuidNot(normalizedPhone, user.getUuid())) {
+                throw new IllegalArgumentException("Numéro de téléphone déjà existant: " + normalizedPhone);
+            }
+        }
+
+        // Update local DB
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
+        user.setPhoneNumber(normalizedPhone);
+        user.setAddress(address);
+        user.setDateOfBirth(dateOfBirth);
+
+        // Sync keycloak mapping
+        mapping.setLastSync(LocalDateTime.now());
+        keycloakMappingRepository.save(mapping);
+
+        return appUserRepository.save(user);
+    }
+
+    /**
+     * Change own password (self-service) — verifies current password first
+     */
+    @Transactional
+    public void changePassword(String email, String currentPassword, String newPassword) {
+
+        AppUser user = getByEmail(email);
+
+        // Verify current password
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("Le mot de passe actuel est incorrect");
+        }
+
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Keycloak mapping non trouvé pour l'utilisateur: " + user.getId()));
+
+        // Update password in Keycloak
+        keycloakService.setPassword(mapping.getKeycloakId(), newPassword);
+
+        // Update password hash in local DB
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        appUserRepository.save(user);
+
+        log.info("Password changed successfully for user: {}", email);
+    }
+
     public String getRoleNameByUserId(Long userId) {
         AppUser user = getById(userId);
         return user.getRole().getName();
@@ -482,5 +578,31 @@ public class UserService {
 
     public Page<AppUser> getUsersByRoleId(Long roleId, Pageable pageable) {
         return appUserRepository.findByRoleId(roleId, pageable);
+    }
+
+    private String normalizePhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
+            return null;
+        }
+        String normalized = phoneNumber.trim().replaceAll("\\s+", "");
+
+        if (normalized.startsWith("00216")) {
+            normalized = "+216" + normalized.substring(5);
+        } else if (!normalized.startsWith("+216") && !normalized.startsWith("+")) {
+            // Assume it's a local number, prepend +216
+            normalized = "+216" + normalized;
+        }
+        return normalized;
+    }
+
+    public boolean isPhoneTaken(String phone, UUID excludeUuid) {
+        String normalizedPhone = normalizePhoneNumber(phone);
+        if (normalizedPhone == null) {
+            return false;
+        }
+        if (excludeUuid != null) {
+            return appUserRepository.existsByPhoneNumberAndUuidNot(normalizedPhone, excludeUuid);
+        }
+        return appUserRepository.existsByPhoneNumber(normalizedPhone);
     }
 }

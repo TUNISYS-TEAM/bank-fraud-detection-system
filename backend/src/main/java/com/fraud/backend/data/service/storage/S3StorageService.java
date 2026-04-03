@@ -45,4 +45,15 @@ public class S3StorageService implements StorageService {
     );
     return obj;
   }
+
+  @Override
+  public void copy(String sourceKey, String destinationKey) {
+    CopyObjectRequest req = CopyObjectRequest.builder()
+        .sourceBucket(bucket)
+        .sourceKey(sourceKey)
+        .destinationBucket(bucket)
+        .destinationKey(destinationKey)
+        .build();
+    s3.copyObject(req);
+  }
 }

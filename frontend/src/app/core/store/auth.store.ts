@@ -28,7 +28,9 @@ const PERMISSION_ICONS: Record<string, string> = {
   'ACCESS_DATASETS': 'database',
   'ACCESS_CLIENTS_ACCOUNTS': 'users',
   'ACCESS_ANALYZED_TRANSACTIONS': 'activity',
-  'ACCESS_TRAINING_DATA': 'database'
+  'ACCESS_TRAINING_DATA': 'database',
+  'ACCESS_PROFILE': 'user'
+
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -52,7 +54,9 @@ const PERMISSION_LABELS: Record<string, string> = {
   'ACCESS_DATASETS': 'Datasets',
   'ACCESS_CLIENTS_ACCOUNTS': 'Clients & Comptes',
   'ACCESS_ANALYZED_TRANSACTIONS': 'Transactions Analysées',
-  'ACCESS_TRAINING_DATA': 'Données d\'Entraînement'
+  'ACCESS_TRAINING_DATA': 'Données d\'Entraînement',
+  'ACCESS_PROFILE': 'Mon Profil'
+
 };
 
 const PERMISSION_ORDER: Record<string, number> = {
@@ -76,7 +80,9 @@ const PERMISSION_ORDER: Record<string, number> = {
   'MANAGE_ML_MODELS': 111,
   'MANAGE_ALERTS': 112,
   'IMPORT_DATA': 113,
-  'RUN_SIMULATION': 114
+  'RUN_SIMULATION': 114,
+  'ACCESS_PROFILE': 200,
+
 };
 
 const PARENT_PAGES: Record<string, { parentRoute: string; relativeRoute: string }> = {
@@ -140,8 +146,17 @@ export const AuthStore = signalStore(
         permissionName: 'ACCESS_MESSAGES'
       });
 
+      items.push({
+        id: 1000,
+        label: PERMISSION_LABELS['ACCESS_PROFILE'],
+        route: '/dashboard/profile',
+        icon: PERMISSION_ICONS['ACCESS_PROFILE'],
+        order: PERMISSION_ORDER['ACCESS_PROFILE'],
+        permissionName: 'ACCESS_PROFILE'
+      });
+
       for (const perm of userPermissions) {
-        if (perm.name === 'ACCESS_OVERVIEW' || perm.name === 'ACCESS_MESSAGES') continue;
+        if (perm.name === 'ACCESS_OVERVIEW' || perm.name === 'ACCESS_MESSAGES' || perm.name === 'ACCESS_PROFILE') continue;
         if (perm.action) {
           items.push({
             id: perm.id,
@@ -338,19 +353,19 @@ export const AuthStore = signalStore(
     },
 
     hasPermission(permissionName: string): boolean {
-      if (permissionName === 'ACCESS_OVERVIEW' || permissionName === 'ACCESS_MESSAGES') return true;
+      if (permissionName === 'ACCESS_OVERVIEW' || permissionName === 'ACCESS_MESSAGES' || permissionName === 'ACCESS_PROFILE') return true;
       return store.permissionNames().includes(permissionName);
     },
 
     hasAnyPermission(permissionNames: string[]): boolean {
-      if (permissionNames.includes('ACCESS_OVERVIEW') || permissionNames.includes('ACCESS_MESSAGES')) return true;
+      if (permissionNames.includes('ACCESS_OVERVIEW') || permissionNames.includes('ACCESS_MESSAGES') || permissionNames.includes('ACCESS_PROFILE')) return true;
       const userPerms = store.permissionNames();
       return permissionNames.some(name => userPerms.includes(name));
     },
 
     hasAllPermissions(permissionNames: string[]): boolean {
       const filtered = permissionNames.filter(
-        p => p !== 'ACCESS_OVERVIEW' && p !== 'ACCESS_MESSAGES'
+        p => p !== 'ACCESS_OVERVIEW' && p !== 'ACCESS_MESSAGES' && p !== 'ACCESS_PROFILE'
       );
       if (filtered.length === 0) return true;
       const userPerms = store.permissionNames();
@@ -373,6 +388,22 @@ export const AuthStore = signalStore(
           patchState(store, { loading: false });
         }
       });
+    },
+
+    updateUser(userData: Partial<AuthUser>): void {
+      const currentUser = store.user();
+      if (currentUser) {
+        const updatedUser = { ...currentUser, ...userData };
+
+        // Ensure the full name is updated if first or last name changes
+        if (userData.firstName || userData.lastName) {
+          updatedUser.name = `${updatedUser.firstName} ${updatedUser.lastName}`;
+        }
+
+        patchState(store, {
+          user: updatedUser
+        });
+      }
     },
 
     getTabsForPage(pageRoute: string): MenuItem[] {

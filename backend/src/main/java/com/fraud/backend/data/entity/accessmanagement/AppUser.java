@@ -39,7 +39,7 @@ public class AppUser {
     @Column(name = "last_name")
     private String lastName;
     
-    @Column(name = "phone_number")
+    @Column(name = "phone_number", unique = true)
     private String phoneNumber;
     
     private String address;
@@ -50,7 +50,7 @@ public class AppUser {
     @ManyToOne
     @JoinColumn(name = "role_id")
     private Role role;
-    
+
     // Self-referential relationship for hierarchical management
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manager_id")

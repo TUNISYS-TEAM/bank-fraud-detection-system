@@ -16,6 +16,7 @@ export class DatasetsComponent implements OnInit, OnDestroy {
   private statsService = inject(StatsService);
   authStore = inject(AuthStore);
   private statsSubscription?: Subscription;
+  public datasetType = DatasetType;
 
   kpiCards = signal<KpiCard[]>([
     {

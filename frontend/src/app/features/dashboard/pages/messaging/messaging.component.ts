@@ -63,6 +63,36 @@ export class MessagesComponent implements OnInit, OnDestroy {
   archivedPage = signal(0);
   archivedTotalPages = signal(0);
 
+  // Search Logic
+  searchQuery = signal('');
+
+  filteredInbox = computed(() => {
+    const q = this.searchQuery().toLowerCase();
+    return this.inbox().filter(m => 
+      m.senderName.toLowerCase().includes(q) || 
+      m.subject.toLowerCase().includes(q) ||
+      m.content.toLowerCase().includes(q)
+    );
+  });
+
+  filteredSent = computed(() => {
+    const q = this.searchQuery().toLowerCase();
+    return this.sent().filter(m => 
+      m.receiverName.toLowerCase().includes(q) || 
+      m.subject.toLowerCase().includes(q) ||
+      m.content.toLowerCase().includes(q)
+    );
+  });
+
+  filteredArchived = computed(() => {
+    const q = this.searchQuery().toLowerCase();
+    return this.archived().filter(m => 
+      m.senderName.toLowerCase().includes(q) || 
+      m.subject.toLowerCase().includes(q) ||
+      m.content.toLowerCase().includes(q)
+    );
+  });
+
   // New message
   newMessage = signal<{
     receiverId: number | null;
@@ -200,12 +230,22 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.selectedMessages.set(current);
   }
 
+  onSearch(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.searchQuery.set(value);
+  }
+
   toggleSelectAll(event: Event): void {
     const checked = (event.target as HTMLInputElement).checked;
     if (checked) {
-      const allUuids = this.currentTab() === 'inbox'
-        ? this.inbox().map(m => m.messageUuid)
-        : this.sent().map(m => m.messageUuid);
+      let allUuids: string[] = [];
+      if (this.currentTab() === 'inbox') {
+        allUuids = this.filteredInbox().map(m => m.messageUuid);
+      } else if (this.currentTab() === 'sent') {
+        allUuids = this.filteredSent().map(m => m.messageUuid);
+      } else if (this.currentTab() === 'archived') {
+        allUuids = this.filteredArchived().map(m => m.messageUuid);
+      }
       this.selectedMessages.set(new Set(allUuids));
     } else {
       this.selectedMessages.set(new Set());
@@ -213,12 +253,20 @@ export class MessagesComponent implements OnInit, OnDestroy {
   }
 
   isAllSelected(): boolean {
-    const list = this.currentTab() === 'inbox' ? this.inbox() : this.sent();
+    let list: Message[] = [];
+    if (this.currentTab() === 'inbox') list = this.filteredInbox();
+    else if (this.currentTab() === 'sent') list = this.filteredSent();
+    else if (this.currentTab() === 'archived') list = this.filteredArchived();
+    
     return list.length > 0 && this.selectedMessages().size === list.length;
   }
 
   isSomeSelected(): boolean {
-    const list = this.currentTab() === 'inbox' ? this.inbox() : this.sent();
+    let list: Message[] = [];
+    if (this.currentTab() === 'inbox') list = this.filteredInbox();
+    else if (this.currentTab() === 'sent') list = this.filteredSent();
+    else if (this.currentTab() === 'archived') list = this.filteredArchived();
+    
     return this.selectedMessages().size > 0 && this.selectedMessages().size < list.length;
   }
 
@@ -495,18 +543,15 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.showReplyInput = false;
     this.replyContent.set('');
 
-    // Only try to fetch model details if it's a validation message
-    if (message.messageType === 'VALIDATION') {
-      const details = this.parseValidationContent(message.content);
-      if (details && details.modelUuid) {
-        this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${details.modelUuid}/metrics`).subscribe({
-          next: (response) => {
-            this.selectedModelStatus.set(response.status);
-            this.selectedModelComment.set(response.validationComment || response.comment);
-          },
-          error: (err) => console.error('Error fetching model status:', err)
-        });
-      }
+    const details = this.parseValidationContent(message.content);
+    if (details && details.modelUuid) {
+      this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${details.modelUuid}/metrics`).subscribe({
+        next: (response) => {
+          this.selectedModelStatus.set(response.status);
+          this.selectedModelComment.set(response.validationComment || response.comment);
+        },
+        error: (err) => console.error('Error fetching model status:', err)
+      });
     }
 
     if (!message.isRead && (message.receiverEmail === this.authStore.userEmail() || message.receiverId === this.authStore.userId())) {
@@ -638,17 +683,10 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   isValidationRequest(message: any): boolean {
     if (!message || !message.content) return false;
-    // Only check if messageType is VALIDATION or if content looks like JSON
-    if (message.messageType === 'VALIDATION') return true;
-    
     try {
       let content = message.content.trim();
-      // Check if it starts with { or [ (JSON object or array)
-      if (content.startsWith('{') || content.startsWith('[')) {
-        const data = JSON.parse(content);
-        return data && data.modelUuid !== undefined;
-      }
-      return false;
+      const data = JSON.parse(content);
+      return data && data.modelUuid !== undefined;
     } catch (e) {
       return false;
     }
@@ -699,15 +737,9 @@ export class MessagesComponent implements OnInit, OnDestroy {
   parseValidationContent(content: string): any {
     try {
       if (!content) return null;
-      // Trim and check if it looks like JSON
-      const trimmed = content.trim();
-      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        return JSON.parse(trimmed);
-      }
-      // Not JSON, return null
-      return null;
+      return JSON.parse(content);
     } catch (e) {
-      console.debug('Content is not JSON:', content);
+      console.error('Error parsing validation content:', e);
       return null;
     }
   }

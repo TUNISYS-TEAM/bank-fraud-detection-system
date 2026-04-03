@@ -32,13 +32,16 @@ export class DatasetCreateModalComponent {
     if (this.allowedTypes && this.allowedTypes.length > 0) {
       return this.allowedTypes;
     }
+    
+    // Fallback based on role
     if (this.authStore.isAdmin()) {
       return [DatasetType.CLIENTS, DatasetType.ACCOUNTS, DatasetType.TRANSACTIONS_VAL];
     }
     if (this.authStore.isManager()) {
       return [DatasetType.TRANSACTIONS_TRAIN];
     }
-    return Object.values(DatasetType);
+    
+    return [DatasetType.TRANSACTIONS_TRAIN]; // Absolute fallback
   });
 
   datasetForm: FormGroup = this.fb.group({
@@ -46,15 +49,11 @@ export class DatasetCreateModalComponent {
     type: ['', [Validators.required]]
   });
 
-  constructor() {
-    // We update the type in ngOnInit or whenever inputs are available if using newer Angular
-    // But for now let's set a default and we will patch it if allowedTypes is provided
-  }
+  constructor() { }
 
   ngOnInit() {
-    const defaultType = (this.allowedTypes && this.allowedTypes.length > 0)
-      ? this.allowedTypes[0]
-      : (this.authStore.isAdmin() ? DatasetType.TRANSACTIONS_VAL : DatasetType.TRANSACTIONS_TRAIN);
+    const types = this.datasetTypes();
+    const defaultType = types.length > 0 ? types[0] : DatasetType.TRANSACTIONS_TRAIN;
     
     this.datasetForm.patchValue({ type: defaultType });
   }

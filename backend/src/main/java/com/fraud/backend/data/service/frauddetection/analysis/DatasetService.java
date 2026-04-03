@@ -25,10 +25,13 @@ import org.apache.parquet.avro.AvroParquetReader;
 import org.apache.parquet.hadoop.ParquetReader;
 import org.springframework.data.domain.*;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.core.Authentication;
 
 import java.io.*;
 import java.math.BigDecimal;
@@ -137,6 +140,7 @@ public class DatasetService {
         }
 
         log.info("Uploading dataset of type: {} with name: {}", type, datasetName);
+        validateUploadRole(type);
 
         // On permet désormais plusieurs datasets du même type (ils seront masqués par
         // défaut)
@@ -171,6 +175,10 @@ public class DatasetService {
             tempCsvFile = Files.createTempFile("upload_", ".csv");
             file.transferTo(tempCsvFile.toFile());
             log.info("Temporary CSV saved: {}", tempCsvFile);
+
+            // 1.5. Validate Columns
+            validateCsvColumns(type, tempCsvFile);
+            log.info("CSV columns validated successfully for type {}", type);
 
             // 2. Convert to UTF-8 if needed
             Path utf8CsvFile = convertToUtf8(tempCsvFile);
@@ -280,7 +288,7 @@ public class DatasetService {
         } catch (Exception e) {
             log.error("Fatal error during Parquet conversion for dataset {}: {}", ds.getDatasetUuid(), e.getMessage(),
                     e);
-            throw new RuntimeException("Parquet conversion failed: " + e.getMessage(), e);
+            throw new RuntimeException("Échec de la conversion technique du fichier : " + e.getMessage(), e);
         } finally {
             // Clean up any leftover UTF-8 file
             if (utf8File != null && Files.exists(utf8File)) {
@@ -1900,5 +1908,97 @@ public class DatasetService {
             }
         }
         return count;
+    }
+
+    // ==================== PRIVATE VALIDATION ====================
+
+    private void validateUploadRole(DatasetType type) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            throw new SecurityException("Authentification requise pour importer des données.");
+        }
+
+        Set<String> roles = auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+
+        boolean isAdmin = roles.contains("ROLE_ADMIN");
+        boolean isManager = roles.contains("ROLE_MANAGER");
+
+        log.info("Vérification des rôles pour type {} : {}", type, roles);
+
+        switch (type) {
+            case CLIENTS:
+            case ACCOUNTS:
+            case TRANSACTIONS_VAL:
+                if (!isAdmin) {
+                    throw new IllegalArgumentException("Seul un Administrateur peut importer ces types de données.");
+                }
+                break;
+            case TRANSACTIONS_TRAIN:
+            case TRANSACTIONS_TRAIN_ENRICHED:
+                if (!isAdmin && !isManager) {
+                    throw new IllegalArgumentException(
+                            "Seul un Manager ou un Admin peut importer des données d'entraînement.");
+                }
+                break;
+            default:
+                throw new IllegalArgumentException("Type de dataset non reconnu.");
+        }
+    }
+
+    private void validateCsvColumns(DatasetType type, Path csvPath) throws IOException {
+        Map<String, List<String>> requiredMap = REQUIRED_COLUMNS_BY_TYPE.get(type);
+        if (requiredMap == null)
+            return;
+
+        try (Reader reader = Files.newBufferedReader(csvPath, StandardCharsets.UTF_8);
+                CSVParser parser = CSVFormat.DEFAULT.withFirstRecordAsHeader().parse(reader)) {
+
+            Map<String, Integer> headerMap = parser.getHeaderMap();
+            if (headerMap == null || headerMap.isEmpty()) {
+                throw new IllegalArgumentException("Le fichier CSV est vide ou ne contient pas d'en-tête.");
+            }
+
+            Set<String> actualHeaders = headerMap.keySet();
+            List<String> missingColumns = new ArrayList<>();
+
+            for (Map.Entry<String, List<String>> entry : requiredMap.entrySet()) {
+                String standardKey = entry.getKey();
+                List<String> aliases = entry.getValue();
+
+                boolean found = false;
+                for (String alias : aliases) {
+                    if (actualHeaders.stream().anyMatch(h -> h.equalsIgnoreCase(alias))) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    missingColumns.add(standardKey + " (p.ex: " + aliases.get(0) + ")");
+                }
+            }
+
+            if (!missingColumns.isEmpty()) {
+                String typeLabel = switch (type) {
+                    case TRANSACTIONS_TRAIN -> "Transactions d'entraînement";
+                    case TRANSACTIONS_VAL -> "Transactions à traiter (Validation)";
+                    case CLIENTS -> "Clients";
+                    case ACCOUNTS -> "Comptes";
+                    default -> type.toString();
+                };
+
+                throw new IllegalArgumentException(
+                        "Le fichier ne correspond pas au type sélectionné.\n" +
+                                "Les colonnes obligatoires manquantes dans ce type \"" + typeLabel + "\" : " +
+                                String.join(", ", missingColumns));
+            }
+        } catch (IllegalArgumentException e) {
+            throw e; // Renvoyer les erreurs de validation
+        } catch (Exception e) {
+            log.error("Erreur technique lors de la validation des colonnes : ", e);
+            throw new RuntimeException("Échec de la validation structurelle du fichier.");
+        }
     }
 }

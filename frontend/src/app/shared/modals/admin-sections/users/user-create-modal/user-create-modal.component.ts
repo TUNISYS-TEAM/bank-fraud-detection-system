@@ -64,7 +64,7 @@ export class UserCreateModalComponent implements OnInit {
   ngOnInit() {
     this.loadRoles();
     this.loadAvailableManagers();
-    
+
     // When role changes, filter managers based on role hierarchy
     this.userForm.get('roleId')?.valueChanges.subscribe((roleId) => {
       this.filterManagersByRole(roleId);
@@ -132,7 +132,7 @@ export class UserCreateModalComponent implements OnInit {
     } else {
       this.userForm.get('managerId')?.enable();
       // Filter managers that have allowed roles
-      const filtered = this.availableManagers().filter(manager => 
+      const filtered = this.availableManagers().filter(manager =>
         allowedRoles.includes(manager.roleName || '')
       );
       this.filteredManagers.set(filtered);
@@ -167,6 +167,14 @@ export class UserCreateModalComponent implements OnInit {
         this.isLoading.set(false);
         this.errorMessage.set(err.error?.message || 'Erreur lors de la création de l\'utilisateur');
         console.error('Error creating user:', err);
+
+        // Scroll automatically to the error message so the user can see it
+        setTimeout(() => {
+          const errorContainer = document.getElementById('error-message-container-create');
+          if (errorContainer) {
+            errorContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }, 100);
       }
     });
   }

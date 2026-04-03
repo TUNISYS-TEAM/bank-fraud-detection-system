@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../environments/environment';
@@ -115,13 +115,25 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   };
 
   // Detection threshold for UI
-  detectionThreshold: number = 0.75;
+  detectionThreshold: number = 0.5;
+
+  get thresholdPercent(): number {
+    return parseFloat((this.detectionThreshold * 100).toFixed(1));
+  }
+
+  set thresholdPercent(value: number) {
+    if (value !== undefined && value !== null) {
+      this.detectionThreshold = Math.min(Math.max(value / 100, 0.01), 0.99);
+    }
+  }
 
   // Training state
   isTraining: boolean = false;
+  isSavingTestResult = signal(false);
+  saveSuccess = signal(false);
   lastTrainingResult: TrainingJobResponse | null = null;
   trainingError: string | null = null;
-  wasLastJobTest: boolean = false;
+  wasLastJobTest = signal(false);
   trainingProgress: number = 0;
   trainingElapsedTime: number = 0;
   private trainingStartTime: number = 0;
@@ -234,7 +246,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   loadAllTrainingDatasets(): void {
     this.isLoadingDatasets = true;
 
-    const url = `${environment.apiUrl}/datasets?type=TRANSACTIONS_TRAIN_ENRICHED&page=${this.currentPage}&size=${this.pageSize}${this.searchQuery ? '&q=' + encodeURIComponent(this.searchQuery) : ''}`;
+    // Use the dedicated /training endpoint which returns only visible and processed datasets
+    const url = `${environment.apiUrl}/datasets/training?page=${this.currentPage}&size=${this.pageSize}${this.searchQuery ? '&q=' + encodeURIComponent(this.searchQuery) : ''}`;
 
     this.http.get<PageResponse<Dataset>>(url).subscribe({
       next: (response) => {
@@ -579,7 +592,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     console.log('Sending training request to:', endpoint, request);
 
-    this.wasLastJobTest = isTest;
+    this.wasLastJobTest.set(isTest);
     this.isTraining = true;
     this.startTrainingProgress();
 
@@ -613,6 +626,40 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         this.stopTrainingProgress();
         this.trainingProgress = 0;
         this.trainingError = error.error?.message || 'Erreur lors de l\'entraînement';
+      }
+    });
+  }
+
+  saveLastTestResult(): void {
+    if (!this.lastTrainingResult || !this.wasLastJobTest()) return;
+
+    this.isSavingTestResult.set(true);
+    this.trainingError = null;
+
+    this.http.post<TrainingJobResponse>(
+      `${environment.apiUrl}/v1/fraud-detection/models/training/finalize-test`,
+      this.lastTrainingResult
+    ).subscribe({
+      next: (response) => {
+        this.lastTrainingResult = response;
+        this.wasLastJobTest.set(false); // It's no longer a test, it's a saved model
+        this.isSavingTestResult.set(false);
+        this.saveSuccess.set(true);
+        this.loadModelHistory();
+        
+        // Hide success message after 5 seconds
+        setTimeout(() => {
+          this.saveSuccess.set(false);
+        }, 5000);
+        
+        // Transform the response for immediate use if needed
+        const modelData = this.transformModelDataForModal(response);
+        this.selectedModelForDetails = modelData;
+      },
+      error: (error) => {
+        console.error('Error saving test result:', error);
+        this.isSavingTestResult.set(false);
+        this.trainingError = error.error?.message || 'Erreur lors de la sauvegarde du test';
       }
     });
   }
@@ -666,7 +713,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
                   false_positives: metrics.confusionMatrix.falsePositives || metrics.confusionMatrix.false_positives || 0,
                   false_negatives: metrics.confusionMatrix.falseNegatives || metrics.confusionMatrix.false_negatives || 0,
                   true_positives: metrics.confusionMatrix.truePositives || metrics.confusionMatrix.true_positives || 0
-                } : this.lastTrainingResult.confusionMatrix
+                } : this.lastTrainingResult.confusionMatrix,
+                featureImportance: metrics.featureImportance || {}
               };
             }
           }
@@ -714,7 +762,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   // Helper method to transform model data for the modal
   private transformModelDataForModal(model: any): any {
     // If the model already has the complete structure we need, return it
-    if (model.metrics && model.confusionMatrix && model.thresholds && model.modelType) {
+    if (model.metrics && model.confusionMatrix && model.thresholds && model.modelType && model.featureImportance) {
       return model;
     }
 

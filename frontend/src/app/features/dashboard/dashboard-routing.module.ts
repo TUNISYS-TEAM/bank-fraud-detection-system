@@ -11,6 +11,8 @@ import { MessagesComponent } from './pages/messaging/messaging.component';
 import { TrainDataComponent } from './pages/train-data/train-data.component';
 import { DatasetsComponent } from './pages/datasets/datasets.component';
 import { AnalyzedTransactionsComponent } from './pages/analyzed-transactions/analyzed-transactions.component';
+import { UserProfileComponent } from './pages/user-profile/user-profile.component';
+
 
 const routes: Routes = [
   {
@@ -28,6 +30,8 @@ const routes: Routes = [
       { path: 'training-data', component: TrainDataComponent },
       { path: 'analyzed-transactions', component: AnalyzedTransactionsComponent },
       { path: 'datasets', component: DatasetsComponent },
+      { path: 'profile', component: UserProfileComponent },
+
       {
         path: 'clients-accounts',
         loadChildren: () => import('./pages/clients-accounts/clients-accounts.module').then(m => m.ClientsAccountsModule)

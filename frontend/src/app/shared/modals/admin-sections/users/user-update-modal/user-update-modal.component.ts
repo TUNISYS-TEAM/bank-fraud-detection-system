@@ -50,7 +50,7 @@ export class UserUpdateModalComponent implements OnInit {
   @Input() user: User | null = null;
   @Input() roles: Role[] = [];
   @Output() close = new EventEmitter<void>();
-  @Output() updated = new EventEmitter<User>();
+  @Output() userUpdated = new EventEmitter<User>();
 
   private fb = inject(FormBuilder);
   private http = inject(HttpClient);
@@ -185,13 +185,21 @@ export class UserUpdateModalComponent implements OnInit {
       this.http.put<User>(`${environment.apiUrl}/users/${this.user.id}`, updateData).subscribe({
         next: (updatedUser) => {
           this.isLoading.set(false);
-          this.updated.emit(updatedUser);
+          this.userUpdated.emit(updatedUser);
           this.closeModal();
         },
         error: (err) => {
           this.isLoading.set(false);
           this.errorMessage.set(err.error?.message || 'Erreur lors de la mise à jour');
           console.error('Error updating user:', err);
+          
+          // Scroll automatically to the error message so the user can see it
+          setTimeout(() => {
+            const errorContainer = document.getElementById('error-message-container');
+            if (errorContainer) {
+              errorContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          }, 100);
         }
       });
     }
