@@ -252,12 +252,12 @@ public class AuthController {
 
             // IMPORTANT: If email is not verified → return error WITHOUT sending OTP
             // Frontend will call /request-otp separately
-            if (!isEmailVerified(user)) {
+            /*if (!isEmailVerified(user)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(Map.of(
                                 "error", "EMAIL_NOT_VERIFIED",
                                 "message", "Votre email n'est pas encore vérifié. Veuillez demander un code OTP."));
-            }
+            }*/
 
             // === EMAIL IS VERIFIED → Proceed with normal login ===
 

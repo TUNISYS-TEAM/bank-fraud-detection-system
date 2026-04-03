@@ -35,6 +35,11 @@ export interface ModelConfig {
   hyperparameters: {
     n_estimators: number;
     max_depth: number;
+    learning_rate?: number;
+    subsample?: number;
+    num_leaves?: number;
+    min_child_samples?: number;
+    colsample_bytree?: number;
     [key: string]: any;
   };
   testSize: number;
@@ -48,6 +53,7 @@ export interface TrainingJobRequest {
   testSize: number;
   randomSeed: number;
   enableHyperparameterTuning?: boolean;
+  isTest?: boolean;
 }
 
 export interface TrainingJobResponse {
@@ -56,6 +62,9 @@ export interface TrainingJobResponse {
   status: string;
   datasetUuid: string;
   modelUuid: string;
+  modelName?: string;
+  modelType?: string;
+  version?: string;
   hyperparameters?: Record<string, any>;
   metrics?: {
     accuracy?: number;
@@ -80,6 +89,7 @@ export interface TrainingJobResponse {
   };
   trainingRows?: number;
   testRows?: number;
+  thresholds?: Record<string, any>;
   modelPath?: string;
   pipelinePath?: string;
   onnxPath?: string;
@@ -119,6 +129,8 @@ export interface ModelMetricsResponse {
   topFeatures?: string[];
   selectedFeatures?: string[];  
   onnxPath?: string;
+  thresholds?: Record<string, any>;
+  hyperparameters?: Record<string, any>;
 }
 
 export interface PageResponse<T> {

@@ -48,7 +48,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       description: 'Robuste et interprétable',
       icon: 'git-merge',
       color: 'blue',
-      recommended: true,
+      recommended: false,
       status: 'active'
     },
     {
@@ -57,8 +57,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       description: 'Performances élevées',
       icon: 'trending-up',
       color: 'orange',
-      recommended: false,
-      status: 'soon'
+      recommended: true,
+      status: 'active'
     },
     {
       type: 'LIGHTGBM',
@@ -67,18 +67,48 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       icon: 'zap',
       color: 'blue',
       recommended: false,
-      status: 'soon'
+      status: 'active'
     }
   ];
   selectedModelType: string = 'RANDOM_FOREST';
 
-  // Random Forest configuration – only user‑adjustable parameters
+  // Random Forest configuration – only user-adjustable parameters
   rfConfig: ModelConfig = {
     modelName: 'Random Forest',
     modelType: 'RANDOM_FOREST',
     hyperparameters: {
       n_estimators: 100,
       max_depth: 10
+    },
+    testSize: 0.2,
+    randomSeed: 42
+  };
+
+  // XGBoost configuration
+  xgbConfig: ModelConfig = {
+    modelName: 'XGBoost',
+    modelType: 'XGBOOST',
+    hyperparameters: {
+      n_estimators: 200,
+      max_depth: 6,
+      learning_rate: 0.1,
+      subsample: 0.8,
+      colsample_bytree: 0.8
+    },
+    testSize: 0.2,
+    randomSeed: 42
+  };
+
+  // LightGBM configuration
+  lgbmConfig: ModelConfig = {
+    modelName: 'LightGBM',
+    modelType: 'LIGHTGBM',
+    hyperparameters: {
+      n_estimators: 200,
+      num_leaves: 31,
+      max_depth: -1,
+      learning_rate: 0.1,
+      min_child_samples: 20
     },
     testSize: 0.2,
     randomSeed: 42
@@ -91,6 +121,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   isTraining: boolean = false;
   lastTrainingResult: TrainingJobResponse | null = null;
   trainingError: string | null = null;
+  wasLastJobTest: boolean = false;
   trainingProgress: number = 0;
   trainingElapsedTime: number = 0;
   private trainingStartTime: number = 0;
@@ -189,14 +220,14 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       'XGBOOST': 'XGB',
       'LIGHTGBM': 'LGBM'
     };
-    
+
     const prefix = prefixMap[modelType] || 'MDL';
-    
+
     // Get next version number for this prefix
     let nextVersion = this.modelVersions.get(prefix) || 0;
     nextVersion++;
     this.modelVersions.set(prefix, nextVersion);
-    
+
     return `${prefix} v${nextVersion}.0`;
   }
 
@@ -413,6 +444,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     this.totalSelectedFeatures = this.features.filter(f => f.enabled).length;
   }
 
+  get selectedFeaturesForDisplay(): FeatureInfo[] {
+    return this.features.filter(f => f.enabled).slice(0, 5);
+  }
+
   selectAllFeatures(): void {
     this.features.forEach(f => f.enabled = true);
     this.updateSelectedCount();
@@ -464,19 +499,36 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   }
 
   testModel(): void {
-    const testConfig = { ...this.rfConfig };
+    let config: ModelConfig;
+    if (this.selectedModelType === 'XGBOOST') {
+      config = { ...this.xgbConfig };
+    } else if (this.selectedModelType === 'LIGHTGBM') {
+      config = { ...this.lgbmConfig };
+    } else {
+      config = { ...this.rfConfig };
+    }
+
+    const testConfig = { ...config };
     testConfig.hyperparameters = {
-      ...this.rfConfig.hyperparameters,
+      ...config.hyperparameters,
       n_estimators: 50
     };
-    this.startTrainingWithConfig(testConfig);
+    this.startTrainingWithConfig(testConfig, true);
   }
 
   startTraining(): void {
-    this.startTrainingWithConfig(this.rfConfig);
+    let config: ModelConfig;
+    if (this.selectedModelType === 'XGBOOST') {
+      config = this.xgbConfig;
+    } else if (this.selectedModelType === 'LIGHTGBM') {
+      config = this.lgbmConfig;
+    } else {
+      config = this.rfConfig;
+    }
+    this.startTrainingWithConfig(config, false);
   }
 
-  private startTrainingWithConfig(config: ModelConfig): void {
+  private startTrainingWithConfig(config: ModelConfig, isTest: boolean = false): void {
     if (!this.selectedDatasetUuid) {
       alert('Veuillez sélectionner un dataset');
       return;
@@ -505,12 +557,15 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     // Build the hyperparameters object
     const hyperparameters: any = {
-      n_estimators: config.hyperparameters.n_estimators,
-      max_depth: config.hyperparameters.max_depth,
+      ...config.hyperparameters,
       selected_original_features: selectedOriginalFeatures,
       all_features: allFeaturesForTraining,
-      detection_threshold: this.detectionThreshold
+      detection_threshold: this.detectionThreshold,
+      model_name: versionedModelName
     };
+
+    const endpoint = config.modelType === 'XGBOOST' ? 'xgboost' :
+      config.modelType === 'LIGHTGBM' ? 'lightgbm' : 'random-forest';
 
     const request: TrainingJobRequest = {
       datasetUuid: this.selectedDatasetUuid,
@@ -518,14 +573,18 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       hyperparameters: hyperparameters,
       testSize: config.testSize,
       randomSeed: config.randomSeed,
-      enableHyperparameterTuning: false
+      enableHyperparameterTuning: false,
+      isTest: isTest
     };
 
+    console.log('Sending training request to:', endpoint, request);
+
+    this.wasLastJobTest = isTest;
     this.isTraining = true;
     this.startTrainingProgress();
 
     this.http.post<TrainingJobResponse>(
-      `${environment.apiUrl}/v1/fraud-detection/models/training/random-forest`,
+      `${environment.apiUrl}/v1/fraud-detection/models/training/${endpoint}`,
       request
     ).subscribe({
       next: (response) => {
@@ -534,10 +593,19 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         this.stopTrainingProgress();
         this.trainingProgress = 100;
 
-        if (response.status === 'PENDING' || response.status === 'TRAINING') {
-          this.pollTrainingStatus(response.modelUuid);
+        if (isTest) {
+          // If it's a test, open the details modal immediately with the results
+          // Since it's not saved, we use the response directly
+          const modelData = this.transformModelDataForModal(response);
+          this.selectedModelForDetails = modelData;
+          this.showModelDetailsModal = true;
+          // No need to poll or load history for test runs
+        } else {
+          if (response.status === 'PENDING' || response.status === 'TRAINING') {
+            this.pollTrainingStatus(response.modelUuid);
+          }
+          this.loadModelHistory();
         }
-        this.loadModelHistory();
       },
       error: (error) => {
         console.error('Training error:', error);
@@ -566,12 +634,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
               const aucRoc = metrics.aucRoc || metrics.auc_roc || 0;
               const accuracy = metrics.accuracy || 0;
 
-              // Get thresholds from metrics if available
+              // Use thresholds from metrics if available
               const thresholds = metrics.thresholds || {
-                fbeta: this.detectionThreshold,
-                fbeta_score: f1Score,
-                cost: this.detectionThreshold,
-                min_cost: 0,
                 final: this.detectionThreshold
               };
 
@@ -579,6 +643,12 @@ export class MlModelsComponent implements OnInit, OnDestroy {
                 ...this.lastTrainingResult,
                 status: 'COMPLETED',
                 modelUuid: metrics.modelUuid,
+                modelName: metrics.modelName,
+                modelType: metrics.modelType,
+                version: metrics.version,
+                thresholds: thresholds,
+                trainingRows: metrics.trainingRows,
+                testRows: metrics.testRows,
                 metrics: {
                   f1_score: f1Score,
                   precision: precision,
@@ -610,6 +680,14 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   }
 
   viewModelDetails(modelUuid: string): void {
+    // If it's the last training/test result we have in memory, use it directly (fast path)
+    if (this.lastTrainingResult && this.lastTrainingResult.modelUuid === modelUuid) {
+      const modelData = this.transformModelDataForModal(this.lastTrainingResult);
+      this.selectedModelForDetails = modelData;
+      this.showModelDetailsModal = true;
+      return;
+    }
+
     // Try to find the model in history first
     const modelFromHistory = this.modelHistory.find(m => m.modelUuid === modelUuid);
 
@@ -636,7 +714,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   // Helper method to transform model data for the modal
   private transformModelDataForModal(model: any): any {
     // If the model already has the complete structure we need, return it
-    if (model.metrics && model.confusionMatrix && model.thresholds) {
+    if (model.metrics && model.confusionMatrix && model.thresholds && model.modelType) {
       return model;
     }
 
@@ -644,6 +722,19 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     const hyperparameters = model.hyperparameters || {};
     const trainingResults = hyperparameters._trainingResults || {};
     const trainingMetadata = hyperparameters._trainingMetadata || {};
+
+    // Infer model type if missing (especially for test runs)
+    let modelType = model.modelType;
+    if (!modelType) {
+      const nameToCheck = (model.modelName || model.jobName || '').toUpperCase();
+      if (nameToCheck.includes('XGB')) modelType = 'XGBOOST';
+      else if (nameToCheck.includes('LGBM') || nameToCheck.includes('LIGHTGBM')) modelType = 'LIGHTGBM';
+      else if (nameToCheck.includes('RF') || nameToCheck.includes('RANDOM')) modelType = 'RANDOM_FOREST';
+    }
+
+    // Infer model name
+    const modelName = model.modelName || model.jobName || 
+                     (modelType ? `${modelType} Model` : 'Machine Learning Model');
 
     // Get metrics from various possible locations
     const metrics = model.metrics || trainingResults.metrics || {};
@@ -666,17 +757,19 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     };
 
     // Get selected features
-    const selectedOriginalFeatures = hyperparameters.selected_original_features || [];
+    const selectedOriginalFeatures = hyperparameters.selected_original_features || model.selectedFeatures || [];
 
     // Get all features
     const allFeatures = hyperparameters.all_features || [];
 
     return {
       modelUuid: model.modelUuid,
-      modelName: model.modelName || 'Random Forest',
+      modelName: modelName,
+      modelType: modelType,
+      version: model.version,
       status: model.status || 'COMPLETED',
-      startedAt: trainingMetadata.trainingDate || model.startedAt || null,
-      completedAt: trainingResults.completedAt || model.completedAt || null,
+      startedAt: trainingMetadata.trainingDate || model.startedAt || model.startTime || null,
+      completedAt: trainingResults.completedAt || model.completedAt || model.endTime || null,
       durationSeconds: trainingResults.durationSeconds || model.durationSeconds || 0,
       fraudRate: trainingResults.fraudRate || model.fraudRate || 0,
       testRows: trainingResults.testRows || model.testRows || 0,
@@ -712,8 +805,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       selected_original_features: selectedOriginalFeatures,
       hyperparameters_used: {
         all_features: allFeatures,
-        n_estimators: hyperparameters.n_estimators || 100,
-        max_depth: hyperparameters.max_depth || 10
+        n_estimators: hyperparameters.n_estimators || hyperparameters.num_boost_round || 100,
+        max_depth: hyperparameters.max_depth !== undefined ? hyperparameters.max_depth : (modelType === 'LIGHTGBM' ? -1 : 10),
+        num_leaves: hyperparameters.num_leaves || 31,
+        learning_rate: hyperparameters.learning_rate || 0.1
       }
     };
   }
@@ -763,7 +858,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
           const hyperparameters = model.hyperparameters || {};
           const trainingResults = hyperparameters._trainingResults || {};
           const trainingMetadata = hyperparameters._trainingMetadata || {};
-          
+
           return {
             ...model,
             startedAt: trainingMetadata.trainingDate || model.startedAt,
@@ -774,7 +869,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
             fraudRate: trainingResults.fraudRate || model.fraudRate
           };
         });
-        
+
         this.historyTotalElements = response.totalElements;
         this.historyTotalPages = response.totalPages;
         this.historyCurrentPage = response.number;
@@ -816,16 +911,30 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   reactivateModel(model: any): void {
     if (model.hyperparameters) {
-      const restoredParams: any = {};
-      if (model.hyperparameters.n_estimators !== undefined) {
-        restoredParams.n_estimators = model.hyperparameters.n_estimators;
-      }
-      if (model.hyperparameters.max_depth !== undefined) {
-        restoredParams.max_depth = model.hyperparameters.max_depth;
-      }
+      this.selectedModelType = model.modelType || 'RANDOM_FOREST';
 
-      this.rfConfig.hyperparameters = restoredParams;
-      this.selectedModelType = model.modelType;
+      if (this.selectedModelType === 'XGBOOST') {
+        const xgbParams: any = {};
+        if (model.hyperparameters.n_estimators !== undefined) xgbParams.n_estimators = model.hyperparameters.n_estimators;
+        if (model.hyperparameters.max_depth !== undefined) xgbParams.max_depth = model.hyperparameters.max_depth;
+        if (model.hyperparameters.learning_rate !== undefined) xgbParams.learning_rate = model.hyperparameters.learning_rate;
+        if (model.hyperparameters.subsample !== undefined) xgbParams.subsample = model.hyperparameters.subsample;
+        if (model.hyperparameters.colsample_bytree !== undefined) xgbParams.colsample_bytree = model.hyperparameters.colsample_bytree;
+        this.xgbConfig.hyperparameters = xgbParams;
+      } else if (this.selectedModelType === 'LIGHTGBM') {
+        const lgbmParams: any = {};
+        if (model.hyperparameters.n_estimators !== undefined) lgbmParams.n_estimators = model.hyperparameters.n_estimators;
+        if (model.hyperparameters.num_leaves !== undefined) lgbmParams.num_leaves = model.hyperparameters.num_leaves;
+        if (model.hyperparameters.max_depth !== undefined) lgbmParams.max_depth = model.hyperparameters.max_depth;
+        if (model.hyperparameters.learning_rate !== undefined) lgbmParams.learning_rate = model.hyperparameters.learning_rate;
+        if (model.hyperparameters.min_child_samples !== undefined) lgbmParams.min_child_samples = model.hyperparameters.min_child_samples;
+        this.lgbmConfig.hyperparameters = lgbmParams;
+      } else {
+        const restoredParams: any = {};
+        if (model.hyperparameters.n_estimators !== undefined) restoredParams.n_estimators = model.hyperparameters.n_estimators;
+        if (model.hyperparameters.max_depth !== undefined) restoredParams.max_depth = model.hyperparameters.max_depth;
+        this.rfConfig.hyperparameters = restoredParams;
+      }
 
       const metadata = model.hyperparameters._trainingMetadata;
       if (metadata && metadata.datasetUuid) {
@@ -855,6 +964,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         status: 'COMPLETED',
         metrics: results.metrics,
         confusionMatrix: results.confusionMatrix,
+        thresholds: results.thresholds || { final: model.hyperparameters?.detection_threshold },
         fraudRate: results.fraudRate,
         completedAt: results.completedAt,
         durationSeconds: results.durationSeconds

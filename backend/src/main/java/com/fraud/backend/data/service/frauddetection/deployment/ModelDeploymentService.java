@@ -5,14 +5,20 @@ import com.fraud.backend.api.dto.frauddetection.model.response.ModelSummaryRespo
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.frauddetection.ModelDeploymentHistory;
 import com.fraud.backend.data.entity.frauddetection.ModelML;
+import com.fraud.backend.data.repository.corebanking.ClientBehaviorRepository;
+import com.fraud.backend.data.repository.corebanking.TransactionRepository;
+import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelDeploymentHistoryRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
 import com.fraud.backend.data.service.frauddetection.scoring.BackfillScoringService;
 import com.fraud.backend.data.service.frauddetection.training.ModelProvider;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -22,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
@@ -30,16 +37,30 @@ public class ModelDeploymentService implements ModelProvider {
     private final ModelMLRepository modelMLRepository;
     private final ModelDeploymentHistoryRepository deploymentHistoryRepository;
     private final BackfillScoringService backfillScoringService;
+    private final TransactionRepository transactionRepository;
+    private final ClientBehaviorRepository clientBehaviorRepository;
+    private final FraudAlertRepository fraudAlertRepository;
+
+    // Self-injection to enable @Async and @Transactional proxy calls
+    @Lazy
+    @Autowired
+    private ModelDeploymentService self;
 
     public ModelDeploymentService(
             ModelMLRepository modelMLRepository,
             ModelDeploymentHistoryRepository deploymentHistoryRepository,
-            @Lazy BackfillScoringService backfillScoringService) {
+            @Lazy BackfillScoringService backfillScoringService,
+            TransactionRepository transactionRepository,
+            ClientBehaviorRepository clientBehaviorRepository,
+            FraudAlertRepository fraudAlertRepository) {
         this.modelMLRepository = modelMLRepository;
         this.deploymentHistoryRepository = deploymentHistoryRepository;
         this.backfillScoringService = backfillScoringService;
+        this.transactionRepository = transactionRepository;
+        this.clientBehaviorRepository = clientBehaviorRepository;
+        this.fraudAlertRepository = fraudAlertRepository;
     }
-    
+
     // Cache for deployed model
     private volatile ModelML cachedDeployedModel;
     private volatile LocalDateTime cachedModelTime;
@@ -59,7 +80,6 @@ public class ModelDeploymentService implements ModelProvider {
 
     @Override
     public Optional<ModelML> getDeployedModelEntity() {
-        // Check cache first - FIXED null safety
         if (cachedDeployedModel != null && cachedModelTime != null) {
             try {
                 long currentTimeMillis = System.currentTimeMillis();
@@ -71,17 +91,16 @@ public class ModelDeploymentService implements ModelProvider {
                 log.warn("Error checking cache, reloading from DB: {}", e.getMessage());
             }
         }
-        
-        // Load from DB
+
         Optional<ModelML> model = deploymentHistoryRepository
                 .findFirstByStatusOrderByDeploymentDateDesc("ACTIVE")
                 .map(ModelDeploymentHistory::getModel);
-        
+
         model.ifPresent(m -> {
             cachedDeployedModel = m;
             cachedModelTime = LocalDateTime.now();
         });
-        
+
         return model;
     }
 
@@ -101,13 +120,10 @@ public class ModelDeploymentService implements ModelProvider {
                 .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUuid));
 
         if (!"Validated".equalsIgnoreCase(model.getStatus())) {
-            throw new IllegalStateException(
-                    "Only validated models can be deployed. Current status: " + model.getStatus()
-            );
+            throw new IllegalStateException("Only validated models can be deployed. Current status: " + model.getStatus());
         }
 
         deactivateCurrentDeploymentIfExists();
-
         resetDriftMetadata(model);
 
         ModelDeploymentHistory deployment = ModelDeploymentHistory.builder()
@@ -124,39 +140,47 @@ public class ModelDeploymentService implements ModelProvider {
         model.setStatus("Deployed");
         model.setUpdatedAt(LocalDateTime.now());
         modelMLRepository.save(model);
-        
+
         // Invalidate cache
         cachedDeployedModel = null;
         cachedModelTime = null;
 
-        log.info(
-                "Model {} deployed successfully by {}",
+        log.info("Model {} deployed successfully by {}",
                 model.getModelName(),
-                deployedBy != null ? deployedBy.getEmail() : "system"
-        );
+                deployedBy != null ? deployedBy.getEmail() : "system");
+
+        // ⚠️ IMPORTANT: Call through self-proxy to enable @Async
+        self.triggerBackfillAfterDeployment();
 
         return toDeploymentResponse(savedDeployment);
     }
 
+    /**
+     * Runs asynchronously in a separate thread pool.
+     * Any exception here does NOT affect the deployment transaction.
+     */
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CompletableFuture<Void> triggerBackfillAfterDeployment() {
+        try {
+            log.info("=== Triggering backfill after successful deployment (async) ===");
+            backfillScoringService.stopBackfill();
+            Thread.sleep(800); // grace period
+            backfillScoringService.tryStartBackfillIfNeeded();
+            log.info("Backfill successfully started after deployment");
+        } catch (Exception e) {
+            log.error("Failed to start backfill after deployment (deployment was successful)", e);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
     @Transactional
     public void undeployModel(UUID modelUuid) {
-        // Stop any running backfill job before undeploying
-        if (backfillScoringService != null && backfillScoringService.isBackfillRunning()) {
-            log.info("Stopping running backfill job before undeploying model...");
-            backfillScoringService.stopBackfill();
-            // Give it a moment to stop gracefully
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        
+        backfillScoringService.stopBackfillDueToUndeploy();
+
         ModelDeploymentHistory activeDeployment = deploymentHistoryRepository
                 .findFirstByModel_ModelUuidAndStatusOrderByDeploymentDateDesc(modelUuid, "ACTIVE")
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "No active deployment found for model: " + modelUuid
-                ));
+                .orElseThrow(() -> new IllegalArgumentException("No active deployment found for model: " + modelUuid));
 
         activeDeployment.setStatus("INACTIVE");
         activeDeployment.setUndeploymentDate(LocalDateTime.now());
@@ -167,8 +191,7 @@ public class ModelDeploymentService implements ModelProvider {
             model.setStatus("Validated");
             model.setUpdatedAt(LocalDateTime.now());
             modelMLRepository.save(model);
-            
-            // Invalidate cache
+
             cachedDeployedModel = null;
             cachedModelTime = null;
 
@@ -215,8 +238,7 @@ public class ModelDeploymentService implements ModelProvider {
         snapshot.put("precision", model.getPrecision());
         snapshot.put("recall", model.getRecall());
         snapshot.put("f1Score", model.getF1Score());
-        
-        // Get average fraud score from training results if available
+
         double avgScore = 0.5;
         if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingResults")) {
             Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters().get("_trainingResults");
@@ -228,7 +250,7 @@ public class ModelDeploymentService implements ModelProvider {
             }
         }
         snapshot.put("avg_fraud_score", avgScore);
-        
+
         snapshot.put("version", model.getVersion());
         snapshot.put("modelName", model.getModelName());
         snapshot.put("modelType", model.getModelType());
@@ -236,9 +258,7 @@ public class ModelDeploymentService implements ModelProvider {
     }
 
     private ModelSummaryResponse toModelSummaryResponse(ModelML model) {
-        if (model == null) {
-            return null;
-        }
+        if (model == null) return null;
 
         return ModelSummaryResponse.builder()
                 .modelUuid(model.getModelUuid())
@@ -259,9 +279,7 @@ public class ModelDeploymentService implements ModelProvider {
     }
 
     private DeploymentResponse toDeploymentResponse(ModelDeploymentHistory history) {
-        if (history == null) {
-            return null;
-        }
+        if (history == null) return null;
 
         ModelML model = history.getModel();
         AppUser deployedBy = history.getDeployedBy();

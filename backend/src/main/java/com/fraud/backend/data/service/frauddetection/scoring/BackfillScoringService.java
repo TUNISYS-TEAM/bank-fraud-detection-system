@@ -37,16 +37,14 @@ public class BackfillScoringService {
     @Value("${fraud.backfill.batch-size:100}")
     private int batchSize;
 
-    @Value("${fraud.backfill.parallelism:5}")
-    private int parallelism;
-
     private final BackfillScoringService self;
+
     private final AtomicBoolean backfillRunning = new AtomicBoolean(false);
     private volatile UUID currentBackfillJobId;
     private volatile LocalDateTime backfillStartTime;
     private final AtomicLong processedCount = new AtomicLong(0);
 
-    private final AtomicReference<UUID> backfillModelUuid = new AtomicReference<>(null);
+    private final AtomicReference<UUID> currentModelUuid = new AtomicReference<>(null);
     private volatile boolean shouldStopBackfill = false;
 
     public BackfillScoringService(
@@ -64,6 +62,53 @@ public class BackfillScoringService {
         this.self = self;
     }
 
+    /**
+     * Called on Spring Boot startup (via ApplicationRunner) and after model deployment
+     * This safely checks and starts backfill if needed.
+     */
+    public void tryStartBackfillIfNeeded() {
+        log.info("=== Backfill auto-check triggered (startup or model deployment) ===");
+
+        if (backfillRunning.get()) {
+            log.info("Backfill is already running.");
+            return;
+        }
+
+        if (modelProvider.getDeployedModelEntity().isEmpty()) {
+            log.info("No deployed model found. Backfill will start when a model is deployed.");
+            return;
+        }
+
+        int unscoredCount = countTransactionsToBackfill();
+        if (unscoredCount > 0) {
+            log.info("Found {} unscored transactions on startup/deployment. Starting backfill...", unscoredCount);
+            startBackfillForDeployedModel();
+        } else {
+            log.info("No unscored transactions found.");
+        }
+    }
+
+    /**
+     * Call this AFTER saving a new Transaction with fraudScore == null
+     */
+    public void triggerBackfillForNewTransaction(UUID transactionUuid) {
+        if (transactionUuid == null) return;
+
+        try {
+            if (backfillRunning.get()) {
+                log.debug("Backfill already running. New transaction {} will be processed in current batch.", transactionUuid);
+                return;
+            }
+
+            if (modelProvider.getDeployedModelEntity().isPresent()) {
+                log.info("New unscored transaction {} detected → triggering backfill", transactionUuid);
+                startBackfillForDeployedModel();
+            }
+        } catch (Exception e) {
+            log.warn("Could not trigger backfill for transaction {}: {}", transactionUuid, e.getMessage());
+        }
+    }
+
     public boolean isBackfillRunning() {
         return backfillRunning.get();
     }
@@ -73,9 +118,7 @@ public class BackfillScoringService {
     }
 
     public ScoringJobStatus getBackfillJobStatus() {
-        if (currentBackfillJobId == null) {
-            return null;
-        }
+        if (currentBackfillJobId == null) return null;
         ScoringJobStatus status = scoringJobService.getJob(currentBackfillJobId);
         if (status != null) {
             status.setProcessedCount((int) processedCount.get());
@@ -83,12 +126,25 @@ public class BackfillScoringService {
         return status;
     }
 
-    public void stopBackfill() {
+    /**
+     * Stop backfill when model is undeployed (graceful stop)
+     */
+    public void stopBackfillDueToUndeploy() {
         if (backfillRunning.get()) {
-            log.info("Stopping backfill job {}...", currentBackfillJobId);
+            log.info("Model undeployed → stopping backfill gracefully (already processed transactions are kept)");
             shouldStopBackfill = true;
         } else {
-            log.info("No backfill job is currently running");
+            log.info("No backfill running to stop.");
+        }
+    }
+
+    /**
+     * General stop (used when deploying a new model)
+     */
+    public void stopBackfill() {
+        if (backfillRunning.get()) {
+            log.info("Stopping current backfill job {} before starting new one...", currentBackfillJobId);
+            shouldStopBackfill = true;
         }
     }
 
@@ -100,7 +156,8 @@ public class BackfillScoringService {
 
     public UUID startBackfillForDeployedModel() {
         if (!backfillRunning.compareAndSet(false, true)) {
-            throw new IllegalStateException("Backfill is already running. Current job ID: " + currentBackfillJobId);
+            log.warn("Backfill is already running.");
+            return currentBackfillJobId;
         }
 
         shouldStopBackfill = false;
@@ -110,10 +167,14 @@ public class BackfillScoringService {
         backfillStartTime = LocalDateTime.now();
         processedCount.set(0);
 
-        CompletableFuture.supplyAsync(() -> countTransactionsToBackfill())
+        ModelML model = modelProvider.getDeployedModelEntity().orElseThrow();
+        currentModelUuid.set(model.getModelUuid());
+
+        CompletableFuture.supplyAsync(this::countTransactionsToBackfill)
                 .thenAccept(total -> {
                     scoringJobService.createJob(jobId, total);
-                    log.info("Backfill job {} created with {} transactions to process", jobId, total);
+                    log.info("Backfill job {} created for model '{}' ({} transactions to process)", 
+                            jobId, model.getModelName(), total);
                     self.runBackfillOptimized(jobId);
                 });
 
@@ -122,30 +183,26 @@ public class BackfillScoringService {
 
     @Async
     protected void runBackfillOptimized(UUID jobId) {
+        List<UUID> failedTransactions = new ArrayList<>();
+
         try {
-            ModelML deployedModel = modelProvider.getDeployedModelEntity()
-                    .orElseThrow(() -> new IllegalStateException("No model deployed. Please deploy a model first."));
+            ModelML model = modelProvider.getDeployedModelEntity()
+                    .orElseThrow(() -> new IllegalStateException("No model deployed"));
 
-            backfillModelUuid.set(deployedModel.getModelUuid());
-            final UUID modelUuid = deployedModel.getModelUuid();
-            final String modelName = deployedModel.getModelName();
+            final UUID modelUuid = model.getModelUuid();
+            final String modelName = model.getModelName();
 
             log.info("========================================");
-            log.info("Starting BACKFILL job {} using model: {} (UUID: {})", jobId, modelName, modelUuid);
-            log.info("Batch size: {} transactions per Python call", batchSize);
+            log.info("STARTING BACKFILL JOB {} | Model: {} | Batch size: {}", jobId, modelName, batchSize);
             log.info("========================================");
 
-            // Get all accounts
             List<Account> accounts = accountRepository.findAll();
-            log.info("Scanning {} accounts for unscored transactions...", accounts.size());
-
-            // Queue to collect all unscored transaction UUIDs
             ConcurrentLinkedQueue<UUID> transactionQueue = new ConcurrentLinkedQueue<>();
             int alreadyScoredCount = 0;
 
-            // First pass: collect all unscored transaction UUIDs
+            // Collect unscored transactions
             for (Account account : accounts) {
-                if (shouldStopBackfill || !isModelStillDeployed(backfillModelUuid.get())) {
+                if (shouldStopBackfill || !isModelStillDeployed(modelUuid)) {
                     break;
                 }
 
@@ -162,50 +219,40 @@ public class BackfillScoringService {
             }
 
             int totalUnscored = transactionQueue.size();
-            log.info("Found {} unscored transactions to process", totalUnscored);
-            log.info("Found {} already scored transactions (skipping)", alreadyScoredCount);
+            log.info("Found {} unscored transactions | {} already scored", totalUnscored, alreadyScoredCount);
 
             if (totalUnscored == 0) {
                 log.info("No unscored transactions found. Backfill completed.");
                 scoringJobService.markCompleted(jobId);
-                long duration = java.time.Duration.between(backfillStartTime, LocalDateTime.now()).getSeconds();
-                log.info("Backfill job {} completed in {} seconds", jobId, duration);
                 return;
             }
 
-            // Process transactions in GLOBAL batches (across all accounts)
+            // Main batch processing
             List<UUID> batch = new ArrayList<>(batchSize);
             int batchNumber = 0;
-            int totalBatches = (totalUnscored + batchSize - 1) / batchSize;
             long totalProcessingStart = System.currentTimeMillis();
 
-            while (!transactionQueue.isEmpty() && !shouldStopBackfill && isModelStillDeployed(backfillModelUuid.get())) {
+            while (!transactionQueue.isEmpty() && !shouldStopBackfill && isModelStillDeployed(modelUuid)) {
                 batch.clear();
-                
                 for (int i = 0; i < batchSize && !transactionQueue.isEmpty(); i++) {
                     UUID uuid = transactionQueue.poll();
-                    if (uuid != null) {
-                        batch.add(uuid);
-                    }
+                    if (uuid != null) batch.add(uuid);
                 }
-
-                if (batch.isEmpty()) {
-                    break;
-                }
+                if (batch.isEmpty()) break;
 
                 batchNumber++;
                 long batchStartTime = System.currentTimeMillis();
 
                 try {
-                    log.info("Processing batch {}/{}: {} transactions", batchNumber, totalBatches, batch.size());
-                    
-                    // Pass the model UUID to scoreBatch
-                    List<TransactionScoringService.ScoreResult> results = 
+                    log.info("Processing batch {}/{}: {} transactions", batchNumber,
+                            (totalUnscored + batchSize - 1) / batchSize, batch.size());
+
+                    List<TransactionScoringService.ScoreResult> results =
                             transactionScoringService.scoreBatch(batch, modelUuid);
-                    
+
                     long batchDuration = System.currentTimeMillis() - batchStartTime;
                     long alertsCreated = results.stream().filter(r -> r.getAlert() != null).count();
-                    
+
                     for (TransactionScoringService.ScoreResult result : results) {
                         if (result.getAlert() != null) {
                             scoringJobService.addResult(jobId, result.getAlert());
@@ -213,18 +260,44 @@ public class BackfillScoringService {
                         scoringJobService.incrementProcessed(jobId);
                         processedCount.incrementAndGet();
                     }
-                    
+
                     double tps = (batch.size() * 1000.0) / Math.max(1, batchDuration);
-                    log.info("Batch {} completed in {}ms ({} txs, {} alerts, {:.1f} txs/sec)", 
+                    log.info("Batch {} completed in {}ms ({} txs, {} alerts, {:.1f} tx/s)",
                             batchNumber, batchDuration, batch.size(), alertsCreated, tps);
-                    
+
                 } catch (Exception e) {
-                    log.error("Batch {} failed: {}", batchNumber, e.getMessage());
-                    for (UUID uuid : batch) {
-                        scoringJobService.addError(jobId, uuid, e.getMessage());
+                    log.error("Batch {}/{} failed → will retry in second pass", batchNumber, totalUnscored / batchSize, e);
+                    failedTransactions.addAll(batch);
+                }
+            }
+
+            // Second attempt for failed transactions
+            if (!failedTransactions.isEmpty() && !shouldStopBackfill && isModelStillDeployed(modelUuid)) {
+                log.info("Starting SECOND ATTEMPT on {} failed transactions", failedTransactions.size());
+                try {
+                    List<TransactionScoringService.ScoreResult> results =
+                            transactionScoringService.scoreBatch(failedTransactions, modelUuid);
+
+                    for (TransactionScoringService.ScoreResult result : results) {
+                        if (result.getAlert() != null) scoringJobService.addResult(jobId, result.getAlert());
                         scoringJobService.incrementProcessed(jobId);
                         processedCount.incrementAndGet();
                     }
+                    log.info("Second attempt completed successfully");
+                } catch (Exception e) {
+                    log.error("Second attempt failed for {} transactions", failedTransactions.size(), e);
+                    for (UUID uuid : failedTransactions) {
+                        scoringJobService.addError(jobId, uuid, "Failed on first AND second attempt");
+                        scoringJobService.incrementProcessed(jobId);
+                        processedCount.incrementAndGet();
+                    }
+                }
+            } else if (!failedTransactions.isEmpty()) {
+                log.warn("Skipping second attempt (backfill stopped or model changed)");
+                for (UUID uuid : failedTransactions) {
+                    scoringJobService.addError(jobId, uuid, "Backfill stopped before second attempt");
+                    scoringJobService.incrementProcessed(jobId);
+                    processedCount.incrementAndGet();
                 }
             }
 
@@ -232,102 +305,26 @@ public class BackfillScoringService {
             double avgTps = (processedCount.get() * 1000.0) / Math.max(1, totalDuration);
 
             if (shouldStopBackfill) {
-                log.warn("Backfill job {} stopped by user request after processing {} transactions", 
-                        jobId, processedCount.get());
-                scoringJobService.markFailed(jobId, "Backfill stopped by user");
-            } else if (!isModelStillDeployed(backfillModelUuid.get())) {
-                log.warn("Backfill job {} stopped because model {} is no longer deployed", jobId, modelName);
-                scoringJobService.markFailed(jobId, "Model was undeployed during backfill");
+                log.warn("Backfill job {} stopped (model changed or undeployed)", jobId);
+                scoringJobService.markFailed(jobId, "Backfill stopped due to model change/undeploy");
             } else {
                 scoringJobService.markCompleted(jobId);
-                long totalSeconds = java.time.Duration.between(backfillStartTime, LocalDateTime.now()).getSeconds();
                 log.info("========================================");
                 log.info("BACKFILL JOB {} COMPLETED SUCCESSFULLY!", jobId);
-                log.info("Total time: {} seconds", totalSeconds);
-                log.info("Total transactions processed: {}", processedCount.get());
-                log.info("Average speed: {:.1f} transactions/second", avgTps);
-                log.info("Total Python calls: {} ({} per batch)", batchNumber, batchSize);
+                log.info("Model: {} | Total processed: {} | Average speed: {:.1f} tx/s", modelName, processedCount.get(), avgTps);
                 log.info("========================================");
             }
 
         } catch (Exception e) {
-            log.error("Backfill job {} failed: {}", jobId, e.getMessage(), e);
+            log.error("Backfill job {} failed", jobId, e);
             scoringJobService.markFailed(jobId, e.getMessage());
         } finally {
             backfillRunning.set(false);
             currentBackfillJobId = null;
             backfillStartTime = null;
             processedCount.set(0);
-            backfillModelUuid.set(null);
+            currentModelUuid.set(null);
             shouldStopBackfill = false;
-        }
-    }
-
-    private void processAccountTransactions(Account account, UUID modelUuid, UUID jobId) {
-        try {
-            if (shouldStopBackfill || !isModelStillDeployed(backfillModelUuid.get())) {
-                return;
-            }
-
-            ModelML model = modelProvider.getDeployedModelEntity()
-                    .filter(m -> m.getModelUuid().equals(modelUuid))
-                    .orElse(null);
-
-            if (model == null) {
-                log.warn("Model {} no longer deployed, stopping processing for account {}", modelUuid, account.getId());
-                return;
-            }
-
-            List<Transaction> transactions = transactionRepository
-                    .findByAccountIdOrderByTransactionDateAsc(account.getId());
-
-            if (transactions.isEmpty()) {
-                return;
-            }
-
-            List<UUID> unscoredUuids = transactions.stream()
-                    .filter(tx -> tx.getFraudScore() == null)
-                    .map(Transaction::getTransactionUuid)
-                    .toList();
-
-            if (unscoredUuids.isEmpty()) {
-                for (Transaction tx : transactions) {
-                    scoringJobService.incrementProcessed(jobId);
-                    processedCount.incrementAndGet();
-                }
-                return;
-            }
-
-            for (int i = 0; i < unscoredUuids.size(); i += batchSize) {
-                if (shouldStopBackfill || !isModelStillDeployed(backfillModelUuid.get())) {
-                    return;
-                }
-
-                int end = Math.min(i + batchSize, unscoredUuids.size());
-                List<UUID> batch = unscoredUuids.subList(i, end);
-
-                try {
-                    List<TransactionScoringService.ScoreResult> results = transactionScoringService.scoreBatch(batch, modelUuid);
-                    for (TransactionScoringService.ScoreResult result : results) {
-                        if (result.getAlert() != null) {
-                            scoringJobService.addResult(jobId, result.getAlert());
-                        }
-                        scoringJobService.incrementProcessed(jobId);
-                        processedCount.incrementAndGet();
-                    }
-                } catch (Exception e) {
-                    log.error("Batch scoring failed for account {} batch: {}", account.getId(), e.getMessage());
-                    for (UUID uuid : batch) {
-                        scoringJobService.addError(jobId, uuid, e.getMessage());
-                        scoringJobService.incrementProcessed(jobId);
-                        processedCount.incrementAndGet();
-                    }
-                }
-            }
-
-        } catch (Exception e) {
-            log.error("Failed to process account {}: {}", account.getId(), e.getMessage(), e);
-            scoringJobService.addError(jobId, null, "Account " + account.getId() + ": " + e.getMessage());
         }
     }
 
@@ -345,7 +342,6 @@ public class BackfillScoringService {
                 }
             }
         }
-
         return count;
     }
 }

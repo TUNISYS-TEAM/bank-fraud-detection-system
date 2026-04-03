@@ -1,11 +1,12 @@
 import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, AfterViewInit, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FeatherModule } from 'angular-feather';
 import * as echarts from 'echarts';
 
 @Component({
   selector: 'app-model-details-modal',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FeatherModule],
   templateUrl: './model-details-modal.component.html',
   styleUrls: ['./model-details-modal.component.css']
 })
@@ -296,14 +297,30 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
 
     this.featureImportanceChart = echarts.init(chartDom);
 
-    const selectedFeatures = this.getOriginalFeatures();
-    const clientFeatures = this.getClientFeatures().slice(0, 5);
-    const features = [...selectedFeatures, ...clientFeatures];
+    let importanceData: any[] = [];
 
-    const importanceData = features.map((name: string) => ({
-      name: name.length > 20 ? name.substring(0, 18) + '...' : name,
-      value: Math.random() * 0.8 + 0.1
-    })).sort((a, b) => b.value - a.value).slice(0, 8);
+    if (this.modelResult?.featureImportance && Object.keys(this.modelResult.featureImportance).length > 0) {
+      // Use real importance data
+      importanceData = Object.entries(this.modelResult.featureImportance)
+        .map(([name, value]: [string, any]) => ({
+          name: name.length > 20 ? name.substring(0, 18) + '...' : name,
+          value: typeof value === 'number' ? value : 0
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
+    } else {
+      // Fallback to feature names with random/placeholder values if no importance data
+      const selectedFeatures = this.getOriginalFeatures();
+      const clientFeatures = this.getClientFeatures().slice(0, 5);
+      const features = [...selectedFeatures, ...clientFeatures];
+
+      importanceData = features
+        .filter(name => !!name)
+        .map((name: string) => ({
+          name: name.length > 20 ? name.substring(0, 18) + '...' : name,
+          value: Math.random() * 0.8 + 0.1
+        })).sort((a, b) => b.value - a.value).slice(0, 8);
+    }
 
     const option = {
       title: {
@@ -680,8 +697,14 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
 
   // Helper method to get hyperparameter values from nested structure
   getHyperparameterValue(key: string): any {
+    // Check in 'hyperparameters_used' first (Specific training output)
     if (this.modelResult?.hyperparameters_used?.[key] !== undefined) {
       return this.modelResult.hyperparameters_used[key];
+    }
+    
+    // Check in 'hyperparameters' (Standard structure)
+    if (this.modelResult?.hyperparameters?.[key] !== undefined) {
+      return this.modelResult.hyperparameters[key];
     }
 
     if (key === 'detection_threshold' && this.modelResult?.thresholds) {
@@ -693,23 +716,67 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
       }
     }
 
-    if (key === 'min_samples_split') {
-      return 2;
-    }
-
+    // Default fallbacks for common parameters if they are totally missing
+    if (key === 'min_samples_split') return 2;
+    if (key === 'max_depth' && this.getModelFullTypeName().includes('LightGBM')) return -1;
+    
     return null;
   }
 
   getClientFeatures(): string[] {
-    const allFeatures = this.modelResult?.hyperparameters_used?.all_features;
+    const allFeatures = this.modelResult?.hyperparameters?.all_features || 
+                       this.modelResult?.hyperparameters_used?.all_features || [];
 
-    return allFeatures.filter((f: string) =>
+    if (!Array.isArray(allFeatures)) return [];
+
+    return allFeatures.filter((f: any) =>
       f && typeof f === 'string' && f.toLowerCase().startsWith('client_')
     );
   }
 
   getOriginalFeatures(): string[] {
-    return this.modelResult?.selected_original_features;
+    return this.modelResult?.selectedFeatures || [];
   }
 
+  getModelFullTypeName(): string {
+    let type = this.modelResult?.modelType;
+    const name = (this.modelResult?.modelName || '').toUpperCase();
+    
+    // If type is missing, try to infer it from model name
+    if (!type) {
+      if (name.includes('XGB')) type = 'XGBOOST';
+      else if (name.includes('LGBM') || name.includes('LIGHTGBM')) type = 'LIGHTGBM';
+      else if (name.includes('RF') || name.includes('RANDOM')) type = 'RANDOM_FOREST';
+    }
+
+    if (!type) return this.modelResult?.modelName || 'Modèle ML';
+    
+    const names: Record<string, string> = {
+      'XGBOOST': 'XGBoost',
+      'RANDOM_FOREST': 'Random Forest',
+      'LIGHTGBM': 'LightGBM'
+    };
+    
+    return names[type] || type;
+  }
+
+  getModelVersion(): string {
+    if (this.modelResult?.version && !this.modelResult.version.includes('1.0.')) {
+      return `v${this.modelResult.version}`;
+    }
+    
+    // Fallback: try to extract from modelName (e.g., "XGB v1.0" -> "v1.0")
+    const modelName = this.modelResult?.modelName || '';
+    const versionMatch = modelName.match(/v\d+(\.\d+)?/);
+    if (versionMatch) {
+      return versionMatch[0];
+    }
+    
+    // If it's a timestamp-based version from DB (e.g. 1.0.17...)
+    if (this.modelResult?.version?.startsWith('1.0.')) {
+       return 'v1.0';
+    }
+
+    return (this.modelResult?.modelUuid || 'Draft').slice(0, 8);
+  }
 }

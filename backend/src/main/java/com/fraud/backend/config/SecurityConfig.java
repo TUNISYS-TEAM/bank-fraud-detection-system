@@ -34,6 +34,7 @@ public class SecurityConfig {
                 "/actuator/**",
                 "/auth/**",
                 "/api/auth/login", 
+                "/api/v1/**",
                 "/api/auth/csrf",   
                 "/api/auth/request-otp",     
                 "/api/auth/verify-otp",       

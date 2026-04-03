@@ -36,17 +36,31 @@ services:
     container_name: fraud-keycloak
     command: start-dev
     environment:
+      # Database
       KC_DB: postgres
-      KC_DB_URL: ${KEYCLOAK_DB_URL}
+      KC_DB_URL: ${KEYCLOAK_DB_URL}          # Should be: jdbc:postgresql://postgres-keycloak:5432/${POSTGRES_KEYCLOAK_DB}
       KC_DB_USERNAME: ${POSTGRES_KEYCLOAK_USER}
       KC_DB_PASSWORD: ${POSTGRES_KEYCLOAK_PASSWORD}
+
+      # Admin
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      # === Critical fixes for Admin Console loading issue ===
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY: "edge"                    # Recommended for Docker + direct access
+      KC_PROXY_HEADERS: "forwarded"       # Modern replacement (helps with new admin console)
+
+      # Optional but useful for debugging
+      # KC_HOSTNAME_DEBUG: "true"         # Uncomment to see hostname config on /realms/master/hostname-debug
     ports:
       - "8180:8080"
     depends_on:
       postgres-keycloak:
         condition: service_healthy
+    restart: unless-stopped
 
   minio:
     image: minio/minio:latest

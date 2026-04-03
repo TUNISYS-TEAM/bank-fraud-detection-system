@@ -37,6 +37,32 @@ public class ModelTrainingController {
         }
     }
 
+    @PostMapping("/xgboost")
+    public ResponseEntity<TrainingJobResponse> trainXGBoost(
+            @Valid @RequestBody TrainingJobRequest request) {
+        log.info("Training XGBoost request received for dataset: {}", request.getDatasetUuid());
+        try {
+            TrainingJobResponse response = trainingService.trainXGBoost(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error training XGBoost: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to train XGBoost model: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/lightgbm")
+    public ResponseEntity<TrainingJobResponse> trainLightGBM(
+            @Valid @RequestBody TrainingJobRequest request) {
+        log.info("Training LightGBM request received for dataset: {}", request.getDatasetUuid());
+        try {
+            TrainingJobResponse response = trainingService.trainLightGBM(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error training LightGBM: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to train LightGBM model: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/{modelUuid}/metrics")
     public ResponseEntity<ModelMetricsResponse> getModelMetrics(@PathVariable UUID modelUuid) {
         log.info("Getting metrics for model: {}", modelUuid);

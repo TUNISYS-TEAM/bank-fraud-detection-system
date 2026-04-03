@@ -24,7 +24,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -50,7 +49,6 @@ public class PythonInferenceService {
     private int maxConcurrent;
 
     private ExecutorService inferenceExecutor;
-    private final AtomicInteger activeInferences = new AtomicInteger(0);
 
     private final Map<String, Path> modelFileCache = new ConcurrentHashMap<>();
     private final Map<String, Long> modelCacheTime = new ConcurrentHashMap<>();
@@ -148,12 +146,14 @@ public class PythonInferenceService {
             execDockerCopy(tempPipeline, containerPipelinePath);
             execDockerCopy(tempInput, containerInputPath);
 
+            double threshold = getModelThreshold(model);
             ProcessBuilder pb = new ProcessBuilder(
                     "docker", "exec", containerName,
                     "python", "/app/scripts/inference_service.py",
                     "--model-path", containerModelPath,
                     "--pipeline-path", containerPipelinePath,
-                    "--input", containerInputPath);
+                    "--input", containerInputPath,
+                    "--threshold", String.valueOf(threshold));
 
             Process process = pb.start();
             String outputStr = executeProcess(process);
@@ -246,6 +246,7 @@ public class PythonInferenceService {
                 log.info("ONNX model copied to container: {}", containerOnnxPath);
             }
 
+            double threshold = getModelThreshold(model);
             ProcessBuilder pb;
             if (useOnnx && containerOnnxPath != null) {
                 log.info("Using ONNX model for inference (2-3x faster)");
@@ -254,7 +255,8 @@ public class PythonInferenceService {
                         "python", "/app/scripts/inference_service.py",
                         "--model-path", containerOnnxPath,
                         "--pipeline-path", containerPipelinePath,
-                        "--input", containerInputPath);
+                        "--input", containerInputPath,
+                        "--threshold", String.valueOf(threshold));
             } else {
                 log.info("Using joblib model for inference");
                 pb = new ProcessBuilder(
@@ -262,7 +264,8 @@ public class PythonInferenceService {
                         "python", "/app/scripts/inference_service.py",
                         "--model-path", containerModelPath,
                         "--pipeline-path", containerPipelinePath,
-                        "--input", containerInputPath);
+                        "--input", containerInputPath,
+                        "--threshold", String.valueOf(threshold));
             }
 
             Process process = pb.start();
@@ -486,6 +489,25 @@ public class PythonInferenceService {
             }
         }
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    public double getModelThreshold(ModelML model) {
+        if (model.getHyperparameters() != null &&
+                model.getHyperparameters().containsKey("_trainingResults")) {
+            Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters()
+                    .get("_trainingResults");
+
+            if (trainingResults.containsKey("thresholds")) {
+                Map<String, Object> thresholds = (Map<String, Object>) trainingResults.get("thresholds");
+                Object finalObj = thresholds.get("final");
+                if (finalObj instanceof Number) {
+                    return ((Number) finalObj).doubleValue();
+                }
+            }
+        }
+        // Fallback to 0.75 if not specified (legacy or default)
+        return 0.75;
     }
 
     private void execDockerCopy(Path source, String destination) throws Exception {

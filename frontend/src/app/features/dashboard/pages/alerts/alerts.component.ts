@@ -19,7 +19,7 @@ export class AlertsComponent implements OnInit {
 
   // Pagination signals
   currentPage = signal(0);
-  pageSize = signal(10);
+  pageSize = signal(8);
   totalElements = signal(0);
   totalPages = signal(0);
 
@@ -154,6 +154,12 @@ export class AlertsComponent implements OnInit {
   onPageChange(page: number): void {
     this.currentPage.set(page);
     this.loadAlerts();
+  }
+
+  getAlertDisplayRange() {
+    const start = this.currentPage() * this.pageSize() + 1;
+    const end = Math.min((this.currentPage() + 1) * this.pageSize(), this.totalElements());
+    return { start, end };
   }
 
   onSearchChange(query: string): void {

@@ -81,6 +81,32 @@
   100% { opacity: 1; transform: scale(1); }
 }
 
+/* Scrollable Model List */
+.model-list-wrapper {
+  max-height: 460px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #e2e8f0 transparent;
+  scroll-behavior: smooth;
+}
+
+.model-list-wrapper::-webkit-scrollbar {
+  width: 5px;
+}
+
+.model-list-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.model-list-wrapper::-webkit-scrollbar-thumb {
+  background-color: #e2e8f0;
+  border-radius: 20px;
+}
+
+.model-list-wrapper::-webkit-scrollbar-thumb:hover {
+  background-color: #cbd5e1;
+}
+
 /* Responsive adjustments */
 @media (max-width: 640px) {
   .btn-action, .badge-active {

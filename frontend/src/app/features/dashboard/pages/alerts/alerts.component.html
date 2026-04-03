@@ -103,16 +103,13 @@
                     <tr class="bg-gray-50/50 text-left border-b border-gray-100">
                         <th class="pl-20 pr-8 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">ID
                             Transaction</th>
-                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type /
-                            Alerte
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type / Alerte
                         </th>
                         <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Montant</th>
                         <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
                             Score Risque</th>
-                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
-                            Statut</th>
-                        <th
-                            class="pl-10 pr-32 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">Statut</th>
+                        <th class="pl-10 pr-32 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
                             Actions</th>
                     </tr>
                 </thead>
@@ -139,36 +136,28 @@
                     @for (alert of alerts(); track alert.alertUuid) {
                     <tr class="hover:bg-gray-50 group/row cursor-pointer">
                         <td class="pl-20 pr-8 py-5">
-                            <span
-                                class="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-[11px] font-bold tracking-tight">
+                            <span class="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-[11px] font-bold tracking-tight">
                                 #TXN-{{ alert.transactionId }}
                             </span>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex flex-col">
-                                <span class="text-sm font-bold text-gray-800">{{ translateAlertType(alert.alertType)
-                                    }}</span>
-                                <span class="text-[11px] text-gray-400 font-medium">{{ alert.createdAt | date:'dd MMM
-                                    yyyy, HH:mm' }}</span>
+                                <span class="text-sm font-bold text-gray-800">{{ translateAlertType(alert.alertType) }}</span>
+                                <span class="text-[11px] text-gray-400 font-medium">{{ alert.createdAt | date:'dd MMM yyyy, HH:mm' }}</span>
                             </div>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex flex-col">
-                                <span class="text-sm font-semibold text-slate-800">{{ alert.transactionAmount |
-                                    currency:(alert.transactionCurrency || 'TND'):'symbol':'1.2-2' }}</span>
-                                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{{
-                                    alert.transactionChannel }}</span>
+                                <span class="text-sm font-semibold text-slate-800">{{ alert.transactionAmount | currency:(alert.transactionCurrency || 'TND'):'symbol':'1.2-2' }}</span>
+                                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{{ alert.transactionChannel }}</span>
                             </div>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex justify-center">
                                 <div [ngClass]="getRiskBadgeClass(alert.riskLevel)" class="risk-badge-base">
-                                    <i-feather [name]="getRiskIcon(alert.riskLevel)"
-                                        style="width: 13px; height: 13px; stroke-width: 2.5px;"></i-feather>
-                                    <span class="font-black text-[10px] tracking-tight">{{
-                                        translateRisk(alert.riskLevel) }}</span>
-                                    <span class="font-black text-[11px] ml-[2px]">({{ (alert.fraudScore *
-                                        100).toFixed(0) }}%)</span>
+                                    <i-feather [name]="getRiskIcon(alert.riskLevel)" style="width: 13px; height: 13px; stroke-width: 2.5px;"></i-feather>
+                                    <span class="font-black text-[10px] tracking-tight">{{ translateRisk(alert.riskLevel) }}</span>
+                                    <span class="font-black text-[11px] ml-[2px]">({{ (alert.fraudScore * 100).toFixed(0) }}%)</span>
                                 </div>
                             </div>
                         </td>
@@ -194,27 +183,32 @@
             </table>
         </div>
 
-        <!-- Pagination -->
-        @if (!isLoading() && totalPages() > 1) {
-        <div class="px-8 py-5 border-t border-gray-100 flex items-center justify-between bg-white text-gray-500">
-            <div class="text-xs font-bold uppercase tracking-widest opacity-60">
-                Page {{ currentPage() + 1 }} sur {{ totalPages() }}
+        <!-- Pagination Segment -->
+        @if (!isLoading() && totalElements() > 0) {
+            <div class="px-8 py-8 border-t border-gray-100 bg-white flex items-center justify-between">
+                <div class="text-[11px] font-bold text-gray-400 uppercase tracking-widest pl-2">
+                    Affichage de {{ getAlertDisplayRange().start }}-{{ getAlertDisplayRange().end }} sur {{ totalElements() }} résultats
+                </div>
+                <div class="flex gap-3">
+                    <button (click)="onPageChange(currentPage() - 1)" [disabled]="currentPage() === 0"
+                        class="px-5 py-2.5 text-[13px] font-bold border border-gray-200 text-gray-600 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all flex items-center gap-2.5 shadow-sm active:scale-95">
+                        <i-feather name="chevron-left" class="w-4 h-4"></i-feather>
+                        Précédent
+                    </button>
+                    <button (click)="onPageChange(currentPage() + 1)" [disabled]="currentPage() >= totalPages() - 1"
+                        class="px-5 py-2.5 text-[13px] font-bold border border-gray-200 text-gray-600 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all flex items-center gap-2.5 shadow-sm active:scale-95">
+                        Suivant
+                        <i-feather name="chevron-right" class="w-4 h-4"></i-feather>
+                    </button>
+                </div>
             </div>
-            <div class="flex gap-2">
-                <button (click)="onPageChange(currentPage() - 1)" [disabled]="currentPage() === 0"
-                    class="p-2 border border-gray-100 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-all">
-                    <i-feather name="chevron-left" class="w-5 h-5"></i-feather>
-                </button>
-                <button (click)="onPageChange(currentPage() + 1)" [disabled]="currentPage() >= totalPages() - 1"
-                    class="p-2 border border-gray-100 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-all">
-                    <i-feather name="chevron-right" class="w-5 h-5"></i-feather>
-                </button>
-            </div>
-        </div>
         }
     </div>
 </div>
 
-<app-alert-details-modal [isOpen]="isDetailsOpen()" [alert]="selectedAlert()" (close)="closeDetails()"
+<app-alert-details-modal 
+    [isOpen]="isDetailsOpen()" 
+    [alert]="selectedAlert()" 
+    (close)="closeDetails()" 
     (action)="handleAlertAction($event)">
 </app-alert-details-modal>

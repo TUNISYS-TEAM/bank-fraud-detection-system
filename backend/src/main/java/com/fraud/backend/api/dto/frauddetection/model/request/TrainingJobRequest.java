@@ -24,6 +24,8 @@ public class TrainingJobRequest {
     private Integer randomSeed = 42;
     
     private Boolean enableHyperparameterTuning = false;
+
+    private Boolean isTest = false;
     
     private Integer tuningTrials = 10; 
 }

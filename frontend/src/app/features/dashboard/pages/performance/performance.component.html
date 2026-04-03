@@ -182,7 +182,7 @@
         <p class="text-sm text-gray-400 mt-1">Aucun modèle ne correspond aux critères de recherche</p>
       </div>
 
-      <div *ngIf="!isLoading() && hasFilteredModels()">
+      <div *ngIf="!isLoading() && hasFilteredModels()" class="model-list-wrapper">
         <div *ngFor="let model of filteredModels()" (click)="toggleModelSelection(model)"
           [ngClass]="{'bg-blue-50/30': isModelSelected(model.modelUuid)}"
           class="px-8 py-5 hover:bg-gray-50/80 transition-all cursor-pointer border-b border-gray-50 last:border-0 group/row">
@@ -612,7 +612,7 @@
             </div>
           </div>
 
-          <!-- 1. ALERTE CRITIQUE / PLAN D'ACTION (Orange - Visible if >= 15%) -->
+          <!-- 1. ALERTE CRITIQUE / PLAN D'ACTION (Orange - Visible if >= 10%) -->
           <div *ngIf="modelDriftData().isCritical || modelDriftData().currentDrift >= driftThreshold"
             class="mt-6 bg-amber-50 rounded-2xl p-6 border border-amber-200 animate-fadeIn">
             <div class="flex items-start gap-4">
@@ -632,7 +632,7 @@
             </div>
           </div>
 
-          <!-- 2. VIGILANCE (Orange - Visible if 12% to 15%) -->
+          <!-- 2. VIGILANCE (Orange - Visible if 8% to 10%) -->
           <div *ngIf="!modelDriftData().isCritical && modelDriftData().currentDrift >= driftThreshold * 0.8 && modelDriftData().currentDrift < driftThreshold && !isLoadingDrift()"
             class="mt-6 bg-amber-50 rounded-2xl p-6 border border-amber-200 animate-fadeIn">
             <div class="flex items-start gap-4">
@@ -643,7 +643,7 @@
                 <p class="text-sm font-black text-amber-900 mb-1 uppercase tracking-wider">État du système : Vigilance</p>
                 <p class="text-sm text-amber-700 leading-relaxed">
                   Une variation de <span class="font-black">{{ modelDriftData().currentDrift.toFixed(1) }}%</span> 
-                  a été observée. Le modèle reste dans sa plage de stabilité, sous le seuil d'alerte de 15%. Une surveillance régulière est recommandée.
+                  a été observée. Le modèle reste dans sa plage de stabilité, sous le seuil d'alerte de 10%. Une surveillance régulière est recommandée.
                 </p>
               </div>
             </div>

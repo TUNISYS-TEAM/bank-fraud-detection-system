@@ -5,15 +5,19 @@
         <div
             class="px-8 py-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white">
             <div class="flex items-center gap-4">
-                <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center shadow-sm">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
+                <div class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm"
+                    [ngClass]="modelResult?.modelType === 'XGBOOST' ? 'bg-orange-100 text-orange-600' : 
+                               modelResult?.modelType === 'RANDOM_FOREST' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'">
+                    <i-feather [name]="modelResult?.modelType === 'XGBOOST' ? 'trending-up' : 
+                                       modelResult?.modelType === 'RANDOM_FOREST' ? 'git-merge' : 'zap'" 
+                        class="w-6 h-6">
+                    </i-feather>
                 </div>
                 <div>
                     <h2 class="text-2xl font-bold text-gray-900">Détails du Modèle</h2>
-                    <p class="text-sm text-gray-500">Version {{ (modelResult?.modelUuid || '').slice(0, 8) || 'N/A' }}
+                    <p class="text-sm text-gray-500">
+                        <span class="font-bold text-gray-900">{{ getModelFullTypeName() }}</span>
+                        <span class="font-bold text-gray-400 ml-2">{{ getModelVersion() }}</span>
                     </p>
                 </div>
             </div>
@@ -189,25 +193,37 @@
                     <h3 class="text-lg font-bold text-indigo-900 mb-4">Hyperparamètres</h3>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
-                            <p class="text-xs text-indigo-700 font-bold">n_estimators</p>
-                            <p class="text-xl font-black text-indigo-900">{{ getHyperparameterValue('n_estimators') !==
-                                null ? getHyperparameterValue('n_estimators') : '—' }}</p>
+                            <p class="text-xs text-indigo-700 font-bold">
+                                {{ (modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM') ? "nb d'itération" : "n_estimators" }}
+                            </p>
+                            <p class="text-xl font-black text-indigo-900">
+                                {{ getHyperparameterValue('n_estimators') !== null ? getHyperparameterValue('n_estimators') : '—' }}
+                            </p>
                         </div>
                         <div>
-                            <p class="text-xs text-indigo-700 font-bold">max_depth</p>
-                            <p class="text-xl font-black text-indigo-900">{{ getHyperparameterValue('max_depth') !==
-                                null ? getHyperparameterValue('max_depth') : '—' }}</p>
+                            <p class="text-xs text-indigo-700 font-bold">
+                                {{ modelResult?.modelType === 'LIGHTGBM' ? "num_leaves" : "max_depth" }}
+                            </p>
+                            <p class="text-xl font-black text-indigo-900">
+                                {{ getHyperparameterValue(modelResult?.modelType === 'LIGHTGBM' ? 'num_leaves' : 'max_depth') !== null ? 
+                                   getHyperparameterValue(modelResult?.modelType === 'LIGHTGBM' ? 'num_leaves' : 'max_depth') : '—' }}
+                            </p>
                         </div>
                         <div>
-                            <p class="text-xs text-indigo-700 font-bold">min_samples_split</p>
-                            <p class="text-xl font-black text-indigo-900">{{ getHyperparameterValue('min_samples_split')
-                                !== null ? getHyperparameterValue('min_samples_split') : '—' }}</p>
+                            <p class="text-xs text-indigo-700 font-bold">
+                                {{ (modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM') ? "learning rate" : "min_samples_split" }}
+                            </p>
+                            <p class="text-xl font-black text-indigo-900">
+                                {{ getHyperparameterValue(modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM' ? 'learning_rate' : 'min_samples_split') !== null ? 
+                                   getHyperparameterValue(modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM' ? 'learning_rate' : 'min_samples_split') : '—' }}
+                            </p>
                         </div>
                         <div>
                             <p class="text-xs text-indigo-700 font-bold">Seuil</p>
-                            <p class="text-xl font-black text-indigo-900">{{
-                                getHyperparameterValue('detection_threshold') !== null ?
-                                formatPercent(getHyperparameterValue('detection_threshold')) : '—' }}</p>
+                            <p class="text-xl font-black text-indigo-900">
+                                {{ getHyperparameterValue('detection_threshold') !== null ?
+                                   formatPercent(getHyperparameterValue('detection_threshold')) : '—' }}
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -239,6 +255,31 @@
             <!-- Thresholds Tab -->
             @if (activeTab === 'thresholds') {
             <div class="space-y-8">
+                <!-- Thresholds Detailed Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-5 shadow-sm">
+                        <p class="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-1">Seuil F-Beta</p>
+                        <p class="text-2xl font-black text-indigo-900 mb-2">
+                           {{ formatPercent(modelResult?.thresholds?.fbeta || 0) }}
+                        </p>
+                        <p class="text-[10px] text-gray-500 font-medium">Maximise l'équilibre entre fraude détectée (Rappel) et faux positifs (Précision), avec un score F-beta de {{ (modelResult?.thresholds?.fbeta_score !== undefined ? modelResult.thresholds.fbeta_score : 0) | number:'1.2-2' }}</p>
+                    </div>
+                    <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-5 shadow-sm">
+                        <p class="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Seuil Optimisé (Coût)</p>
+                        <p class="text-2xl font-black text-emerald-900 mb-2">
+                            {{ formatPercent(modelResult?.thresholds?.cost || 0) }}
+                        </p>
+                        <p class="text-[10px] text-gray-500 font-medium">Minimise la perte financière totale (fraude non détectée + coût d'investigation des faux positifs). Coût min: {{ formatNumber(modelResult?.thresholds?.min_cost || 0) }}€</p>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm">
+                        <p class="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Seuil Final Appliqué</p>
+                        <p class="text-2xl font-black text-blue-900 mb-2">
+                            {{ formatPercent(modelResult?.thresholds?.final || 0) }}
+                        </p>
+                        <p class="text-[10px] text-gray-500 font-medium">C'est ce seuil qui a été utilisé pour calculer la matrice de confusion et les métriques de performance finales affichées.</p>
+                    </div>
+                </div>
+
                 <div class="bg-white rounded-xl border border-gray-200 p-6">
                     <div id="thresholdChart" style="width: 100%; height: 500px;"></div>
                 </div>

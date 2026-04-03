@@ -43,8 +43,6 @@ public class TransactionScoringService {
     private final ModelDriftMonitoringService modelDriftMonitoringService;
     private final ObjectMapper objectMapper;
 
-    @Value("${fraud.scoring.fraud-threshold:0.75}")
-    private double fraudThreshold;
 
     @Value("${fraud.scoring.batch-size:200}")
     private int batchSize;
@@ -52,9 +50,6 @@ public class TransactionScoringService {
     private final AtomicInteger transactionsSinceLastDriftCheck = new AtomicInteger(0);
     private static final int DRIFT_CHECK_INTERVAL = 500;
 
-    private volatile ModelML cachedDeployedModel;
-    private volatile LocalDateTime cachedModelTime;
-    private static final long MODEL_CACHE_TTL_MS = 300_000;
 
     private final ExecutorService driftExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "drift-check-thread");
@@ -298,7 +293,7 @@ public class TransactionScoringService {
             behaviorsToUpdate.add(behavior);
 
             tx.setFraudScore(BigDecimal.valueOf(fraudScore));
-            tx.setIsFraud(fraudScore > fraudThreshold);
+            tx.setIsFraud(fraudScore >= pythonInferenceService.getModelThreshold(model));
             tx.setModel(model);
             tx.setUpdatedAt(LocalDateTime.now());
             tx.setFraudReason(fraudReasonJson);
@@ -425,7 +420,7 @@ public class TransactionScoringService {
                 .put("summary", "Transaction with score " + fraudScore);
 
         transaction.setFraudScore(BigDecimal.valueOf(fraudScore));
-        transaction.setIsFraud(fraudScore > fraudThreshold);
+        transaction.setIsFraud(fraudScore >= pythonInferenceService.getModelThreshold(model));
         transaction.setModel(model);
         transaction.setUpdatedAt(LocalDateTime.now());
         transaction.setFraudReason(fraudReasonJson);
@@ -471,14 +466,8 @@ public class TransactionScoringService {
     }
 
     private ModelML getCachedDeployedModel() {
-        if (cachedDeployedModel != null && cachedModelTime != null &&
-                Duration.between(cachedModelTime, LocalDateTime.now()).toMillis() < MODEL_CACHE_TTL_MS) {
-            return cachedDeployedModel;
-        }
-        cachedDeployedModel = modelProvider.getDeployedModelEntity()
-                .orElseThrow(() -> new IllegalStateException("No model deployed"));
-        cachedModelTime = LocalDateTime.now();
-        return cachedDeployedModel;
+        return modelProvider.getDeployedModelEntity()
+                .orElseThrow(() -> new IllegalStateException("Aucun modèle n'est déployé pour le moment"));
     }
 
     private void checkDriftPeriodically() {

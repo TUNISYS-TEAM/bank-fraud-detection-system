@@ -10,6 +10,7 @@ import com.fraud.backend.data.enums.AccountType;
 import com.fraud.backend.data.enums.datasets.DatasetStatus;
 import com.fraud.backend.data.enums.datasets.DatasetType;
 import com.fraud.backend.data.repository.frauddetection.DatasetRepository;
+import com.fraud.backend.data.service.frauddetection.scoring.BackfillScoringService;
 import com.fraud.backend.data.service.storage.StorageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,6 +53,7 @@ public class DatasetService {
     private final DatasetRepository datasetRepository;
     private final StorageService storageService;
     private final DatasetAnalysisPythonService datasetAnalysisPythonService;
+    private final BackfillScoringService backfillScoringService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -136,8 +138,8 @@ public class DatasetService {
 
         log.info("Uploading dataset of type: {} with name: {}", type, datasetName);
 
-
-        // On permet désormais plusieurs datasets du même type (ils seront masqués par défaut)
+        // On permet désormais plusieurs datasets du même type (ils seront masqués par
+        // défaut)
 
         // Créer dataset : status = null, visibility = false par défaut
         Dataset ds = Dataset.builder()
@@ -276,7 +278,8 @@ public class DatasetService {
             }
 
         } catch (Exception e) {
-            log.error("Fatal error during Parquet conversion for dataset {}: {}", ds.getDatasetUuid(), e.getMessage(), e);
+            log.error("Fatal error during Parquet conversion for dataset {}: {}", ds.getDatasetUuid(), e.getMessage(),
+                    e);
             throw new RuntimeException("Parquet conversion failed: " + e.getMessage(), e);
         } finally {
             // Clean up any leftover UTF-8 file
@@ -295,7 +298,8 @@ public class DatasetService {
         ds = datasetRepository.save(ds);
         log.info("Dataset metadata updated with file path: {}", finalFilePath);
 
-        // Skip DB import: data will only be imported when dataset is activated (visibility=true)
+        // Skip DB import: data will only be imported when dataset is activated
+        // (visibility=true)
         // Clean up the temporary CSV file
         if (tempCsvFile != null && Files.exists(tempCsvFile)) {
             try {
@@ -330,8 +334,6 @@ public class DatasetService {
         return ds;
     }
 
-
-
     @Transactional
     public void activate(UUID uuid) {
         Dataset target = get(uuid);
@@ -355,6 +357,12 @@ public class DatasetService {
         if (shouldEnforceSingleVisibility(target.getType())) {
             try {
                 importDataFromMinioToDb(target);
+
+                // === NEW: Trigger backfill for the newly imported transactions ===
+                if (target.getType() == DatasetType.TRANSACTIONS_VAL) {
+                    log.info("New transactions imported from dataset {}. Triggering backfill...", uuid);
+                    backfillScoringService.tryStartBackfillIfNeeded();
+                }
             } catch (Exception e) {
                 log.error("Error importing data from MinIO to DB during activation: {}", e.getMessage(), e);
             }
@@ -444,8 +452,10 @@ public class DatasetService {
     }
 
     /**
-     * Import data from a Parquet file stored in MinIO directly into the appropriate DB table.
-     * Downloads the Parquet, reads it with AvroParquetReader, and batch-inserts via jdbcTemplate.
+     * Import data from a Parquet file stored in MinIO directly into the appropriate
+     * DB table.
+     * Downloads the Parquet, reads it with AvroParquetReader, and batch-inserts via
+     * jdbcTemplate.
      */
     private void importDataFromMinioToDb(Dataset ds) throws IOException {
         if (ds.getFilePath() == null || ds.getFilePath().isBlank()) {
@@ -503,20 +513,23 @@ public class DatasetService {
     }
 
     private String getStringField(GenericRecord record, String fieldName) {
-        if (fieldName == null) return null;
+        if (fieldName == null)
+            return null;
         Object val = record.get(fieldName);
         return val != null ? val.toString() : null;
     }
 
     /**
-     * Resolve Parquet column names to our standard keys using the REQUIRED_COLUMNS_BY_TYPE aliases.
+     * Resolve Parquet column names to our standard keys using the
+     * REQUIRED_COLUMNS_BY_TYPE aliases.
      * Returns a map: standardKey -> actualParquetColumnName
      */
     private Map<String, String> resolveParquetColumns(org.apache.hadoop.fs.Path hadoopPath,
             org.apache.hadoop.conf.Configuration conf, DatasetType type) throws IOException {
 
         Map<String, List<String>> requiredMap = REQUIRED_COLUMNS_BY_TYPE.get(type);
-        if (requiredMap == null) return Collections.emptyMap();
+        if (requiredMap == null)
+            return Collections.emptyMap();
 
         // Read schema from Parquet to get actual column names
         Set<String> parquetColumns = new HashSet<>();
@@ -581,7 +594,8 @@ public class DatasetService {
                     if (fullName != null && !fullName.isBlank()) {
                         String[] parts = fullName.split(" ", 2);
                         firstName = parts[0];
-                        if (parts.length > 1) lastName = parts[1];
+                        if (parts.length > 1)
+                            lastName = parts[1];
                     }
 
                     Long clientId = parseLongSafe(getStringField(record, colMap.get("Client_Id")));
@@ -745,7 +759,8 @@ public class DatasetService {
                         String deviceId = cleanStringSafe(getStringField(record, colMap.get("Device_Id")));
                         String ipAddress = cleanStringSafe(getStringField(record, colMap.get("ip_address")));
                         String cur = cleanStringSafe(getStringField(record, colMap.get("currency")));
-                        if (cur == null || cur.isBlank()) cur = "TND";
+                        if (cur == null || cur.isBlank())
+                            cur = "TND";
 
                         batch.add(new Object[] {
                                 UUID.randomUUID(), accountId, amount, cur,
@@ -990,7 +1005,8 @@ public class DatasetService {
             if (request.getVisibility() && !oldVisibility) {
                 // For types that should have only one visible dataset
                 if (shouldEnforceSingleVisibility(ds.getType())) {
-                    Optional<Dataset> visibleOfSameType = datasetRepository.findVisibleByTypeExcluding(ds.getType(), uuid);
+                    Optional<Dataset> visibleOfSameType = datasetRepository.findVisibleByTypeExcluding(ds.getType(),
+                            uuid);
                     if (visibleOfSameType.isPresent()) {
                         Dataset other = visibleOfSameType.get();
                         throw new IllegalArgumentException(String.format(
@@ -1010,6 +1026,12 @@ public class DatasetService {
         if (visibilityChanged && ds.getVisibility() && shouldEnforceSingleVisibility(ds.getType())) {
             try {
                 importDataFromMinioToDb(ds);
+
+                // Trigger backfill for newly imported validation transactions
+                if (ds.getType() == DatasetType.TRANSACTIONS_VAL) {
+                    log.info("New transactions imported from dataset {} during update. Triggering backfill...", uuid);
+                    backfillScoringService.tryStartBackfillIfNeeded();
+                }
             } catch (Exception e) {
                 log.error("Error importing data from MinIO to DB during update: {}", e.getMessage(), e);
             }
@@ -1349,8 +1371,6 @@ public class DatasetService {
     }
 
     // ==================== PRIVATE HELPERS ====================
-
-
 
     private BigDecimal bytesToMb(long bytes) {
         return BigDecimal.valueOf(bytes)
@@ -1788,7 +1808,6 @@ public class DatasetService {
         if (exitCode != 0)
             throw new RuntimeException("Docker copy from container failed: " + output);
     }
-
 
     private String readStream(InputStream stream) throws IOException {
         StringBuilder sb = new StringBuilder();

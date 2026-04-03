@@ -17,7 +17,6 @@ public class ModelMetricsResponse {
     private String version;
     private String status;
     private String validationComment;
-
     
     // Classification metrics
     private Double accuracy;
@@ -43,9 +42,16 @@ public class ModelMetricsResponse {
     // Feature importance
     private Map<String, Double> featureImportance;
     private List<String> topFeatures;
+    private List<String> selectedFeatures;
+    
+    // Config
+    private Map<String, Object> hyperparameters;
     
     // Model paths
     private String onnxPath;
+    
+    // Thresholds
+    private Map<String, Object> thresholds;
     
     public void calculateDerivedMetrics() {
         if (trueNegatives != null && falsePositives != null && (trueNegatives + falsePositives) > 0) {

@@ -12,8 +12,9 @@ from ml_pipeline.training.analyze_dataset import analyze_dataset_file
 from ml_pipeline.transformers.behavioral.client_behavior import ClientBehaviorTransformer
 import pandas as pd
 
-# NEW
 from scripts.train_random_forest import main as train_random_forest_main
+from scripts.train_xgboost import main as train_xgboost_main
+from scripts.train_lightgbm import main as train_lightgbm_main
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,6 +53,32 @@ def build_parser() -> argparse.ArgumentParser:
     rf_parser.add_argument("--hyperparameters", required=True)
     rf_parser.add_argument("--test-size", type=float, default=0.2)
     rf_parser.add_argument("--random-seed", type=int, default=42)
+
+    # ---- train-xgboost ----
+    xgb_parser = subparsers.add_parser(
+        "train-xgboost",
+        help="Entraîne un modèle XGBoost pour le backend Java"
+    )
+    xgb_parser.add_argument("--dataset-path", required=True)
+    xgb_parser.add_argument("--dataset-id", required=True)
+    xgb_parser.add_argument("--job-id", required=True)
+    xgb_parser.add_argument("--timestamp", required=True)
+    xgb_parser.add_argument("--hyperparameters", required=True)
+    xgb_parser.add_argument("--test-size", type=float, default=0.2)
+    xgb_parser.add_argument("--random-seed", type=int, default=42)
+
+    # ---- train-lightgbm ----
+    lgbm_parser = subparsers.add_parser(
+        "train-lightgbm",
+        help="Entraîne un modèle LightGBM pour le backend Java"
+    )
+    lgbm_parser.add_argument("--dataset-path", required=True)
+    lgbm_parser.add_argument("--dataset-id", required=True)
+    lgbm_parser.add_argument("--job-id", required=True)
+    lgbm_parser.add_argument("--timestamp", required=True)
+    lgbm_parser.add_argument("--hyperparameters", required=True)
+    lgbm_parser.add_argument("--test-size", type=float, default=0.2)
+    lgbm_parser.add_argument("--random-seed", type=int, default=42)
 
     # ---- export-onnx ----
     export_parser = subparsers.add_parser("export-onnx", help="Exporte le modèle au format ONNX")
@@ -397,6 +424,32 @@ def main() -> None:
             "--random-seed", str(args.random_seed),
         ]
         train_random_forest_main()
+
+    elif args.command == "train-xgboost":
+        sys.argv = [
+            "train_xgboost",
+            "--dataset-path", args.dataset_path,
+            "--dataset-id", args.dataset_id,
+            "--job-id", args.job_id,
+            "--timestamp", args.timestamp,
+            "--hyperparameters", args.hyperparameters,
+            "--test-size", str(args.test_size),
+            "--random-seed", str(args.random_seed),
+        ]
+        train_xgboost_main()
+
+    elif args.command == "train-lightgbm":
+        sys.argv = [
+            "train_lightgbm",
+            "--dataset-path", args.dataset_path,
+            "--dataset-id", args.dataset_id,
+            "--job-id", args.job_id,
+            "--timestamp", args.timestamp,
+            "--hyperparameters", args.hyperparameters,
+            "--test-size", str(args.test_size),
+            "--random-seed", str(args.random_seed),
+        ]
+        train_lightgbm_main()
 
     elif args.command == "export-onnx":
         sys.argv = [

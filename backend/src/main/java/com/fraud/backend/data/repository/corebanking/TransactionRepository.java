@@ -7,8 +7,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -122,4 +124,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
         // Compte le nombre de transactions traitées par un modèle spécifique sur une période
         long countByModelAndCreatedAtAfter(com.fraud.backend.data.entity.frauddetection.ModelML model, LocalDateTime since);
+
+        @Modifying
+        @Transactional
+        @Query("UPDATE Transaction t SET t.isFraud = false, t.fraudScore = null, t.fraudReason = null, t.model = null")
+        void resetAllScoringData();
 }

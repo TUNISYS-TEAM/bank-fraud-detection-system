@@ -49,4 +49,12 @@ flask>=2.0.0
 flask-cors>=4.0.0  
 shap==0.45.0
 
-dask
+dask[complete]>=2024.0.0
+
+
+# PyTorch (CPU version – adjust for CUDA if needed)
+torch>=2.0.0
+torchvision>=0.15.0
+# Captum for integrated gradients
+captum>=0.6.0
+

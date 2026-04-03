@@ -76,7 +76,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   // Pagination signals
   currentPage = signal(0);
-  readonly pageSize = signal(10);
+  readonly pageSize = signal(20);
   totalElements = signal(0);
   totalPages = signal(0);
 
@@ -112,7 +112,9 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   // Model Drift tracking
   modelDriftData = signal<any>(null);
   isLoadingDrift = signal(false);
-  driftThreshold = 15;
+  readonly driftCriticalThreshold = 10;
+  readonly driftWarningThreshold = 8;
+  driftThreshold = 10;
   driftAlert = signal<{ show: boolean; message: string; driftPercentage: number; level: 'critical' | 'warning' | 'info' | 'success' }>({
     show: false,
     message: '',
@@ -1215,32 +1217,24 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   }
 
   private getAlertLevel(driftPercentage: number): string {
-    if (driftPercentage >= this.driftThreshold) return 'critical';
-    if (driftPercentage >= this.driftThreshold * 0.9) return 'warning';
-    if (driftPercentage >= this.driftThreshold * 0.7) return 'info';
+    if (driftPercentage >= this.driftCriticalThreshold) return 'critical';
+    if (driftPercentage >= this.driftWarningThreshold) return 'warning';
     return 'success';
   }
 
   private updateDriftAlert(driftData: any): void {
     const drift = driftData.currentDrift;
-    if (drift >= this.driftThreshold) {
+    if (drift >= this.driftCriticalThreshold) {
       this.driftAlert.set({
         show: true,
-        message: `ALERTE CRITIQUE: Dérive à ${drift.toFixed(1)}% - Le modèle a dépassé le seuil critique de ${this.driftThreshold}%. Un réentraînement immédiat est recommandé.`,
+        message: `ALERTE CRITIQUE : Dérive à ${drift.toFixed(1)}% - Le modèle a dépassé le seuil de danger de ${this.driftCriticalThreshold}%. Mise en production à risque.`,
         driftPercentage: drift,
         level: 'critical'
       });
-    } else if (drift >= this.driftThreshold) { // This part will be warning if we use a second threshold, keeping consistent with backend
+    } else if (drift >= this.driftWarningThreshold) {
       this.driftAlert.set({
         show: true,
-        message: `ATTENTION: Dérive à ${drift.toFixed(1)}% - La dérive du modèle approche du seuil critique de ${this.driftThreshold}%. Planifiez un réentraînement avec les données récentes.`,
-        driftPercentage: drift,
-        level: 'warning'
-      });
-    } else if (drift >= this.driftThreshold * 0.8) {
-      this.driftAlert.set({
-        show: true,
-        message: `Une variation de ${drift.toFixed(1)}% a été observée. Le modèle reste dans sa plage de stabilité, sous le seuil d’alerte de ${this.driftThreshold}%. Une surveillance régulière est recommandée.`,
+        message: `AVERTISSEMENT : Dérive à ${drift.toFixed(1)}% - La performance dévie du comportement normal (> ${this.driftWarningThreshold}%). Planifiez un réentraînement.`,
         driftPercentage: drift,
         level: 'warning'
       });
@@ -1250,31 +1244,23 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   }
 
   private getRecommendationsBasedOnDrift(driftPercentage: number, status?: string): string[] {
-    if (status === 'CRITICAL_DRIFT' || driftPercentage >= this.driftThreshold) {
+    if (status === 'CRITICAL_DRIFT' || driftPercentage >= this.driftCriticalThreshold) {
       return [
         'Ré entraîner immédiatement le modèle avec les données récentes',
-        'Analyser les changements dans la distribution des données entrantes',
-        'Vérifier les performances sur les dernières transactions frauduleuses',
-        'Réajuster les seuils de détection pour compenser la perte de précision'
+        'Le modèle est considéré comme obsolète pour la production actuelle',
+        'Analyser les changements brusques dans la distribution des données',
+        'Vérifier les faux négatifs (fraudes non détectées) récents'
       ];
-    } else if (status === 'WARNING' || driftPercentage >= this.driftThreshold * 0.7) {
+    } else if (status === 'WARNING' || driftPercentage >= this.driftWarningThreshold) {
       return [
-        'Planifier un réentraînement dans les 2 prochaines semaines',
-        'Analyser les segments où la performance diminue',
-        'Comparer les distributions des données actuelles vs données d\'entraînement',
-        'Vérifier si de nouveaux types de fraude sont apparus'
-      ];
-    } else if (driftPercentage >= this.driftThreshold * 0.4) {
-      return [
-        'Maintenir une surveillance accrue des performances',
-        'Mettre en place des alertes automatiques pour détecter les changements brusques',
-        'Collecter plus de données pour le prochain entraînement'
+        'Planifier un réentraînement préventif prochainement',
+        'Surveiller l\'évolution de la dérive quotidiennement',
+        'Comparer les distributions des caractéristiques clés'
       ];
     } else {
       return [
         'Performance stable - continuer la surveillance régulière',
-        'Maintenir les journaux (logs) pour analyse future',
-        'Documenter les caractéristiques actuelles du modèle'
+        'Le modèle est aligné avec les données de production actuelles'
       ];
     }
   }
@@ -1345,18 +1331,18 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         symbol: 'circle',
         symbolSize: 10,
         lineStyle: {
-          color: data.currentDrift >= this.driftThreshold ? '#dc2626' : 
-                 (data.currentDrift >= this.driftThreshold * 0.8 ? '#f59e0b' : '#10b981'),
+          color: data.currentDrift >= this.driftCriticalThreshold ? '#dc2626' : 
+                 (data.currentDrift >= this.driftWarningThreshold ? '#f59e0b' : '#10b981'),
           width: 3,
           shadowBlur: 10,
-          shadowColor: data.currentDrift >= this.driftThreshold ? 'rgba(220, 38, 38, 0.3)' : 
-                       (data.currentDrift >= this.driftThreshold * 0.8 ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)')
+          shadowColor: data.currentDrift >= this.driftCriticalThreshold ? 'rgba(220, 38, 38, 0.3)' : 
+                       (data.currentDrift >= this.driftWarningThreshold ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)')
         },
         itemStyle: {
           color: (params: any) => {
             const val = params.value;
-            if (val >= this.driftThreshold) return '#dc2626';
-            if (val >= this.driftThreshold * 0.8) return '#f59e0b';
+            if (val >= this.driftCriticalThreshold) return '#dc2626';
+            if (val >= this.driftWarningThreshold) return '#f59e0b';
             return '#10b981';
           },
           borderColor: '#ffffff',
@@ -1372,12 +1358,17 @@ export class PerformanceComponent implements OnInit, OnDestroy {
             { offset: 1, color: 'transparent' }
           ])
         },
-        markLine: {
+          markLine: {
           data: [{
             name: 'Seuil Critique',
-            yAxis: this.driftThreshold,
+            yAxis: this.driftCriticalThreshold,
             lineStyle: { color: '#ef4444', width: 2, type: 'dashed' },
-            label: { show: true, formatter: `Seuil: ${this.driftThreshold}%`, position: 'end', color: '#ef4444', fontWeight: 'bold' }
+            label: { show: true, formatter: `Seuil Critique: ${this.driftCriticalThreshold}%`, position: 'end', color: '#ef4444', fontWeight: 'bold' }
+          }, {
+            name: 'Seuil Alerte',
+            yAxis: this.driftWarningThreshold,
+            lineStyle: { color: '#f59e0b', width: 2, type: 'dashed' },
+            label: { show: true, formatter: `Alerte: ${this.driftWarningThreshold}%`, position: 'end', color: '#f59e0b', fontWeight: 'bold' }
           }],
           symbol: 'none'
         },

@@ -12,7 +12,7 @@ import java.util.UUID;
 @Builder
 public class TrainingJobResponse {
 
-    private UUID jobUuid; // This is just a tracking ID for this training run
+    private UUID jobUuid;
     private String jobName;
     private String status; // COMPLETED, FAILED
 
@@ -22,6 +22,7 @@ public class TrainingJobResponse {
     private UUID modelUuid;
     private String modelName;
     private String modelType;
+    private String version;
 
     private Map<String, Object> hyperparameters;
     private Map<String, Object> metrics;
@@ -32,6 +33,7 @@ public class TrainingJobResponse {
     private Integer testRows;
     private Double fraudRate;
 
+    private Map<String, Object> thresholds;
     private String modelPath; // Path to saved model joblib in MinIO
     private String pipelinePath; // Path to saved feature pipeline joblib in MinIO
     private String onnxPath; // Path to exported ONNX model in MinIO (null if export failed)
