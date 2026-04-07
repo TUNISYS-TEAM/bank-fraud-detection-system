@@ -6,6 +6,23 @@ spring:
       enabled: true
       file-size-threshold: 2KB
       location: ${java.io.tmpdir}
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      topic: notification-events                   
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      topic: notification-events
+      group-id: fraud-backend-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.type.mapping: notification:com.fraud.backend.kafka.NotificationEvent
+    listener:
+      auto-startup: true
 
   mail:
     host: smtp.gmail.com

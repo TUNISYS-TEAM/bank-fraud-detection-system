@@ -1,32 +1,30 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { Client, Message as StompMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { environment } from '../../../environments/environment';
-import { AuthService } from './auth.service';
 import { BehaviorSubject, Observable } from 'rxjs';
 
 export interface WebSocketMessage {
-  type: 'NEW_MESSAGE' | 'MESSAGE_READ' | 'UNREAD_COUNT';
+  type: 'NEW_MESSAGE' | 'MESSAGE_READ' | 'UNREAD_COUNT' | 'NOTIFICATION';
   payload: any;
   timestamp: string;
 }
 
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class WebSocketService {
-  private authService = inject(AuthService);
-
   private client: Client | null = null;
   private connected = new BehaviorSubject<boolean>(false);
   private unreadCount = new BehaviorSubject<number>(0);
   private messageSubject = new BehaviorSubject<WebSocketMessage | null>(null);
+  private notificationSubject = new BehaviorSubject<any | null>(null);
+
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private connectionInProgress = false;
 
   constructor() {
     this.ensureGlobalDefined();
+    setTimeout(() => this.connect(), 1000);
   }
 
   private ensureGlobalDefined(): void {
@@ -35,108 +33,120 @@ export class WebSocketService {
     }
   }
 
-  private initializeClient(): Client {
-    this.ensureGlobalDefined();
-
-    return new Client({
-      webSocketFactory: () => {
-        this.ensureGlobalDefined();
-        // withCredentials ensures HttpOnly cookies are sent during SockJS handshake
-        return new SockJS(`${environment.apiUrl}/ws`, null, {
-          withCredentials: true
-        } as any);
-      },
-      // No connectHeaders needed — token comes from HttpOnly cookie
-      debug: (str) => {
-        if (!environment.production) {
-          console.log('STOMP:', str);
-        }
-      },
-      reconnectDelay: 5000,
-      heartbeatIncoming: 4000,
-      heartbeatOutgoing: 4000,
-      logRawCommunication: !environment.production,
-      connectionTimeout: 10000,
-      splitLargeFrames: true
-    });
-  }
-
   connect(): void {
-    if (this.connectionInProgress || this.client?.active) {
+    if (this.connectionInProgress || (this.client && this.client.active)) {
       return;
     }
-
+    
     this.connectionInProgress = true;
     this.ensureGlobalDefined();
 
     try {
-      if (!this.client) {
-        this.client = this.initializeClient();
-        this.setupClientEventHandlers();
+      if (this.client) {
+        try { this.client.deactivate(); } catch(e) {}
       }
+      
+      this.client = new Client({
+        webSocketFactory: () => {
+          this.ensureGlobalDefined();
+          return new SockJS(`${environment.apiUrl}/ws`, null, {
+            withCredentials: true
+          } as any);
+        },
+        debug: (str) => {
+          if (!environment.production) console.log('STOMP:', str);
+        },
+        reconnectDelay: 5000,
+        heartbeatIncoming: 4000,
+        heartbeatOutgoing: 4000,
+      });
+
+      this.client.onConnect = () => {
+        this.connected.next(true);
+        this.reconnectAttempts = 0;
+        this.connectionInProgress = false;
+        this.subscribeToUserQueues();
+      };
+
+      this.client.onDisconnect = () => {
+        this.connected.next(false);
+        this.connectionInProgress = false;
+      };
+
+      this.client.onStompError = (frame) => {
+        this.connected.next(false);
+        this.connectionInProgress = false;
+      };
+
+      this.client.onWebSocketError = (event) => {
+        this.connected.next(false);
+        this.connectionInProgress = false;
+      };
+
       this.client.activate();
     } catch (error) {
-      console.error('Error connecting WebSocket:', error);
       this.connectionInProgress = false;
+    }
+  }
 
-      if (error instanceof ReferenceError && error.message.includes('global')) {
-        this.ensureGlobalDefined();
-        setTimeout(() => this.connect(), 100);
+  private subscribeToUserQueues(): void {
+    if (!this.client || !this.client.connected) {
+      return;
+    }
+
+    this.client.subscribe('/user/queue/notifications', (message: StompMessage) => {
+      try {
+        const notification = JSON.parse(message.body);
+        this.notificationSubject.next(notification);
+        this.messageSubject.next({
+          type: 'NOTIFICATION',
+          payload: notification,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        // Error handling without log
       }
-    }
-  }
+    });
 
-  private setupClientEventHandlers(): void {
-    if (!this.client) return;
+    this.client.subscribe('/user/queue/messages', (message: StompMessage) => {
+      try {
+        let payload: any;
+        try { payload = JSON.parse(message.body); } catch { payload = message.body; }
+        this.messageSubject.next({
+          type: 'NEW_MESSAGE',
+          payload,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        // Error handling without log
+      }
+    });
 
-    this.client.onConnect = () => {
-      console.log('WebSocket connected successfully');
-      this.connected.next(true);
-      this.reconnectAttempts = 0;
-      this.connectionInProgress = false;
-      this.subscribeToUserQueue();
-    };
-
-    this.client.onDisconnect = () => {
-      console.log('WebSocket disconnected');
-      this.connected.next(false);
-      this.connectionInProgress = false;
-    };
-
-    this.client.onStompError = (frame) => {
-      console.error('STOMP error', frame);
-      this.connected.next(false);
-      this.connectionInProgress = false;
-      this.handleReconnection();
-    };
-
-    this.client.onWebSocketError = (event) => {
-      console.error('WebSocket error', event);
-      this.connected.next(false);
-      this.connectionInProgress = false;
-      this.handleReconnection();
-    };
-
-    this.client.onWebSocketClose = (event) => {
-      console.log('WebSocket connection closed', event);
-      this.connected.next(false);
-      this.connectionInProgress = false;
-    };
-  }
-
-  private handleReconnection(): void {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-      setTimeout(() => {
-        if (!this.connected.value && !this.connectionInProgress) {
-          this.connect();
+    this.client.subscribe('/user/queue/unread', (message: StompMessage) => {
+      try {
+        const count = parseInt(message.body, 10);
+        if (!isNaN(count)) {
+          this.unreadCount.next(count);
+          this.messageSubject.next({
+            type: 'UNREAD_COUNT',
+            payload: count,
+            timestamp: new Date().toISOString()
+          });
         }
-      }, delay);
-    } else {
-      console.error('Max reconnection attempts reached');
-    }
+      } catch (error) {
+      }
+    });
+
+    this.client.subscribe('/user/queue/read', (message: StompMessage) => {
+      try {
+        this.messageSubject.next({
+          type: 'MESSAGE_READ',
+          payload: message.body,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+      }
+    });
   }
 
   disconnect(): void {
@@ -144,70 +154,14 @@ export class WebSocketService {
       try {
         this.client.deactivate();
       } catch (error) {
-        console.error('Error deactivating WebSocket connection:', error);
       }
     }
     this.connected.next(false);
     this.connectionInProgress = false;
   }
 
-  private subscribeToUserQueue(): void {
-    if (!this.client || !this.client.connected) return;
-
-    try {
-      // Spring resolves /user/queue/* to the authenticated principal automatically.
-      // Do NOT put user ID in the path — Spring handles routing by principal name.
-      this.client.subscribe('/user/queue/messages', (message: StompMessage) => {
-        try {
-          let payload: any;
-          try { payload = JSON.parse(message.body); } catch { payload = message.body; }
-          this.messageSubject.next({
-            type: 'NEW_MESSAGE',
-            payload,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          console.error('Error processing message:', error);
-        }
-      });
-
-      this.client.subscribe('/user/queue/unread', (message: StompMessage) => {
-        try {
-          const count = parseInt(message.body, 10);
-          if (!isNaN(count)) {
-            this.unreadCount.next(count);
-            this.messageSubject.next({
-              type: 'UNREAD_COUNT',
-              payload: count,
-              timestamp: new Date().toISOString()
-            });
-          }
-        } catch (error) {
-          console.error('Error processing unread count:', error);
-        }
-      });
-
-      this.client.subscribe('/user/queue/read', (message: StompMessage) => {
-        try {
-          this.messageSubject.next({
-            type: 'MESSAGE_READ',
-            payload: message.body,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          console.error('Error processing read receipt:', error);
-        }
-      });
-
-      console.log('Successfully subscribed to user queues');
-    } catch (error) {
-      console.error('Error subscribing to user queues:', error);
-    }
-  }
-
   sendMessage(destination: string, payload: any): void {
     if (!this.client || !this.client.connected) {
-      console.error('Cannot send message: WebSocket not connected');
       return;
     }
     try {
@@ -216,7 +170,6 @@ export class WebSocketService {
         body: JSON.stringify(payload)
       });
     } catch (error) {
-      console.error('Error sending message:', error);
     }
   }
 
@@ -238,6 +191,10 @@ export class WebSocketService {
 
   get messages$(): Observable<WebSocketMessage | null> {
     return this.messageSubject.asObservable();
+  }
+
+  get notifications$(): Observable<any | null> {
+    return this.notificationSubject.asObservable();
   }
 
   isConnected(): Observable<boolean> {

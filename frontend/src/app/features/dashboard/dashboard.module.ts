@@ -31,6 +31,7 @@ import { DeleteHistoryModalComponent } from '../../shared/modals/models-ml/histo
 import { ModelDetailsModalComponent } from '../../shared/modals/models-ml/model-details-modal/model-details-modal.component';
 import { AlertDetailsModalComponent } from '../../shared/modals/fraud-alerts/alert-details-modal/alert-details-modal.component';
 import { AnalyzedTransactionsComponent } from './pages/analyzed-transactions/analyzed-transactions.component';
+import { HistoryComponent } from './pages/history/history.component';
 
 
 @NgModule({
@@ -45,7 +46,8 @@ import { AnalyzedTransactionsComponent } from './pages/analyzed-transactions/ana
     TrainDataComponent,
     DatasetsComponent,
     AnalyzedTransactionsComponent,
-    UserProfileComponent
+    UserProfileComponent,
+    HistoryComponent
   ],
   imports: [
     CommonModule,

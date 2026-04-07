@@ -39,6 +39,14 @@ import {
   TrendingDown,
   PauseCircle,
   Share2,
+  Archive,
+  Inbox,
+  Send,
+  Phone,
+  MapPin,
+  MessageCircle,
+  BellOff,
+  Filter,
 } from 'angular-feather/icons';
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
@@ -47,7 +55,7 @@ const icons = {
   CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader, GitMerge, Zap,
   AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, Layers, Server,
   CheckSquare, Square, ChevronUp, CreditCard, ChevronDown, Check, RotateCcw, Award, XCircle, PieChart, DollarSign, UserCheck,
-  ShieldOff, User, TrendingDown, PauseCircle, Share2
+  ShieldOff, User, TrendingDown, PauseCircle, Share2, Archive, Inbox, Send, Phone, MapPin, MessageCircle, BellOff, Filter
 };
 
 @NgModule({

@@ -48,7 +48,7 @@ export class UserProfileComponent implements OnInit {
       firstName: ['', [Validators.required, Validators.minLength(2)]],
       lastName: ['', [Validators.required, Validators.minLength(2)]],
       phoneNumber: ['', {
-        validators: [Validators.required, Validators.pattern(/^\+?[0-9]{8,15}$/)],
+        validators: [Validators.pattern(/^\+?[0-9]{8,15}$/)],
         asyncValidators: [this.phoneUniqueValidator()]
       }],
       address: [''],

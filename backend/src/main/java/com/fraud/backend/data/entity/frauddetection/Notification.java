@@ -35,9 +35,15 @@ public class Notification {
     @Column(columnDefinition = "TEXT")
     private String message;
 
-    private String type; // ALERT, INFO, WARNING, SUCCESS, MODEL_READY, CONFIG_UPDATED
+    private String type; // ALERT, INFO, WARNING, SUCCESS, MODEL_READY, CONFIG_UPDATED...
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "is_read")
+    private boolean isRead;
+
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
 }

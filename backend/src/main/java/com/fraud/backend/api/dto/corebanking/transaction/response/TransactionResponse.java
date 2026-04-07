@@ -23,6 +23,7 @@ public class TransactionResponse {
     private String postalCodeClient;
     private Boolean isFraud;
     private BigDecimal fraudScore;
+    private String riskLevel;
     private JsonNode fraudReason;  
     private String ipAddress;
     private String deviceId;

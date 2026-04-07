@@ -14,6 +14,8 @@ export interface TransactionSummary {
   status: string;
   isFraud: boolean;
   fraudScore?: number;
+  riskLevel?: string;
+  fraudReason?: any;
   accountNumber: string;
   clientName: string;
 }

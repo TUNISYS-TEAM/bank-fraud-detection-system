@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Observable, throwError, of, timer } from 'rxjs';
+import { Observable, throwError, of, timer, BehaviorSubject } from 'rxjs';
 import { catchError, tap, map, switchMap, shareReplay, finalize, delay } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 import {
@@ -41,6 +41,9 @@ export class AuthService {
   private tokenExpiresAt: number = 0;
   private refreshInProgress: boolean = false;
   private refreshSubject: Observable<any> | null = null;
+
+  private userSubject = new BehaviorSubject<AuthUser | null>(null);
+  public user$ = this.userSubject.asObservable();
 
   private http = inject(HttpClient);
 
@@ -101,12 +104,14 @@ export class AuthService {
             };
 
             this.currentUser = user;
+            this.userSubject.next(user);
             return user;
           })
         );
       }),
       catchError(err => {
         console.error('Failed to load user profile:', err);
+        this.userSubject.next(null);
         return throwError(() => err);
       })
     );
@@ -249,6 +254,7 @@ export class AuthService {
 
   private clearLocalState(): void {
     this.currentUser = null;
+    this.userSubject.next(null);
     this.tokenExpiresAt = 0;
     this.refreshInProgress = false;
     this.refreshSubject = null;

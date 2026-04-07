@@ -197,9 +197,9 @@
                      </div>
                   </td>
                   <td class="px-6 py-4 text-center">
-                    <span [ngClass]="getRiskClass(tx.fraudScore || 0)"
+                    <span [ngClass]="getRiskClass(tx)"
                           class="px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl border shadow-sm">
-                      {{ getRiskLevel(tx.fraudScore || 0) }}
+                      {{ getRiskLevel(tx) }}
                     </span>
                   </td>
                 </tr>

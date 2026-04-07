@@ -29,8 +29,8 @@ const PERMISSION_ICONS: Record<string, string> = {
   'ACCESS_CLIENTS_ACCOUNTS': 'users',
   'ACCESS_ANALYZED_TRANSACTIONS': 'activity',
   'ACCESS_TRAINING_DATA': 'database',
-  'ACCESS_PROFILE': 'user'
-
+  'ACCESS_PROFILE': 'user',
+  'ACCESS_HISTORY': 'clock'   
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -55,8 +55,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   'ACCESS_CLIENTS_ACCOUNTS': 'Clients & Comptes',
   'ACCESS_ANALYZED_TRANSACTIONS': 'Transactions Analysées',
   'ACCESS_TRAINING_DATA': 'Données d\'Entraînement',
-  'ACCESS_PROFILE': 'Mon Profil'
-
+  'ACCESS_PROFILE': 'Mon Profil',
+  'ACCESS_HISTORY': 'Historique'  
 };
 
 const PERMISSION_ORDER: Record<string, number> = {
@@ -82,7 +82,7 @@ const PERMISSION_ORDER: Record<string, number> = {
   'IMPORT_DATA': 113,
   'RUN_SIMULATION': 114,
   'ACCESS_PROFILE': 200,
-
+  'ACCESS_HISTORY': 65    
 };
 
 const PARENT_PAGES: Record<string, { parentRoute: string; relativeRoute: string }> = {
@@ -146,6 +146,16 @@ export const AuthStore = signalStore(
         permissionName: 'ACCESS_MESSAGES'
       });
 
+     
+      items.push({
+        id: 1001,
+        label: PERMISSION_LABELS['ACCESS_HISTORY'],
+        route: '/dashboard/history',
+        icon: PERMISSION_ICONS['ACCESS_HISTORY'],
+        order: PERMISSION_ORDER['ACCESS_HISTORY'],
+        permissionName: 'ACCESS_HISTORY'
+      });
+
       items.push({
         id: 1000,
         label: PERMISSION_LABELS['ACCESS_PROFILE'],
@@ -156,7 +166,7 @@ export const AuthStore = signalStore(
       });
 
       for (const perm of userPermissions) {
-        if (perm.name === 'ACCESS_OVERVIEW' || perm.name === 'ACCESS_MESSAGES' || perm.name === 'ACCESS_PROFILE') continue;
+        if (perm.name === 'ACCESS_OVERVIEW' || perm.name === 'ACCESS_MESSAGES' || perm.name === 'ACCESS_HISTORY' || perm.name === 'ACCESS_PROFILE') continue;
         if (perm.action) {
           items.push({
             id: perm.id,
@@ -174,7 +184,7 @@ export const AuthStore = signalStore(
 
     const mainPages = computed(() =>
       menuItems()
-        .filter(item => item.permissionName.startsWith('ACCESS_'))
+        .filter(item => item.permissionName.startsWith('ACCESS_') && item.permissionName !== 'ACCESS_HISTORY')
         .sort((a, b) => a.order - b.order)
     );
 
@@ -353,19 +363,19 @@ export const AuthStore = signalStore(
     },
 
     hasPermission(permissionName: string): boolean {
-      if (permissionName === 'ACCESS_OVERVIEW' || permissionName === 'ACCESS_MESSAGES' || permissionName === 'ACCESS_PROFILE') return true;
+      if (permissionName === 'ACCESS_OVERVIEW' || permissionName === 'ACCESS_MESSAGES' || permissionName === 'ACCESS_HISTORY' || permissionName === 'ACCESS_PROFILE') return true;
       return store.permissionNames().includes(permissionName);
     },
 
     hasAnyPermission(permissionNames: string[]): boolean {
-      if (permissionNames.includes('ACCESS_OVERVIEW') || permissionNames.includes('ACCESS_MESSAGES') || permissionNames.includes('ACCESS_PROFILE')) return true;
+      if (permissionNames.includes('ACCESS_OVERVIEW') || permissionNames.includes('ACCESS_MESSAGES') || permissionNames.includes('ACCESS_HISTORY') || permissionNames.includes('ACCESS_PROFILE')) return true;
       const userPerms = store.permissionNames();
       return permissionNames.some(name => userPerms.includes(name));
     },
 
     hasAllPermissions(permissionNames: string[]): boolean {
       const filtered = permissionNames.filter(
-        p => p !== 'ACCESS_OVERVIEW' && p !== 'ACCESS_MESSAGES' && p !== 'ACCESS_PROFILE'
+        p => p !== 'ACCESS_OVERVIEW' && p !== 'ACCESS_MESSAGES' && p !== 'ACCESS_HISTORY' && p !== 'ACCESS_PROFILE'
       );
       if (filtered.length === 0) return true;
       const userPerms = store.permissionNames();

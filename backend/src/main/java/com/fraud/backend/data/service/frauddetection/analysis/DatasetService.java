@@ -363,16 +363,25 @@ public class DatasetService {
 
         // Import data into DB tables when making dataset visible
         if (shouldEnforceSingleVisibility(target.getType())) {
+            // we execute the import in the current thread to ensure data is there
+            // but we detach the heavy backfill scoring to another thread so the UI is released.
             try {
                 importDataFromMinioToDb(target);
 
-                // === NEW: Trigger backfill for the newly imported transactions ===
+                // Execute post-import tasks asynchronously to release the admin UI immediately
                 if (target.getType() == DatasetType.TRANSACTIONS_VAL) {
-                    log.info("New transactions imported from dataset {}. Triggering backfill...", uuid);
-                    backfillScoringService.tryStartBackfillIfNeeded();
+                    java.util.concurrent.CompletableFuture.runAsync(() -> {
+                        try {
+                            log.info("Starting post-import tasks in background for dataset {}", uuid);
+                            backfillScoringService.tryStartBackfillIfNeeded();
+                        } catch (Exception e) {
+                            log.error("Error in background post-import tasks: {}", e.getMessage());
+                        }
+                    });
                 }
             } catch (Exception e) {
                 log.error("Error importing data from MinIO to DB during activation: {}", e.getMessage(), e);
+                throw new RuntimeException("Erreur lors de l'importation batch : " + e.getMessage());
             }
         }
 
@@ -738,43 +747,36 @@ public class DatasetService {
 
                 while ((record = reader.read()) != null) {
                     try {
-                        String rawAccountNumber = getStringField(record, colMap.get("Account_Id"));
-                        if (rawAccountNumber == null || rawAccountNumber.isBlank()) {
-                            skipped++;
-                            continue;
+                        String rawAcc = getStringField(record, colMap.get("Account_Id"));
+                        if (rawAcc == null || rawAcc.isBlank()) {
+                            skipped++; continue;
                         }
 
-                        String accountNumber = cleanStringSafe(rawAccountNumber);
-                        Long accountId = accountNumberToId.get(accountNumber);
+                        Long accountId = accountNumberToId.get(rawAcc.trim());
                         if (accountId == null) {
-                            if (skipped < 5) {
-                                log.warn("Account not found for account_number: '{}'", accountNumber);
-                            }
-                            skipped++;
-                            continue;
+                            if (skipped < 5) log.warn("Account not found: '{}'", rawAcc);
+                            skipped++; continue;
                         }
 
-                        BigDecimal amount = parseBigDecimalSafe(
-                                cleanStringSafe(getStringField(record, colMap.get("TX_Amount"))));
-                        LocalDateTime txTime = parseLocalDateTimeSafe(
-                                cleanStringSafe(getStringField(record, colMap.get("TX_Time"))));
-
-                        String category = cleanStringSafe(getStringField(record, colMap.get("category")));
-                        String channel = parseChannelSafe(
-                                cleanStringSafe(getStringField(record, colMap.get("channel"))));
-                        String mPostal = cleanStringSafe(getStringField(record, colMap.get("Merchant_Postal_Code")));
-                        String cPostal = cleanStringSafe(getStringField(record, colMap.get("Customer_Postal_Code")));
-                        String deviceId = cleanStringSafe(getStringField(record, colMap.get("Device_Id")));
-                        String ipAddress = cleanStringSafe(getStringField(record, colMap.get("ip_address")));
-                        String cur = cleanStringSafe(getStringField(record, colMap.get("currency")));
-                        if (cur == null || cur.isBlank())
-                            cur = "TND";
+                        // Safer parsing while keeping batch performance
+                        String amountStr = getStringField(record, colMap.get("TX_Amount"));
+                        BigDecimal amount = parseBigDecimalSafe(cleanStringSafe(amountStr));
+                        
+                        String timeStr = getStringField(record, colMap.get("TX_Time"));
+                        LocalDateTime txTime = parseLocalDateTimeSafe(cleanStringSafe(timeStr));
 
                         batch.add(new Object[] {
-                                UUID.randomUUID(), accountId, amount, cur,
+                                UUID.randomUUID(), accountId, amount, 
+                                cleanStringSafe(getStringField(record, colMap.get("currency"))),
                                 txTime != null ? Timestamp.valueOf(txTime) : now,
-                                category, channel, "COMPLETED",
-                                mPostal, cPostal, deviceId, ipAddress, now, now
+                                cleanStringSafe(getStringField(record, colMap.get("category"))),
+                                parseChannelSafe(cleanStringSafe(getStringField(record, colMap.get("channel")))), 
+                                "COMPLETED",
+                                cleanStringSafe(getStringField(record, colMap.get("Merchant_Postal_Code"))),
+                                cleanStringSafe(getStringField(record, colMap.get("Customer_Postal_Code"))),
+                                cleanStringSafe(getStringField(record, colMap.get("Device_Id"))),
+                                cleanStringSafe(getStringField(record, colMap.get("ip_address"))), 
+                                now, now
                         });
 
                         if (batch.size() >= BATCH_SIZE) {
@@ -1035,13 +1037,20 @@ public class DatasetService {
             try {
                 importDataFromMinioToDb(ds);
 
-                // Trigger backfill for newly imported validation transactions
+                // Execute post-import tasks asynchronously to release the admin UI immediately
                 if (ds.getType() == DatasetType.TRANSACTIONS_VAL) {
-                    log.info("New transactions imported from dataset {} during update. Triggering backfill...", uuid);
-                    backfillScoringService.tryStartBackfillIfNeeded();
+                    java.util.concurrent.CompletableFuture.runAsync(() -> {
+                        try {
+                            log.info("Starting post-import tasks in background for dataset {} (from update)", uuid);
+                            backfillScoringService.tryStartBackfillIfNeeded();
+                        } catch (Exception e) {
+                            log.error("Error in background post-import tasks (from update): {}", e.getMessage());
+                        }
+                    });
                 }
             } catch (Exception e) {
                 log.error("Error importing data from MinIO to DB during update: {}", e.getMessage(), e);
+                throw new RuntimeException("Erreur lors de l'importation batch : " + e.getMessage());
             }
         }
 

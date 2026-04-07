@@ -20,7 +20,8 @@ public class TransactionSummaryResponse {
     private String status;
     private Boolean isFraud;
     private BigDecimal fraudScore;
-    private JsonNode fraudReason;  
+    private String riskLevel;
+    private JsonNode fraudReason;
     private String accountNumber;
     private String clientName;
 }

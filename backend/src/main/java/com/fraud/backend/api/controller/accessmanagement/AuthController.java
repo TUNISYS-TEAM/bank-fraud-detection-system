@@ -2,6 +2,7 @@ package com.fraud.backend.api.controller.accessmanagement;
 
 import com.fraud.backend.api.dto.accessmanagement.auth.LoginRequest;
 import com.fraud.backend.config.security.SessionCacheService;
+import com.fraud.backend.data.service.accessmanagement.OtpService; 
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
 import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
@@ -46,6 +47,7 @@ public class AuthController {
     private final UserService userService;
     private final KeycloakMappingRepository keycloakMappingRepository;
     private final KeycloakService keycloakService;
+    private final OtpService otpService;   // <-- NEW Kafka‑based OTP service
 
     @Value("${keycloak.server-url}")
     private String keycloakUrl;
@@ -85,20 +87,14 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("message", "CSRF cookie set by Spring Security"));
     }
 
-    // ==================== OTP EMAIL VERIFICATION ENDPOINTS ====================
+    // ==================== OTP EMAIL VERIFICATION ENDPOINTS (Kafka‑based) ====================
 
-    /**
-     * Request OTP code to be sent to user's email
-     */
     @PostMapping("/request-otp")
     public ResponseEntity<Map<String, String>> requestOTP(@RequestBody Map<String, String> request) {
         String email = request.get("email");
 
         try {
-            // Check if user exists
             AppUser user = userService.getByEmail(email);
-
-            // Check if email is already verified
             KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
                     .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
@@ -107,10 +103,10 @@ public class AuthController {
                         .body(Map.of("error", "EMAIL_ALREADY_VERIFIED"));
             }
 
-            // Generate and send OTP
-            String otp = keycloakService.generateAndSendOTP(email, user.getFirstName());
+            // Use Kafka‑based OTP service instead of direct email sending
+            otpService.generateAndSendOtp(email, user.getFirstName(), "VERIFICATION");
 
-            log.info("OTP requested for: {}", email);
+            log.info("OTP request queued for: {}", email);
             return ResponseEntity.ok(Map.of(
                     "message", "Un code de vérification a été envoyé à votre email",
                     "email", email));
@@ -119,33 +115,27 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("error", "USER_NOT_FOUND"));
         } catch (Exception e) {
-            log.error("Failed to send OTP for: {}", email, e);
+            log.error("Failed to queue OTP for: {}", email, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to send OTP"));
         }
     }
 
-    /**
-     * Verify OTP code entered by user
-     */
     @PostMapping("/verify-otp")
     public ResponseEntity<Map<String, Object>> verifyOTP(@RequestBody Map<String, String> request) {
         String email = request.get("email");
         String code = request.get("code");
 
         try {
-            // Verify OTP
             if (!keycloakService.verifyOTP(email, code)) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body(Map.of("error", "INVALID_OTP", "message", "Code invalide ou expiré"));
             }
 
-            // Get user and mark email as verified
             AppUser user = userService.getByEmail(email);
             KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
                     .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-            // Mark email as verified in Keycloak
             keycloakService.markEmailAsVerified(mapping.getKeycloakId(), email, user.getFirstName());
 
             log.info("Email verified successfully via OTP for: {}", email);
@@ -153,7 +143,6 @@ public class AuthController {
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Email vérifié avec succès");
             response.put("verified", true);
-
             return ResponseEntity.ok(response);
 
         } catch (EntityNotFoundException e) {
@@ -166,9 +155,6 @@ public class AuthController {
         }
     }
 
-    /**
-     * Resend verification OTP
-     */
     @PostMapping("/resend-otp")
     public ResponseEntity<Map<String, String>> resendOTP(@RequestBody Map<String, String> request) {
         String email = request.get("email");
@@ -183,8 +169,8 @@ public class AuthController {
                         .body(Map.of("error", "EMAIL_ALREADY_VERIFIED"));
             }
 
-            // Generate and send new OTP
-            String otp = keycloakService.generateAndSendOTP(email, user.getFirstName());
+            // Use Kafka‑based OTP service for resend as well
+            otpService.generateAndSendOtp(email, user.getFirstName(), "VERIFICATION");
 
             return ResponseEntity.ok(Map.of(
                     "message", "Un nouveau code de vérification a été envoyé à votre email",
@@ -194,7 +180,7 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("error", "USER_NOT_FOUND"));
         } catch (Exception e) {
-            log.error("Failed to resend OTP for: {}", email, e);
+            log.error("Failed to queue resend OTP for: {}", email, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to resend OTP"));
         }
@@ -202,10 +188,6 @@ public class AuthController {
 
     // ==================== LOGIN ENDPOINT ====================
 
-    /**
-     * LOGIN with Email Verification Check
-     */
-    // Update the login method - remove the automatic OTP sending
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(
             @RequestBody LoginRequest request,
@@ -247,19 +229,15 @@ public class AuthController {
                         .body(Map.of("error", "Session initialization failed"));
             }
 
-            // Get user and check email verification status
             AppUser user = userService.getByEmail(request.getEmail());
 
-            // IMPORTANT: If email is not verified → return error WITHOUT sending OTP
-            // Frontend will call /request-otp separately
-            /*if (!isEmailVerified(user)) {
+            // Check email verification – if not verified, return error (frontend will request OTP)
+            if (!isEmailVerified(user)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(Map.of(
                                 "error", "EMAIL_NOT_VERIFIED",
                                 "message", "Votre email n'est pas encore vérifié. Veuillez demander un code OTP."));
-            }*/
-
-            // === EMAIL IS VERIFIED → Proceed with normal login ===
+            }
 
             // Ensure KeycloakMapping exists
             try {
@@ -285,16 +263,13 @@ public class AuthController {
                 log.error("Failed to create/update KeycloakMapping: {}", e.getMessage());
             }
 
-            // Store tokens in cache
             sessionCacheService.createSession(sessionState, accessToken, refreshToken, request.getEmail());
             log.info("Tokens stored in cache for session: {} (user: {})", sessionState, request.getEmail());
 
-            // Clear old cookies and set new session_id
             clearAllCookies(httpResponse);
             clearOldCsrfCookies(httpResponse);
             setSessionIdCookie(httpResponse, sessionState, 30 * 60);
 
-            // Create session in database
             try {
                 userSessionService.createSession(request.getEmail(), sessionState, httpRequest);
                 log.info("Session created in DB for user: {}", request.getEmail());

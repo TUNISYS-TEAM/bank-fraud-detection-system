@@ -172,7 +172,7 @@ public class TransactionService {
             }
         }
 
-        // Nouvelle exposition financière
+        // Nouvelle exposition financière basée sur le risque réel
         List<Object[]> amountStatsList = transactionRepository.sumAmountByRiskScore();
         double[] amountByRisk = new double[4];
         if (amountStatsList != null && !amountStatsList.isEmpty()) {
@@ -185,6 +185,19 @@ public class TransactionService {
             }
         }
 
+        // Nouvelle répartition globale par niveau de risque
+        List<Object[]> riskCountList = transactionRepository.countByRiskLevel();
+        long[] riskCounts = new long[4];
+        if (riskCountList != null && !riskCountList.isEmpty()) {
+            Object[] counts = riskCountList.get(0);
+            if (counts != null && counts.length >= 4) {
+                riskCounts[0] = counts[0] != null ? ((Number) counts[0]).longValue() : 0L;
+                riskCounts[1] = counts[1] != null ? ((Number) counts[1]).longValue() : 0L;
+                riskCounts[2] = counts[2] != null ? ((Number) counts[2]).longValue() : 0L;
+                riskCounts[3] = counts[3] != null ? ((Number) counts[3]).longValue() : 0L;
+            }
+        }
+
         java.util.Map<String, Object> stats = new java.util.HashMap<>();
         stats.put("totalAnalyzed", totalAnalyzed);
         stats.put("alerts", totalAlerts);
@@ -192,6 +205,7 @@ public class TransactionService {
         stats.put("avgRiskScore", avgScore);
         stats.put("channelDistribution", channelMap);
         stats.put("amountExposure", amountByRisk);
+        stats.put("riskDistribution", riskCounts);
         
         return stats;
     }

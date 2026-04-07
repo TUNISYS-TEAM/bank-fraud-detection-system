@@ -86,7 +86,7 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
         'CRITICAL': 'Critique'
       };
       const targetLevel = riskMapping[risk.toUpperCase()] || risk;
-      list = list.filter(t => this.getRiskLevel(t.fraudScore || 0) === targetLevel);
+      list = list.filter(t => this.getRiskLevel(t) === targetLevel);
     }
     
     const query = this.searchQuery().toLowerCase().trim();
@@ -185,15 +185,27 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
     this.riskFilter.set(risk);
   }
 
-  getRiskLevel(score: number): 'Faible' | 'Moyen' | 'Élevé' | 'Critique' {
+  getRiskLevel(tx: TransactionSummary): 'Faible' | 'Moyen' | 'Élevé' | 'Critique' {
+    if (tx.riskLevel && tx.riskLevel !== 'UNKNOWN') {
+      const mapping: Record<string, 'Faible' | 'Moyen' | 'Élevé' | 'Critique'> = {
+        'LOW': 'Faible',
+        'MEDIUM': 'Moyen',
+        'HIGH': 'Élevé',
+        'CRITICAL': 'Critique'
+      };
+      return mapping[tx.riskLevel.toUpperCase()] || 'Faible';
+    }
+
+    // Fallback if riskLevel is missing
+    const score = tx.fraudScore || 0;
     if (score < 0.3) return 'Faible';
     if (score < 0.6) return 'Moyen';
     if (score < 0.8) return 'Élevé';
     return 'Critique';
   }
 
-  getRiskClass(score: number): string {
-    const level = this.getRiskLevel(score);
+  getRiskClass(tx: TransactionSummary): string {
+    const level = this.getRiskLevel(tx);
     switch (level) {
       case 'Faible': return 'bg-emerald-50 text-emerald-700 border-emerald-100';
       case 'Moyen': return 'bg-amber-50 text-amber-700 border-amber-100';
@@ -216,19 +228,12 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
 
   private initScoreDistChart(): void {
     const dom = document.getElementById('scoreDistChart');
-    if (!dom || this.transactions().length === 0) return;
+    const bins = this.globalStats().riskDistribution;
+    
+    if (!dom || !bins) return;
 
     if (this.scoreDistChart) this.scoreDistChart.dispose();
     this.scoreDistChart = echarts.init(dom);
-  
-    const scores = this.transactions().map(t => t.fraudScore || 0);
-    const bins = [0, 0, 0, 0]; // Low, Med, High, Crit
-    scores.forEach(s => {
-      if (s < 0.3) bins[0]++;
-      else if (s < 0.6) bins[1]++;
-      else if (s < 0.8) bins[2]++;
-      else bins[3]++;
-    });
   
     const option = {
       title: { text: 'Répartition du Risque', left: 'center', textStyle: { fontSize: 14 } },

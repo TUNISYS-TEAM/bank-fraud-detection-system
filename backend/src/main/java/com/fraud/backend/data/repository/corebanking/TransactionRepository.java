@@ -34,7 +34,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
         Page<Transaction> findByFraudScoreIsNotNull(Pageable pageable);
 
         @EntityGraph(attributePaths = "account")
-        Page<Transaction> findByAccountIdAndTransactionDateAfter(Long accountId, LocalDateTime since, Pageable pageable);
+        Page<Transaction> findByAccountIdAndTransactionDateAfter(Long accountId, LocalDateTime since,
+                        Pageable pageable);
 
         // Transactions récentes d'un compte (pour le profil client)
         @EntityGraph(attributePaths = "account")
@@ -47,12 +48,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
                         "(:status IS NULL OR t.status = :status) AND " +
                         "(:channel IS NULL OR t.channel = :channel) AND " +
                         "(:start IS NULL OR t.transactionDate >= :start) AND " +
-                        "(:end IS NULL OR t.transactionDate <= :end)",
-                countQuery = "SELECT COUNT(t) FROM Transaction t WHERE " +
-                        "(:status IS NULL OR t.status = :status) AND " +
-                        "(:channel IS NULL OR t.channel = :channel) AND " +
-                        "(:start IS NULL OR t.transactionDate >= :start) AND " +
-                        "(:end IS NULL OR t.transactionDate <= :end)")
+                        "(:end IS NULL OR t.transactionDate <= :end)", countQuery = "SELECT COUNT(t) FROM Transaction t WHERE "
+                                        +
+                                        "(:status IS NULL OR t.status = :status) AND " +
+                                        "(:channel IS NULL OR t.channel = :channel) AND " +
+                                        "(:start IS NULL OR t.transactionDate >= :start) AND " +
+                                        "(:end IS NULL OR t.transactionDate <= :end)")
         Page<Transaction> search(@Param("status") TransactionStatus status,
                         @Param("channel") TransactionChannel channel,
                         @Param("start") LocalDateTime start,
@@ -100,12 +101,24 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
         List<Object[]> countByChannel();
 
         @Query(value = "SELECT " +
-                        "COALESCE(SUM(CASE WHEN fraud_score < CAST(0.3 AS NUMERIC) THEN amount ELSE 0 END), 0), " +
-                        "COALESCE(SUM(CASE WHEN fraud_score >= CAST(0.3 AS NUMERIC) AND fraud_score < CAST(0.6 AS NUMERIC) THEN amount ELSE 0 END), 0), " +
-                        "COALESCE(SUM(CASE WHEN fraud_score >= CAST(0.6 AS NUMERIC) AND fraud_score < CAST(0.8 AS NUMERIC) THEN amount ELSE 0 END), 0), " +
-                        "COALESCE(SUM(CASE WHEN fraud_score >= CAST(0.8 AS NUMERIC) THEN amount ELSE 0 END), 0) " +
-                        "FROM transaction WHERE fraud_score IS NOT NULL", nativeQuery = true)
+                        "COALESCE(SUM(CASE WHEN COALESCE(fa.risk_level, 'LOW') = 'LOW' THEN t.amount ELSE 0 END), 0), " +
+                        "COALESCE(SUM(CASE WHEN fa.risk_level = 'MEDIUM' THEN t.amount ELSE 0 END), 0), " +
+                        "COALESCE(SUM(CASE WHEN fa.risk_level = 'HIGH' THEN t.amount ELSE 0 END), 0), " +
+                        "COALESCE(SUM(CASE WHEN fa.risk_level = 'CRITICAL' THEN t.amount ELSE 0 END), 0) " +
+                        "FROM transaction t " +
+                        "LEFT JOIN fraud_alert fa ON t.id = fa.transaction_id " +
+                        "WHERE t.fraud_score IS NOT NULL", nativeQuery = true)
         List<Object[]> sumAmountByRiskScore();
+        
+        @Query(value = "SELECT " +
+                        "COUNT(CASE WHEN COALESCE(fa.risk_level, 'LOW') = 'LOW' THEN 1 END), " +
+                        "COUNT(CASE WHEN fa.risk_level = 'MEDIUM' THEN 1 END), " +
+                        "COUNT(CASE WHEN fa.risk_level = 'HIGH' THEN 1 END), " +
+                        "COUNT(CASE WHEN fa.risk_level = 'CRITICAL' THEN 1 END) " +
+                        "FROM transaction t " +
+                        "LEFT JOIN fraud_alert fa ON t.id = fa.transaction_id " +
+                        "WHERE t.fraud_score IS NOT NULL", nativeQuery = true)
+        List<Object[]> countByRiskLevel();
 
         // Recherche par UUID
         @Query("SELECT t FROM Transaction t WHERE t.transactionUuid = :uuid")
@@ -120,10 +133,13 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
                         "WHERE model_id = :modelId AND fraud_score IS NOT NULL " +
                         "ORDER BY created_at DESC LIMIT :limit" +
                         ") as sub", nativeQuery = true)
-        Optional<Double> findRecentAverageFraudScoreByModelId(@Param("modelId") Long modelId, @Param("limit") int limit);
+        Optional<Double> findRecentAverageFraudScoreByModelId(@Param("modelId") Long modelId,
+                        @Param("limit") int limit);
 
-        // Compte le nombre de transactions traitées par un modèle spécifique sur une période
-        long countByModelAndCreatedAtAfter(com.fraud.backend.data.entity.frauddetection.ModelML model, LocalDateTime since);
+        // Compte le nombre de transactions traitées par un modèle spécifique sur une
+        // période
+        long countByModelAndCreatedAtAfter(com.fraud.backend.data.entity.frauddetection.ModelML model,
+                        LocalDateTime since);
 
         @Modifying
         @Transactional

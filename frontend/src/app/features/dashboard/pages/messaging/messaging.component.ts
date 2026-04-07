@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, OnDestroy, computed, effect } from '@angular/core';
+import { Component, OnInit, inject, signal, OnDestroy, computed } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { MessageService } from '../../../../core/services/message.service';
@@ -35,8 +35,8 @@ export class MessagesComponent implements OnInit, OnDestroy {
   // State
   inbox = signal<Message[]>([]);
   sent = signal<Message[]>([]);
-  unreadCount = signal(0); // General Inbox
-  validationUnreadCount = signal(0); // Validation requests
+  unreadCount = signal(0);
+  validationUnreadCount = signal(0);
   currentTab = signal<'inbox' | 'sent' | 'compose' | 'validation' | 'archived'>('inbox');
   selectedMessage = signal<Message | null>(null);
   replyContent = signal('');
@@ -51,7 +51,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   selectedModelStatus = signal<string | null>(null);
   selectedModelComment = signal<string | null>(null);
 
-  // Multi-selection (Set of messageUuids)
+  // Multi-selection
   selectedMessages = signal<Set<string>>(new Set());
 
   // Pagination
@@ -63,7 +63,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   archivedPage = signal(0);
   archivedTotalPages = signal(0);
 
-  // Search Logic
+  // Search
   searchQuery = signal('');
 
   filteredInbox = computed(() => {
@@ -103,7 +103,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
   users = signal<User[]>([]);
   loadingUsers = signal(false);
 
-  // Managers filtered by the analyst's own manager
   availableManagers = signal<User[]>([]);
   analystManager = signal<User | null>(null);
   
@@ -113,15 +112,15 @@ export class MessagesComponent implements OnInit, OnDestroy {
   currentUserId = computed(() => this.authStore.userId());
   currentUserManagerId = computed(() => {
     const user = this.currentUser();
-    // Try to get managerId from the user object
-    // This depends on how your AuthUser is structured
     return (user as any)?.managerId || null;
   });
   
-  // For manager view: all managers (for dropdown)
   allManagers = signal<User[]>([]);
 
   private wsSubscription: Subscription;
+
+  validationComment = signal('');
+  isValidating = signal(false);
 
   constructor() {
     this.wsSubscription = this.wsService.messages$.subscribe(event => {
@@ -147,7 +146,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.loadUnreadCount();
     this.loadUsers();
 
-    // Check query params for model validation request
     this.route.queryParams.subscribe(params => {
       if (params['tab'] === 'validation' && params['modelUuid']) {
         this.currentTab.set('validation');
@@ -415,31 +413,25 @@ export class MessagesComponent implements OnInit, OnDestroy {
         const allUsers = response.content || [];
         this.users.set(allUsers);
         
-        // Filter managers (roleId = 2 for MANAGER)
         const managersList = allUsers.filter((u: User) => u.roleId === 2 && u.isActive);
         this.allManagers.set(managersList);
         
-        // For analyst: find their manager using currentUserManagerId
         if (this.isAnalyst()) {
           const managerId = this.currentUserManagerId();
           if (managerId) {
             const manager = managersList.find((m: User) => m.id === managerId);
             if (manager) {
               this.analystManager.set(manager);
-              // Only show the analyst's own manager in the dropdown
               this.availableManagers.set([manager]);
             } else {
               this.availableManagers.set([]);
             }
           } else {
-            // Analyst without assigned manager - show all managers (fallback)
             this.availableManagers.set(managersList);
           }
         } else if (this.isManager()) {
-          // For managers: show all managers (including themselves if needed)
           this.availableManagers.set(managersList);
         } else {
-          // For admin or other roles: show all managers
           this.availableManagers.set(managersList);
         }
         
@@ -468,18 +460,20 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   selectValidation(msg: Message): void {
     this.selectedValidation.set(msg);
-    this.selectedModelStatus.set(null); 
+    this.selectedModelStatus.set(null);
     this.selectedModelComment.set(null);
 
-    const details = this.parseValidationContent(msg.content);
-    if (details && details.modelUuid) {
-      this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${details.modelUuid}/metrics`).subscribe({
-        next: (response) => {
-          this.selectedModelStatus.set(response.status);
-          this.selectedModelComment.set(response.validationComment || response.comment);
-        },
-        error: (err) => console.error('Error fetching model status:', err)
-      });
+    if (msg.messageType === 'VALIDATION') {
+      const details = this.parseValidationContent(msg.content);
+      if (details && details.modelUuid) {
+        this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${details.modelUuid}/metrics`).subscribe({
+          next: (response) => {
+            this.selectedModelStatus.set(response.status);
+            this.selectedModelComment.set(response.validationComment || response.comment);
+          },
+          error: (err) => console.error('Error fetching model status:', err)
+        });
+      }
     }
 
     if (!msg.isRead && (msg.receiverEmail === this.authStore.userEmail() || msg.receiverId === this.authStore.userId())) {
@@ -543,15 +537,17 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.showReplyInput = false;
     this.replyContent.set('');
 
-    const details = this.parseValidationContent(message.content);
-    if (details && details.modelUuid) {
-      this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${details.modelUuid}/metrics`).subscribe({
-        next: (response) => {
-          this.selectedModelStatus.set(response.status);
-          this.selectedModelComment.set(response.validationComment || response.comment);
-        },
-        error: (err) => console.error('Error fetching model status:', err)
-      });
+    if (message.messageType === 'VALIDATION') {
+      const details = this.parseValidationContent(message.content);
+      if (details && details.modelUuid) {
+        this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${details.modelUuid}/metrics`).subscribe({
+          next: (response) => {
+            this.selectedModelStatus.set(response.status);
+            this.selectedModelComment.set(response.validationComment || response.comment);
+          },
+          error: (err) => console.error('Error fetching model status:', err)
+        });
+      }
     }
 
     if (!message.isRead && (message.receiverEmail === this.authStore.userEmail() || message.receiverId === this.authStore.userId())) {
@@ -683,6 +679,8 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   isValidationRequest(message: any): boolean {
     if (!message || !message.content) return false;
+    // Only attempt JSON parse if it's a VALIDATION message
+    if (message.messageType !== 'VALIDATION') return false;
     try {
       let content = message.content.trim();
       const data = JSON.parse(content);
@@ -700,12 +698,14 @@ export class MessagesComponent implements OnInit, OnDestroy {
     return message.content;
   }
 
-  validationComment = signal('');
-  isValidating = signal(false);
-
   handleValidationAction(status: 'Validated' | 'Rejected'): void {
     const message = this.selectedMessage() || this.selectedValidation();
     if (!message) return;
+
+    if (message.messageType !== 'VALIDATION') {
+      console.error('Cannot perform validation action on non-validation message');
+      return;
+    }
 
     const details = this.parseValidationContent(message.content);
     if (!details || !details.modelUuid) {

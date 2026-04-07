@@ -12,7 +12,7 @@ import { TrainDataComponent } from './pages/train-data/train-data.component';
 import { DatasetsComponent } from './pages/datasets/datasets.component';
 import { AnalyzedTransactionsComponent } from './pages/analyzed-transactions/analyzed-transactions.component';
 import { UserProfileComponent } from './pages/user-profile/user-profile.component';
-
+import { HistoryComponent } from './pages/history/history.component';
 
 const routes: Routes = [
   {
@@ -31,6 +31,7 @@ const routes: Routes = [
       { path: 'analyzed-transactions', component: AnalyzedTransactionsComponent },
       { path: 'datasets', component: DatasetsComponent },
       { path: 'profile', component: UserProfileComponent },
+      { path: 'history', component: HistoryComponent },  
 
       {
         path: 'clients-accounts',

@@ -1,0 +1,149 @@
+<div class="p-6 md:p-8 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+  <!-- Header -->
+  <div class="mb-8">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+          Historique des notifications
+        </h1>
+        <p class="text-slate-500 text-sm mt-1">Consultez et gérez toutes vos notifications</p>
+      </div>
+      <div class="flex space-x-3 mt-4 sm:mt-0">
+        <button (click)="markAllAsRead()"
+                class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-700 hover:from-indigo-600 hover:to-indigo-800 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5">
+          <i-feather name="check-circle" class="w-4 h-4 mr-2"></i-feather>
+          Tout marquer lu
+        </button>
+        <button (click)="deleteAll()"
+                class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl bg-gradient-to-r from-red-500 to-red-700 hover:from-red-600 hover:to-red-800 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5">
+          <i-feather name="trash-2" class="w-4 h-4 mr-2"></i-feather>
+          Tout supprimer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-white/70 backdrop-blur-sm rounded-2xl shadow-md p-4 mb-8 flex flex-wrap gap-4 items-end border border-white/50">
+    <div class="flex-1 min-w-[160px]">
+      <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Type</label>
+      <div class="relative">
+        <i-feather name="filter" class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"></i-feather>
+        <select [ngModel]="selectedType()" (ngModelChange)="selectedType.set($event); onTypeChange()"
+                class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white hover:bg-slate-50 transition cursor-pointer">
+          <option *ngFor="let type of notificationTypes" [value]="type.value">{{ type.label }}</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex-[2] min-w-[200px]">
+      <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Rechercher</label>
+      <div class="relative">
+        <i-feather name="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"></i-feather>
+        <input type="text" [ngModel]="searchTerm()" (ngModelChange)="searchTerm.set($event); onSearch()"
+               placeholder="Titre ou message..."
+               class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white hover:bg-slate-50 transition">
+      </div>
+    </div>
+    <div *ngIf="selectedNotifications().size > 0" class="flex space-x-2">
+      <button (click)="markSelectedAsRead()"
+              class="inline-flex items-center px-3 py-2 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-xl hover:bg-indigo-200 transition-all">
+        <i-feather name="check-circle" class="w-3.5 h-3.5 mr-1"></i-feather>
+        Marquer lus ({{ selectedNotifications().size }})
+      </button>
+      <button (click)="deleteSelected()"
+              class="inline-flex items-center px-3 py-2 text-xs font-medium bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all">
+        <i-feather name="trash-2" class="w-3.5 h-3.5 mr-1"></i-feather>
+        Supprimer ({{ selectedNotifications().size }})
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="isLoading()" class="flex justify-center py-16">
+    <div class="relative">
+      <div class="animate-spin rounded-full h-10 w-10 border-2 border-indigo-200 border-t-indigo-600"></div>
+      <div class="absolute inset-0 rounded-full bg-indigo-500/10 animate-ping"></div>
+    </div>
+  </div>
+
+  <!-- Left-aligned timeline (original sizes) -->
+  <div *ngIf="!isLoading() && filteredNotifications().length > 0" class="relative">
+    <!-- Vertical line -->
+    <div class="absolute left-5 top-3 bottom-3 w-0.5 bg-gradient-to-b from-indigo-200 via-slate-200 to-indigo-100 rounded-full"></div>
+
+    <div class="space-y-6">
+      <div *ngFor="let notif of filteredNotifications()" 
+           class="relative flex gap-4 group cursor-pointer" (click)="navigateToNotification(notif)">
+        
+        <!-- Timeline marker (original size) -->
+        <div class="relative flex-shrink-0">
+          <div class="relative">
+            <div *ngIf="!notif.isRead" class="absolute inset-0 rounded-full bg-indigo-400/30 animate-ping"></div>
+            <div class="relative w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center z-10 transition-all duration-200 group-hover:scale-110"
+                 [class.border-2]="!notif.isRead"
+                 [class.border-indigo-500]="!notif.isRead"
+                 [class.border-slate-200]="notif.isRead">
+              <i-feather [name]="getIconForType(notif.type)" 
+                         class="w-5 h-5" 
+                         [class.text-indigo-600]="!notif.isRead"
+                         [class.text-slate-400]="notif.isRead"></i-feather>
+            </div>
+          </div>
+        </div>
+
+        <!-- Content card (original padding & sizes) -->
+        <div class="flex-1">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-indigo-100">
+            <!-- Card header -->
+            <div class="px-5 pt-4 pb-2 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/50">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="font-semibold text-slate-800">{{ notif.title }}</h3>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" [class]="getBadgeClass(notif.type)">
+                    {{ getTypeLabel(notif.type) }}
+                  </span>
+                  <span *ngIf="!notif.isRead" class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-slate-400 whitespace-nowrap">{{ notif.createdAt | date:'dd MMM yyyy à HH:mm' }}</span>
+                  <div class="flex gap-1" (click)="$event.stopPropagation()">
+                    <button *ngIf="!notif.isRead" (click)="markAsRead(notif.notificationUuid)"
+                            class="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg transition" title="Marquer comme lu">
+                      <i-feather name="check-circle" class="w-4 h-4"></i-feather>
+                    </button>
+                    <button (click)="deleteNotification(notif.notificationUuid)"
+                            class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition" title="Supprimer">
+                      <i-feather name="trash-2" class="w-4 h-4"></i-feather>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Card body -->
+            <div class="px-5 py-3">
+              <p class="text-sm text-slate-600 leading-relaxed">{{ notif.message }}</p>
+            </div>
+            <!-- Card footer (selection) -->
+            <div class="px-5 py-2 bg-slate-50/50 flex justify-end border-t border-slate-100" (click)="$event.stopPropagation()">
+              <label class="inline-flex items-center gap-1.5 cursor-pointer text-xs text-slate-400 hover:text-indigo-600 transition">
+                <input type="checkbox" [checked]="isSelected(notif.notificationUuid)"
+                       (change)="toggleSelectOne(notif.notificationUuid, $event)"
+                       class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5">
+                <span>Sélectionner</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div *ngIf="!isLoading() && filteredNotifications().length === 0" class="text-center py-16">
+    <div class="w-20 h-20 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+      <i-feather name="bell-off" class="w-10 h-10 text-slate-400"></i-feather>
+    </div>
+    <h3 class="text-lg font-medium text-slate-800">Aucune notification</h3>
+    <p class="text-sm text-slate-500 mt-1">Aucune notification ne correspond à vos critères</p>
+  </div>
+</div>

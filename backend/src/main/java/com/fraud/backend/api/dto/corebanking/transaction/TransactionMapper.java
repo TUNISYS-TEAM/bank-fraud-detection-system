@@ -29,6 +29,8 @@ public class TransactionMapper {
                 .postalCodeClient(transaction.getPostalCodeClient())
                 .isFraud(transaction.getIsFraud())
                 .fraudScore(transaction.getFraudScore())
+                .riskLevel(transaction.getFraudReason() != null && transaction.getFraudReason().has("risk_level") ? 
+                        transaction.getFraudReason().get("risk_level").asText().toUpperCase() : "UNKNOWN")
                 .fraudReason(transaction.getFraudReason())  // Directly pass JsonNode
                 .ipAddress(transaction.getIpAddress())
                 .deviceId(transaction.getDeviceId())
@@ -41,20 +43,23 @@ public class TransactionMapper {
 
     public TransactionSummaryResponse toSummaryResponse(Transaction transaction) {
         JsonNode fraudReasonNode = transaction.getFraudReason();
+        String riskLevel = "UNKNOWN";
         JsonNode summaryFraudReason = null;
         
-        // For summary, extract just the summary field if available, otherwise keep minimal info
         if (fraudReasonNode != null) {
+            // 1. Extract risk level for the dedicated field
+            if (fraudReasonNode.has("risk_level")) {
+                riskLevel = fraudReasonNode.get("risk_level").asText().toUpperCase();
+            }
+
+            // 2. Create simplified JSON for the summary view
             JsonNode summaryNode = fraudReasonNode.get("summary");
             if (summaryNode != null && summaryNode.isTextual()) {
-                // Create a minimal JSON with just the summary for summary view
                 ObjectNode minimalNode = objectMapper.createObjectNode();
                 minimalNode.set("summary", summaryNode);
-                minimalNode.put("risk_level", fraudReasonNode.get("risk_level") != null ? 
-                        fraudReasonNode.get("risk_level").textValue() : "UNKNOWN");
+                minimalNode.put("risk_level", riskLevel);
                 summaryFraudReason = minimalNode;
             } else {
-                // If no summary field, keep the original but maybe limit size
                 summaryFraudReason = fraudReasonNode;
             }
         }
@@ -69,7 +74,8 @@ public class TransactionMapper {
                 .status(transaction.getStatus() != null ? transaction.getStatus().name() : null)
                 .isFraud(transaction.getIsFraud())
                 .fraudScore(transaction.getFraudScore())
-                .fraudReason(summaryFraudReason)  // Simplified version for summary
+                .riskLevel(riskLevel)
+                .fraudReason(summaryFraudReason)
                 .accountNumber(transaction.getAccount() != null ? transaction.getAccount().getAccountNumber() : null)
                 .clientName(transaction.getAccount() != null && transaction.getAccount().getClient() != null ? 
                         transaction.getAccount().getClient().getFullName() : "Unknown Client")

@@ -14,25 +14,14 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     Optional<Notification> findByNotificationUuid(UUID notificationUuid);
 
-    /**
-     * Notifications d’un utilisateur (boîte)
-     */
-    Page<Notification> findByUserIdOrderByCreatedAtDesc(
-            Long userId,
-            Pageable pageable
-    );
+    Page<Notification> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
-    /**
-     * Filtrage par type
-     */
-    Page<Notification> findByUserIdAndTypeOrderByCreatedAtDesc(
-            Long userId,
-            String type,
-            Pageable pageable
-    );
+    Page<Notification> findByUserIdAndIsReadFalseOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
-    /**
-     * (Optionnel) compteur total des notifications d’un utilisateur
-     */
-    long countByUserId(Long userId);
+    long countByUserIdAndIsReadFalse(Long userId);
+    
+    Page<Notification> findByUserIdAndTypeOrderByCreatedAtDesc(Long userId, String type, Pageable pageable);
+    
+    // Delete all notifications for a user
+    void deleteByUserId(Long userId);
 }
