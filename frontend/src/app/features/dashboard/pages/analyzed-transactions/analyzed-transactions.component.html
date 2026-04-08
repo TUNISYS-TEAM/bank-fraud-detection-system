@@ -7,6 +7,39 @@
           Suivi en temps réel et évaluation des risques pour l'ensemble des transactions traitées.
         </p>
       </div>
+      
+      <!-- Filtre par Dataset Global -->
+      <div class="flex items-center gap-4 mr-24">
+          <div class="flex items-center gap-2 text-slate-400">
+              <i-feather name="filter" style="width: 12px; height: 12px; stroke-width: 3px;"></i-feather>
+              <span class="text-[10px] font-black uppercase tracking-[0.15em]">Filtrer par Dataset</span>
+          </div>
+          <div class="relative group/select">
+              <select 
+                  (change)="onDatasetFilterChange($any($event.target).value)"
+                  class="appearance-none bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-2xl pl-5 pr-12 py-3 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 outline-none transition-all cursor-pointer shadow-sm hover:border-slate-300 w-[240px] relative z-10"
+              >
+                  <option value="all">Tous les Datasets</option>
+                  <ng-container *ngFor="let ds of availableDatasets()">
+                      <option [value]="ds.datasetUuid">{{ ds.datasetName }}</option>
+                  </ng-container>
+              </select>
+              <div class="absolute right-4 top-1/2 -translate-y-1/2 z-20 pointer-events-none text-slate-400 group-hover/select:text-purple-500 transition-colors">
+                  <i-feather name="chevron-down" style="width: 14px; height: 14px; stroke-width: 3px;"></i-feather>
+              </div>
+          </div>
+          
+          <!-- Manager Display -->
+          <div *ngIf="selectedDataset()?.assignedManagerName as managerName" class="flex items-center gap-3 ml-4 animate-fadeIn max-w-[200px]">
+              <div class="text-slate-400 flex items-center justify-center">
+                  <i-feather name="user" style="width: 20px; height: 20px; stroke-width: 2px;"></i-feather>
+              </div>
+              <div class="flex flex-col truncate">
+                 <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Responsable</span>
+                 <span class="text-sm font-bold text-slate-500 truncate">{{ managerName }}</span>
+              </div>
+          </div>
+      </div>
     </div>
   
     <!-- Standalone KPI Cards -->

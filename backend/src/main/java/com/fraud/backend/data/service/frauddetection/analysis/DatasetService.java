@@ -6,10 +6,12 @@ import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetCleanRes
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetPreviewResponse;
 
 import com.fraud.backend.data.entity.frauddetection.Dataset;
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.enums.AccountType;
 import com.fraud.backend.data.enums.datasets.DatasetStatus;
 import com.fraud.backend.data.enums.datasets.DatasetType;
 import com.fraud.backend.data.repository.frauddetection.DatasetRepository;
+import com.fraud.backend.data.service.accessmanagement.UserService;
 import com.fraud.backend.data.service.frauddetection.scoring.BackfillScoringService;
 import com.fraud.backend.data.service.storage.StorageService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -59,6 +61,7 @@ public class DatasetService {
     private final BackfillScoringService backfillScoringService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final UserService userService;
 
     private static final List<DatasetType> ADMIN_KPI_TYPES = List.of(
             DatasetType.CLIENTS,
@@ -109,7 +112,14 @@ public class DatasetService {
 
     // ==================== PUBLIC CRUD ====================
 
-    public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, Boolean visibility, Pageable pageable) {
+    public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, Boolean visibility, Long managerId, Pageable pageable) {
+        if (managerId != null) {
+            if (type != null) {
+                return datasetRepository.findByTypeAndAssignedManagerId(type, managerId, pageable);
+            }
+            return datasetRepository.findByAssignedManagerId(managerId, pageable);
+        }
+
         if (status != null && type != null) {
             return datasetRepository.findByStatusAndType(status, type, pageable);
         }
@@ -119,10 +129,40 @@ public class DatasetService {
         if (type != null) {
             return datasetRepository.findByType(type, pageable);
         }
+        if (visibility != null) {
+            return datasetRepository.findByVisibility(visibility, pageable);
+        }
         if (q != null && !q.isBlank()) {
             return datasetRepository.findByDatasetNameOrCode(q.trim(), pageable);
         }
         return datasetRepository.findAll(pageable);
+    }
+
+    public Page<Dataset> listTrainingDatasets(String q, Long managerId, Pageable pageable) {
+        List<DatasetStatus> statuses = List.of(DatasetStatus.PROCESSED, DatasetStatus.CLEANED);
+        DatasetType type = DatasetType.TRANSACTIONS_TRAIN_ENRICHED;
+        
+        if (managerId != null) {
+            return datasetRepository.findTrainingDatasetsForManager(type, statuses, managerId, pageable);
+        }
+
+        if (q != null && !q.isBlank()) {
+            return datasetRepository.findTrainingDatasetsBySearchTerm(type, statuses, q.trim(), pageable);
+        }
+        return datasetRepository.findByTypeAndStatusInAndVisibilityTrue(type, statuses, pageable);
+    }
+
+    public Page<Dataset> listAllTrainingDatasets(String q, Long managerId, Pageable pageable) {
+        DatasetType type = DatasetType.TRANSACTIONS_TRAIN;
+        
+        if (managerId != null) {
+            return datasetRepository.findByTypeAndAssignedManagerId(type, managerId, pageable);
+        }
+
+        if (q != null && !q.isBlank()) {
+            return datasetRepository.findByTypeAndSearchTerm(type, q.trim(), pageable);
+        }
+        return datasetRepository.findByType(type, pageable);
     }
 
     public Dataset get(UUID uuid) {
@@ -145,6 +185,8 @@ public class DatasetService {
         // On permet désormais plusieurs datasets du même type (ils seront masqués par
         // défaut)
 
+        Long managerId = getEffectiveManagerId();
+        
         // Créer dataset : status = null, visibility = false par défaut
         Dataset ds = Dataset.builder()
                 .datasetName(datasetName.trim())
@@ -152,6 +194,7 @@ public class DatasetService {
                 .status(null) // nouveau dataset non traité
                 .visibility(false) // invisible par défaut
                 .type(type)
+                .assignedManager(managerId != null ? userService.getById(managerId) : null)
                 .build();
 
         ds = datasetRepository.save(ds);
@@ -347,7 +390,7 @@ public class DatasetService {
         Dataset target = get(uuid);
 
         // For types that should have only one visible dataset
-        if (shouldEnforceSingleVisibility(target.getType())) {
+        if (isSingleVisibleRestricted(target.getType())) {
             Optional<Dataset> visibleOfSameType = datasetRepository.findVisibleByTypeExcluding(target.getType(), uuid);
             if (visibleOfSameType.isPresent()) {
                 Dataset other = visibleOfSameType.get();
@@ -362,7 +405,7 @@ public class DatasetService {
         log.info("Dataset {} activated (visibility=true)", uuid);
 
         // Import data into DB tables when making dataset visible
-        if (shouldEnforceSingleVisibility(target.getType())) {
+        if (isDatabaseBackedType(target.getType())) {
             // we execute the import in the current thread to ensure data is there
             // but we detach the heavy backfill scoring to another thread so the UI is released.
             try {
@@ -370,10 +413,11 @@ public class DatasetService {
 
                 // Execute post-import tasks asynchronously to release the admin UI immediately
                 if (target.getType() == DatasetType.TRANSACTIONS_VAL) {
+                    final Long managerId = target.getAssignedManager() != null ? target.getAssignedManager().getId() : null;
                     java.util.concurrent.CompletableFuture.runAsync(() -> {
                         try {
-                            log.info("Starting post-import tasks in background for dataset {}", uuid);
-                            backfillScoringService.tryStartBackfillIfNeeded();
+                            log.info("Starting post-import tasks in background for dataset {} for manager {}", uuid, managerId);
+                            backfillScoringService.tryStartBackfillIfNeeded(managerId);
                         } catch (Exception e) {
                             log.error("Error in background post-import tasks: {}", e.getMessage());
                         }
@@ -399,7 +443,7 @@ public class DatasetService {
 
         // If this dataset was visible, clear its table
         if (target.getVisibility()) {
-            clearTableForType(target.getType());
+            clearTableForDataset(target);
         }
 
         target.setVisibility(false);
@@ -414,10 +458,27 @@ public class DatasetService {
         }
     }
 
-    private boolean shouldEnforceSingleVisibility(DatasetType type) {
+    private boolean isDatabaseBackedType(DatasetType type) {
         return type == DatasetType.CLIENTS ||
                 type == DatasetType.ACCOUNTS ||
                 type == DatasetType.TRANSACTIONS_VAL;
+    }
+
+    private boolean isSingleVisibleRestricted(DatasetType type) {
+        return type == DatasetType.CLIENTS ||
+                type == DatasetType.ACCOUNTS;
+    }
+
+    private void clearTableForDataset(Dataset target) {
+        DatasetType type = target.getType();
+        if (type == DatasetType.TRANSACTIONS_VAL) {
+            log.info("Deleting transactions for dataset_id: {}", target.getId());
+            jdbcTemplate.update("DELETE FROM fraud_alert WHERE transaction_id IN (SELECT id FROM transaction WHERE dataset_id = ?)", target.getId());
+            jdbcTemplate.update("DELETE FROM client_behavior_history WHERE transaction_id IN (SELECT id FROM transaction WHERE dataset_id = ?)", target.getId());
+            jdbcTemplate.update("DELETE FROM transaction WHERE dataset_id = ?", target.getId());
+            return;
+        }
+        clearTableForType(type);
     }
 
     private void clearTableForType(DatasetType type) {
@@ -514,7 +575,7 @@ public class DatasetService {
                     importAccountsFromParquet(hadoopPath, conf, columnMapping);
                     break;
                 case TRANSACTIONS_VAL:
-                    importTransactionsValFromParquet(hadoopPath, conf, columnMapping);
+                    importTransactionsValFromParquet(ds, hadoopPath, conf, columnMapping);
                     break;
                 default:
                     log.warn("No DB import defined for type: {}", ds.getType());
@@ -712,18 +773,18 @@ public class DatasetService {
         }
     }
 
-    private void importTransactionsValFromParquet(org.apache.hadoop.fs.Path hadoopPath,
+    private void importTransactionsValFromParquet(Dataset ds, org.apache.hadoop.fs.Path hadoopPath,
             org.apache.hadoop.conf.Configuration conf, Map<String, String> colMap) throws IOException {
         boolean triggerDisabled = false;
         try {
             jdbcTemplate.execute("ALTER TABLE transaction DISABLE TRIGGER after_transaction_insert;");
             triggerDisabled = true;
 
-            // Clear existing transactions
-            jdbcTemplate.execute("DELETE FROM fraud_alert");
-            jdbcTemplate.execute("DELETE FROM client_behavior_history");
-            jdbcTemplate.execute("DELETE FROM client_behavior");
-            jdbcTemplate.execute("DELETE FROM transaction");
+            // Clear existing transactions (Not anymore, we append them)
+            // jdbcTemplate.execute("DELETE FROM fraud_alert");
+            // jdbcTemplate.execute("DELETE FROM client_behavior_history");
+            // jdbcTemplate.execute("DELETE FROM client_behavior");
+            // jdbcTemplate.execute("DELETE FROM transaction");
 
             Map<String, Long> accountNumberToId = jdbcTemplate.query(
                     "SELECT account_number, id FROM account",
@@ -733,8 +794,8 @@ public class DatasetService {
 
             String sql = "INSERT INTO transaction (transaction_uuid, account_id, amount, currency, transaction_date, "
                     + "merchant_category, channel, status, postal_code_merchant, postal_code_client, device_id, "
-                    + "ip_address, created_at, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    + "ip_address, dataset_id, created_at, updated_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
             try (ParquetReader<GenericRecord> reader = AvroParquetReader
                     .<GenericRecord>builder(hadoopPath).withConf(conf).build()) {
@@ -776,6 +837,7 @@ public class DatasetService {
                                 cleanStringSafe(getStringField(record, colMap.get("Customer_Postal_Code"))),
                                 cleanStringSafe(getStringField(record, colMap.get("Device_Id"))),
                                 cleanStringSafe(getStringField(record, colMap.get("ip_address"))), 
+                                ds.getId(),
                                 now, now
                         });
 
@@ -967,8 +1029,8 @@ public class DatasetService {
         }
 
         // Clear database tables if this dataset is of a type that has tables
-        if (shouldEnforceSingleVisibility(ds.getType())) {
-            clearTableForType(ds.getType());
+        if (isDatabaseBackedType(ds.getType())) {
+            clearTableForDataset(ds);
         }
 
         try {
@@ -1008,13 +1070,13 @@ public class DatasetService {
             // If trying to set visibility to false
             if (!request.getVisibility() && oldVisibility) {
                 // Clear the corresponding table if this dataset was visible
-                clearTableForType(ds.getType());
+                clearTableForDataset(ds);
             }
 
             // If trying to set visibility to true
             if (request.getVisibility() && !oldVisibility) {
                 // For types that should have only one visible dataset
-                if (shouldEnforceSingleVisibility(ds.getType())) {
+                if (isSingleVisibleRestricted(ds.getType())) {
                     Optional<Dataset> visibleOfSameType = datasetRepository.findVisibleByTypeExcluding(ds.getType(),
                             uuid);
                     if (visibleOfSameType.isPresent()) {
@@ -1030,19 +1092,24 @@ public class DatasetService {
             visibilityChanged = true;
         }
 
+        if (request.getAssignedManagerId() != null) {
+            ds.setAssignedManager(userService.getById(request.getAssignedManagerId()));
+        }
+
         ds = datasetRepository.save(ds);
 
         // If visibility changed to true, import data into DB for business types
-        if (visibilityChanged && ds.getVisibility() && shouldEnforceSingleVisibility(ds.getType())) {
+        if (visibilityChanged && ds.getVisibility() && isDatabaseBackedType(ds.getType())) {
             try {
                 importDataFromMinioToDb(ds);
 
                 // Execute post-import tasks asynchronously to release the admin UI immediately
                 if (ds.getType() == DatasetType.TRANSACTIONS_VAL) {
+                    final Long managerId = ds.getAssignedManager() != null ? ds.getAssignedManager().getId() : null;
                     java.util.concurrent.CompletableFuture.runAsync(() -> {
                         try {
-                            log.info("Starting post-import tasks in background for dataset {} (from update)", uuid);
-                            backfillScoringService.tryStartBackfillIfNeeded();
+                            log.info("Starting post-import tasks in background for dataset {} (from update) for manager {}", uuid, managerId);
+                            backfillScoringService.tryStartBackfillIfNeeded(managerId);
                         } catch (Exception e) {
                             log.error("Error in background post-import tasks (from update): {}", e.getMessage());
                         }
@@ -1366,22 +1433,58 @@ public class DatasetService {
 
     // ==================== STATS ====================
 
-    public long count(List<DatasetType> types) {
+    private Long getEffectiveManagerId() {
+        try {
+            AppUser user = userService.getCurrentUser();
+            if (user == null) return null;
+            
+            String role = user.getRole().getName().toUpperCase();
+            if ("ADMIN".equals(role)) {
+                return null;
+            }
+            if ("MANAGER".equals(role)) {
+                return user.getId();
+            }
+            if ("ANALYST".equals(role) && user.getManager() != null) {
+                return user.getManager().getId();
+            }
+        } catch (Exception e) {
+            log.warn("Could not determine effective manager for stats: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    public long count(List<DatasetType> types, Long managerId) {
         List<DatasetType> targetTypes = (types != null && !types.isEmpty()) ? types : ADMIN_KPI_TYPES;
+        Long effectiveManagerId = managerId != null ? managerId : getEffectiveManagerId();
+        
+        if (effectiveManagerId != null) {
+            return datasetRepository.countByTypeInAndManagerId(targetTypes, effectiveManagerId);
+        }
         long result = datasetRepository.countByTypeIn(targetTypes);
         log.info("KPI Count for types {}: {}", targetTypes, result);
         return result;
     }
 
-    public BigDecimal getTotalSize(List<DatasetType> types) {
+    public BigDecimal getTotalSize(List<DatasetType> types, Long managerId) {
         List<DatasetType> targetTypes = (types != null && !types.isEmpty()) ? types : ADMIN_KPI_TYPES;
+        Long effectiveManagerId = managerId != null ? managerId : getEffectiveManagerId();
+
+        if (effectiveManagerId != null) {
+            return datasetRepository.sumFileSizeMbByTypeInAndManagerId(targetTypes, effectiveManagerId);
+        }
         BigDecimal result = datasetRepository.sumFileSizeMbByTypeIn(targetTypes);
         log.info("KPI TotalSize for types {}: {} Mo", targetTypes, result);
         return result;
     }
 
-    public LocalDateTime getLatestImportDate(List<DatasetType> types) {
+    public LocalDateTime getLatestImportDate(List<DatasetType> types, Long managerId) {
         List<DatasetType> targetTypes = (types != null && !types.isEmpty()) ? types : ADMIN_KPI_TYPES;
+        Long effectiveManagerId = managerId != null ? managerId : getEffectiveManagerId();
+
+        if (effectiveManagerId != null) {
+            return datasetRepository.findLatestImportedAtByTypeInAndManagerId(targetTypes, effectiveManagerId);
+        }
         LocalDateTime result = datasetRepository.findLatestImportedAtByTypeIn(targetTypes);
         log.info("KPI LatestImportDate for types {}: {}", targetTypes, result);
         return result;
@@ -1689,6 +1792,7 @@ public class DatasetService {
                     .status(DatasetStatus.PROCESSED)
                     .visibility(false)
                     .type(DatasetType.TRANSACTIONS_TRAIN_ENRICHED)
+                    .assignedManager(sourceDataset.getAssignedManager())
                     .build();
 
             // Save immediately to ensure status is persisted

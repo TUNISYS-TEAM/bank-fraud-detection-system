@@ -39,17 +39,26 @@ public interface DatasetRepository extends JpaRepository<Dataset, Long> {
         @Query("SELECT COUNT(d) FROM Dataset d WHERE d.type IN :types")
         long countByTypeIn(@Param("types") java.util.Collection<DatasetType> types);
 
+        @Query("SELECT COUNT(d) FROM Dataset d WHERE d.type IN :types AND d.assignedManager.id = :managerId")
+        long countByTypeInAndManagerId(@Param("types") java.util.Collection<DatasetType> types, @Param("managerId") Long managerId);
+
         @Query("SELECT COALESCE(SUM(d.fileSizeMb), 0) FROM Dataset d")
         java.math.BigDecimal sumFileSizeMb();
 
         @Query("SELECT COALESCE(SUM(d.fileSizeMb), 0) FROM Dataset d WHERE d.type IN :types")
         java.math.BigDecimal sumFileSizeMbByTypeIn(@Param("types") java.util.Collection<DatasetType> types);
 
+        @Query("SELECT COALESCE(SUM(d.fileSizeMb), 0) FROM Dataset d WHERE d.type IN :types AND d.assignedManager.id = :managerId")
+        java.math.BigDecimal sumFileSizeMbByTypeInAndManagerId(@Param("types") java.util.Collection<DatasetType> types, @Param("managerId") Long managerId);
+
         @Query("SELECT MAX(d.importedAt) FROM Dataset d")
         LocalDateTime findLatestImportedAt();
 
         @Query("SELECT MAX(d.importedAt) FROM Dataset d WHERE d.type IN :types")
         LocalDateTime findLatestImportedAtByTypeIn(@Param("types") java.util.Collection<DatasetType> types);
+
+        @Query("SELECT MAX(d.importedAt) FROM Dataset d WHERE d.type IN :types AND d.assignedManager.id = :managerId")
+        LocalDateTime findLatestImportedAtByTypeInAndManagerId(@Param("types") java.util.Collection<DatasetType> types, @Param("managerId") Long managerId);
 
         Page<Dataset> findByImportedAtAfter(LocalDateTime date, Pageable pageable);
 
@@ -161,4 +170,37 @@ public interface DatasetRepository extends JpaRepository<Dataset, Long> {
                         @Param("type") DatasetType type,
                         @Param("searchTerm") String searchTerm,
                         Pageable pageable);
+
+        // ==================== MANAGER FILTERED QUERIES ====================
+
+        /**
+         * Find datasets assigned to a specific manager
+         */
+        Page<Dataset> findByAssignedManagerId(Long managerId, Pageable pageable);
+
+        /**
+         * Find datasets by type and assigned manager
+         */
+        Page<Dataset> findByTypeAndAssignedManagerId(DatasetType type, Long managerId, Pageable pageable);
+
+        /**
+         * Find training datasets filtered by manager and visibility
+         */
+        @Query("SELECT d FROM Dataset d WHERE d.type = :type AND d.status IN :statuses " +
+               "AND d.assignedManager.id = :managerId " +
+               "AND d.visibility = true")
+        Page<Dataset> findTrainingDatasetsForManager(
+                        @Param("type") DatasetType type,
+                        @Param("statuses") List<DatasetStatus> statuses,
+                        @Param("managerId") Long managerId,
+                        Pageable pageable);
+
+        /**
+         * Find visible datasets by type and manager
+         */
+        @Query("SELECT d FROM Dataset d WHERE d.type = :type AND d.visibility = true " +
+               "AND d.assignedManager.id = :managerId")
+        List<Dataset> findVisibleByTypeAndManager(
+                        @Param("type") DatasetType type,
+                        @Param("managerId") Long managerId);
 }

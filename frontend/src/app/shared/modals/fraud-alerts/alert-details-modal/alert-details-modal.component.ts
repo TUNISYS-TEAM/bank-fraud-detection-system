@@ -1,8 +1,9 @@
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
+import { Component, EventEmitter, Input, Output, signal, OnChanges, SimpleChanges, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FeatherModule } from 'angular-feather';
 import { FraudAlertResponse } from '../../../../core/models/fraud-alert.model';
+import { AuthService } from '../../../../core/services/auth.service';
 
 @Component({
   selector: 'app-alert-details-modal',
@@ -11,23 +12,39 @@ import { FraudAlertResponse } from '../../../../core/models/fraud-alert.model';
   templateUrl: './alert-details-modal.component.html',
   styleUrl: './alert-details-modal.component.css'
 })
-export class AlertDetailsModalComponent {
+export class AlertDetailsModalComponent implements OnChanges {
   @Input() isOpen = false;
   @Input() alert: FraudAlertResponse | null = null;
   @Input() hideAiAnalysis = false;
+  @Input() hideActions = false;
+  @Input() isProcessing = false;
   @Output() close = new EventEmitter<void>();
-  @Output() action = new EventEmitter<{id: number, type: string, comment: string}>();
+  @Output() action = new EventEmitter<{uuid: string, type: string, comment: string}>();
 
+  private authService = inject(AuthService);
+  isAdmin = computed(() => this.authService.getCurrentUser()?.role === 'ADMIN');
+  isManager = computed(() => this.authService.getCurrentUser()?.role === 'MANAGER');
+  isAnalyst = computed(() => this.authService.getCurrentUser()?.role === 'ANALYST');
+  
   comment = signal('');
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['alert'] && this.alert) {
+      this.comment.set(this.alert.reviewComment || '');
+    }
+    if (changes['isOpen'] && this.isOpen && this.alert) {
+       this.comment.set(this.alert.reviewComment || '');
+    }
+  }
 
   onClose(): void {
     this.close.emit();
   }
 
   onAction(type: string): void {
-    if (this.alert) {
+    if (this.alert && !this.isProcessing) {
       this.action.emit({
-        id: this.alert.id,
+        uuid: this.alert.alertUuid,
         type: type,
         comment: this.comment()
       });
@@ -53,6 +70,28 @@ export class AlertDetailsModalComponent {
       case 'VELOCITY': return 'Vélocité Inhabituelle';
       case 'AMOUNT_ANOMALY': return 'Montant atypique';
       default: return type;
+    }
+  }
+
+  getStatusBadgeClass(status: string | undefined): string {
+    if (!status) return 'bg-gray-100 text-gray-500 border-gray-200';
+    switch (status.toUpperCase()) {
+      case 'PENDING': return 'bg-amber-50 text-amber-600 border-amber-100';
+      case 'REVIEWED': return 'bg-blue-50 text-blue-600 border-blue-100';
+      case 'CONFIRMED': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+      case 'FALSE_POSITIVE': return 'bg-slate-50 text-slate-600 border-slate-200';
+      default: return 'bg-gray-50 text-gray-500 border-gray-100';
+    }
+  }
+
+  translateStatus(status: string | undefined): string {
+    if (!status) return 'Inconnu';
+    switch (status.toUpperCase()) {
+      case 'PENDING': return 'En Attente';
+      case 'REVIEWED': return 'En Cours';
+      case 'CONFIRMED': return 'Confirmée';
+      case 'FALSE_POSITIVE': return 'Faux Positif';
+      default: return status;
     }
   }
 

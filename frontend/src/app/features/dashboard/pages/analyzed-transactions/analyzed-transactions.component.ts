@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal, computed, OnDestroy, effect } from '@angular/core';
 import { TransactionService, TransactionSummary } from '../../../../core/services/transaction.service';
+import { DatasetService, Dataset, DatasetType } from '../../../../core/services/dataset.service';
 import * as echarts from 'echarts';
 import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
 import { KpiCard } from '../../../../shared/cards/cards.component';
@@ -11,6 +12,7 @@ import { KpiCard } from '../../../../shared/cards/cards.component';
 })
 export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
   private transactionService = inject(TransactionService);
+  private datasetService = inject(DatasetService);
 
   // Data signals
   transactions = signal<TransactionSummary[]>([]);
@@ -20,6 +22,15 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
   currentPage = signal(0);
   pageSize = signal(10);
   riskFilter = signal<string>('all');
+  
+  // Datasets filtering
+  availableDatasets = signal<Dataset[]>([]);
+  selectedDatasetUuid = signal<string | null>(null);
+  selectedDataset = computed(() => {
+    const uuid = this.selectedDatasetUuid();
+    if (!uuid) return null;
+    return this.availableDatasets().find(ds => ds.datasetUuid === uuid) || null;
+  });
 
   // Stats signals
   stats = signal<any[]>([]);
@@ -124,6 +135,7 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.loadDatasets();
     this.loadTransactions();
     this.loadStats();
     this.loadGlobalStats();
@@ -137,9 +149,19 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
     this.disposeCharts();
   }
 
+  loadDatasets(): void {
+    this.datasetService.list({ size: 100, type: DatasetType.TRANSACTIONS_VAL }).subscribe({
+      next: (response) => {
+        this.availableDatasets.set(response.content || []);
+      },
+      error: (err) => console.error('Error loading datasets:', err)
+    });
+  }
+
   loadTransactions(): void {
     this.isLoading.set(true);
-    this.transactionService.getAnalyzedTransactions(this.currentPage(), this.pageSize()).subscribe({
+    const datasetUuid = this.selectedDatasetUuid() || undefined;
+    this.transactionService.getAnalyzedTransactions(this.currentPage(), this.pageSize(), datasetUuid).subscribe({
       next: (response) => {
         this.transactions.set(response.content);
         this.totalElements.set(response.totalElements);
@@ -154,7 +176,8 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
   }
 
   loadStats(): void {
-    this.transactionService.getTransactionStats().subscribe({
+    const datasetUuid = this.selectedDatasetUuid() || undefined;
+    this.transactionService.getTransactionStats(datasetUuid).subscribe({
       next: (data) => {
         this.stats.set(data);
       },
@@ -163,7 +186,8 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
   }
 
   loadGlobalStats(): void {
-    this.transactionService.getGlobalAnalyzedStats().subscribe({
+    const datasetUuid = this.selectedDatasetUuid() || undefined;
+    this.transactionService.getGlobalAnalyzedStats(datasetUuid).subscribe({
       next: (data) => {
         console.log('Global Stats:', data);
         this.globalStats.set(data);
@@ -183,6 +207,14 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
 
   onRiskFilterChange(risk: string): void {
     this.riskFilter.set(risk);
+  }
+
+  onDatasetFilterChange(uuid: string | null): void {
+    this.selectedDatasetUuid.set(uuid === 'all' ? null : uuid);
+    this.currentPage.set(0); // Reset to first page
+    this.loadTransactions();
+    this.loadStats();
+    this.loadGlobalStats();
   }
 
   getRiskLevel(tx: TransactionSummary): 'Faible' | 'Moyen' | 'Élevé' | 'Critique' {

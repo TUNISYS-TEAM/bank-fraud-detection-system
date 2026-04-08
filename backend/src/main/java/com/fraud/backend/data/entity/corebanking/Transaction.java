@@ -1,5 +1,6 @@
 package com.fraud.backend.data.entity.corebanking;
 
+import com.fraud.backend.data.entity.frauddetection.Dataset;
 import com.fraud.backend.data.entity.frauddetection.ModelML;
 import com.fraud.backend.data.enums.transactions.TransactionChannel;
 import com.fraud.backend.data.enums.transactions.TransactionStatus;
@@ -84,6 +85,10 @@ public class Transaction {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "model_id")
     private ModelML model;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "dataset_id")
+    private Dataset dataset;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

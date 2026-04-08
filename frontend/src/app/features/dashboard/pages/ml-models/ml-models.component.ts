@@ -1,6 +1,7 @@
-import { Component, OnInit, OnDestroy, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
+import { ToastrService } from 'ngx-toastr';
 import { environment } from '../../../../../environments/environment';
 import {
   Dataset,
@@ -10,6 +11,7 @@ import {
   ModelConfig,
   PageResponse
 } from '../../../../core/models/ml-models.models';
+import { AuthService } from '../../../../core/services/auth.service';
 
 @Component({
   selector: 'app-ml-models',
@@ -175,7 +177,9 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   constructor(
     private http: HttpClient,
-    private router: Router
+    private router: Router,
+    private toastr: ToastrService,
+    private authService: AuthService
   ) { }
 
   ngOnInit(): void {
@@ -247,7 +251,16 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     this.isLoadingDatasets = true;
 
     // Use the dedicated /training endpoint which returns only visible and processed datasets
-    const url = `${environment.apiUrl}/datasets/training?page=${this.currentPage}&size=${this.pageSize}${this.searchQuery ? '&q=' + encodeURIComponent(this.searchQuery) : ''}`;
+    let url = `${environment.apiUrl}/datasets/training?page=${this.currentPage}&size=${this.pageSize}`;
+
+    const teamContext = this.authService.getTeamContext();
+    if (teamContext.managerId !== undefined) {
+      url += `&managerId=${teamContext.managerId}`;
+    }
+
+    if (this.searchQuery) {
+      url += `&q=${encodeURIComponent(this.searchQuery)}`;
+    }
 
     this.http.get<PageResponse<Dataset>>(url).subscribe({
       next: (response) => {
@@ -543,12 +556,12 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   private startTrainingWithConfig(config: ModelConfig, isTest: boolean = false): void {
     if (!this.selectedDatasetUuid) {
-      alert('Veuillez sélectionner un dataset');
+      this.toastr.warning('Veuillez sélectionner un dataset', 'Dataset manquant');
       return;
     }
 
     if (this.totalSelectedFeatures === 0) {
-      alert('Veuillez sélectionner au moins une feature');
+      this.toastr.warning('Veuillez sélectionner au moins une feature', 'Features manquantes');
       return;
     }
 

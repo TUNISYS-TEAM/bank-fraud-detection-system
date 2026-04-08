@@ -86,26 +86,44 @@ export class AuthService {
         const roles = me.realm_access?.roles || [];
         const role = this.extractRoleFromList(roles);
 
+        // Chain multiple backend calls to get full user profile
         return this.http.get<RoleResponse>(
           `${environment.apiUrl}/roles/name/${role}`,
           { withCredentials: true }
         ).pipe(
-          map(roleResponse => {
-            const user: AuthUser = {
-              id: me.sub,
-              email: resolvedEmail,
-              name: me.name || resolvedEmail,
-              firstName: me.given_name || resolvedEmail.split('@')[0],
-              lastName: me.family_name || '',
-              role: role,
-              permissions: roleResponse.permissions || [],
-              userId: 0,
-              roleId: roleResponse.id
-            };
+          switchMap(roleResponse => {
+            // Get DB user info
+            return this.http.get<any>(
+              `${environment.apiUrl}/users/me`,
+              { withCredentials: true }
+            ).pipe(
+              switchMap(dbUser => {
+                // Get unread notifications count
+                return this.http.get<{ unreadCount: number }>(
+                  `${environment.apiUrl}/notifications/unread/count`,
+                  { withCredentials: true }
+                ).pipe(
+                  map(notifResponse => {
+                    const user: AuthUser = {
+                      id: me.sub,
+                      email: resolvedEmail,
+                      name: me.name || resolvedEmail,
+                      firstName: me.given_name || resolvedEmail.split('@')[0],
+                      lastName: me.family_name || '',
+                      role: role,
+                      permissions: roleResponse.permissions || [],
+                      userId: dbUser.id,
+                      roleId: roleResponse.id,
+                      managerId: dbUser.managerId,
+                    };
 
-            this.currentUser = user;
-            this.userSubject.next(user);
-            return user;
+                    this.currentUser = user;
+                    this.userSubject.next(user);
+                    return user;
+                  })
+                );
+              })
+            );
           })
         );
       }),
@@ -196,6 +214,28 @@ export class AuthService {
         return of(void 0);
       })
     );
+  }
+
+  getTeamContext(): { managerId?: number } {
+    if (!this.currentUser) return {};
+
+    if (this.roleHasName(this.currentUser.role, 'ADMIN')) {
+      return {}; // No filtering for ADMIN
+    }
+
+    if (this.roleHasName(this.currentUser.role, 'MANAGER')) {
+      return { managerId: this.currentUser.userId }; // Filter by self as manager
+    }
+
+    if (this.roleHasName(this.currentUser.role, 'ANALYST')) {
+      return { managerId: this.currentUser.managerId }; // Filter by assigned manager
+    }
+
+    return {};
+  }
+
+  private roleHasName(role: string, name: string): boolean {
+    return role.toUpperCase() === name.toUpperCase();
   }
 
   isLoggedIn(): boolean {

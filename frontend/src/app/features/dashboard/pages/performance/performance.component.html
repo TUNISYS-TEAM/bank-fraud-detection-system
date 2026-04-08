@@ -469,7 +469,7 @@
   </ng-container>
 
   <!-- Model Drift Tracking (Manager Only) -->
-  <div *ngIf="isManager()" class="mt-8">
+  <div *ngIf="canShowDrift()" class="mt-8">
     <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
       <div class="px-6 py-4 border-b border-gray-100">
         <div class="flex items-center justify-between">
@@ -506,8 +506,8 @@
         </div>
 
         <!-- Drift Alert (Dynamic) -->
-        <div *ngIf="driftAlert().show && !isLoadingDrift()"
-          class="mx-6 mt-6 p-4 rounded-xl border transition-all animate-fadeIn"
+        @if (driftAlert().show && !isLoadingDrift() && modelDriftData().dataPoints?.length > 0) {
+        <div class="mx-6 mt-6 p-4 rounded-xl border transition-all animate-fadeIn"
           [ngClass]="{
             'bg-red-50 border-red-200': driftAlert().level === 'critical',
             'bg-amber-50 border-amber-200': driftAlert().level === 'warning',
@@ -553,10 +553,22 @@
             </div>
           </div>
         </div>
+        }
 
         <!-- Drift Chart and Metrics -->
         <div *ngIf="modelDriftData() && !isLoadingDrift()" class="p-6">
-          <!-- Drift Chart -->
+
+          <!-- Needs Retraining Badge (Synchronized with Critical alert) -->
+          <div *ngIf="driftAlert().level === 'critical' && modelDriftData().dataPoints?.length > 0"
+            class="mb-6 flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl animate-fadeIn">
+            <div class="p-1.5 bg-red-100 rounded-lg">
+              <i-feather name="alert-octagon" class="w-4 h-4 text-red-600"></i-feather>
+            </div>
+            <p class="text-sm font-black text-red-800 uppercase tracking-wider">Réentraînement Requis</p>
+            <p class="text-sm text-red-600 ml-auto">Le modèle nécessite un réentraînement avec les données récentes</p>
+          </div>
+
+          <!-- Drift Chart (Multi-series) -->
           <div class="relative">
             <div id="modelDriftChart" [class.opacity-20]="modelDriftData().driftValues.length === 0" style="width: 100%; height: 450px;"></div>
             
@@ -574,47 +586,224 @@
             </div>
           </div>
 
-          <!-- Drift Metrics Cards -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Dérive Globale</p>
-              <div class="flex items-baseline gap-2">
-                <p class="text-2xl font-black"
-                  [ngClass]="{
-                    'text-red-600': modelDriftData().currentDrift >= driftThreshold,
-                    'text-amber-500': modelDriftData().currentDrift >= driftThreshold * 0.8 && modelDriftData().currentDrift < driftThreshold,
-                    'text-emerald-600': modelDriftData().currentDrift < driftThreshold * 0.8
-                  }">
-                  {{ modelDriftData().currentDrift.toFixed(1) }}%
-                </p>
-                <span class="text-[10px] font-bold text-gray-400">Total</span>
+          <!-- ═══════════════════════════════════════════════ -->
+          <!-- 2-Column Drift Detail Cards                     -->
+          <!-- ═══════════════════════════════════════════════ -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+
+            <!-- ──── LEFT COLUMN: Distribution Drift ──── -->
+            <div class="bg-white rounded-2xl border border-violet-100 shadow-sm overflow-hidden">
+              <div class="px-5 py-4 border-b border-violet-100 bg-violet-50/50 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-violet-100 rounded-xl">
+                    <i-feather name="layers" class="w-4 h-4 text-violet-600"></i-feather>
+                  </div>
+                  <div>
+                    <h4 class="text-base font-black text-violet-900 uppercase tracking-wider">Drift de Distribution</h4>
+                    <p class="text-xs text-violet-500 font-medium mt-0.5">Score moyen de fraude — Non supervisé</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-2.5 h-2.5 rounded-full" 
+                    [ngClass]="{
+                      'bg-red-500': modelDriftData().distributionStatus === 'CRITICAL',
+                      'bg-amber-500': modelDriftData().distributionStatus === 'WARNING',
+                      'bg-emerald-500': modelDriftData().distributionStatus === 'NORMAL'
+                    }"></div>
+                  <span class="text-sm font-black uppercase tracking-wider"
+                    [ngClass]="{
+                      'text-red-600': modelDriftData().distributionStatus === 'CRITICAL',
+                      'text-amber-600': modelDriftData().distributionStatus === 'WARNING',
+                      'text-emerald-600': modelDriftData().distributionStatus === 'NORMAL'
+                    }">{{ translateStatus(modelDriftData().distributionStatus) }}</span>
+                </div>
+              </div>
+              <div class="p-5">
+                <div class="grid grid-cols-2 gap-4">
+                  <!-- Distribution Drift Value -->
+                  <div class="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100 custom-tooltip"
+                       data-tooltip="Score de dérive calculé sur la distribution statistique des probabilités de fraude">
+                    <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Drift Distribution</p>
+                    <p class="text-2xl font-black"
+                      [ngClass]="{
+                        'text-red-600': modelDriftData().currentDistributionDrift >= driftThreshold,
+                        'text-amber-500': modelDriftData().currentDistributionDrift >= driftThreshold * 0.8 && modelDriftData().currentDistributionDrift < driftThreshold,
+                        'text-emerald-600': modelDriftData().currentDistributionDrift < driftThreshold * 0.8
+                      }">
+                      {{ modelDriftData().currentDistributionDrift.toFixed(1) }}%
+                    </p>
+                  </div>
+                  <!-- Transactions analysées -->
+                  <div class="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100 custom-tooltip"
+                       data-tooltip="Nombre de transactions récentes utilisées pour l'analyse statistique (non supervisée)">
+                    <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Transactions Analysées</p>
+                    <p class="text-2xl font-black text-slate-800">{{ modelDriftData().distributionSampleSize || '—' }}</p>
+                  </div>
+                  <!-- Baseline Score -->
+                  <div class="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100 custom-tooltip"
+                       data-tooltip="Moyenne des probabilités de fraude lors de l'entraînement initial du modèle">
+                    <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Score Baseline</p>
+                    <p class="text-lg font-black text-slate-700">
+                      {{ modelDriftData().baselineAvgScore ? (modelDriftData().baselineAvgScore * 100).toFixed(2) + '%' : '—' }}
+                    </p>
+                  </div>
+                  <!-- Current Score -->
+                  <div class="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100 custom-tooltip"
+                       data-tooltip="Moyenne des probabilités de fraude sur les transactions récentes">
+                    <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Score Courant</p>
+                    <div class="flex items-baseline gap-2">
+                      <p class="text-lg font-black text-slate-700">
+                        {{ modelDriftData().currentAvgScore ? (modelDriftData().currentAvgScore * 100).toFixed(2) + '%' : '—' }}
+                      </p>
+                      <span *ngIf="modelDriftData().baselineAvgScore && modelDriftData().currentAvgScore" class="text-[10px] font-bold"
+                        [ngClass]="modelDriftData().currentAvgScore > modelDriftData().baselineAvgScore ? 'text-red-500' : 'text-emerald-500'">
+                        <i-feather [name]="modelDriftData().currentAvgScore > modelDriftData().baselineAvgScore ? 'trending-up' : 'trending-down'" class="w-3 h-3 inline"></i-feather>
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Performance (F1)</p>
-              <div class="flex items-center gap-2">
-                <div class="w-2 h-2 rounded-full" 
-                  [ngClass]="modelDriftData().performanceStatus === 'CRITICAL' ? 'bg-red-500' : (modelDriftData().performanceStatus === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500')"></div>
-                <p class="text-lg font-black text-slate-800">{{ modelDriftData().performanceStatus || 'N/A' }}</p>
+
+            <!-- ──── RIGHT COLUMN: Performance Drift ──── -->
+            <div class="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
+              <div class="px-5 py-4 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-amber-100 rounded-xl">
+                    <i-feather name="activity" class="w-4 h-4 text-amber-600"></i-feather>
+                  </div>
+                  <div>
+                    <h4 class="text-base font-black text-amber-900 uppercase tracking-wider">Drift de Performance</h4>
+                    <p class="text-xs text-amber-500 font-medium mt-0.5">F1-Score post-validation — Supervisé</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-2.5 h-2.5 rounded-full" 
+                    [ngClass]="{
+                      'bg-red-500': modelDriftData().performanceStatus === 'CRITICAL',
+                      'bg-amber-500': modelDriftData().performanceStatus === 'WARNING',
+                      'bg-emerald-500': modelDriftData().performanceStatus === 'NORMAL',
+                      'bg-gray-400': modelDriftData().performanceStatus === 'INSUFFICIENT_DATA'
+                    }"></div>
+                  <span class="text-sm font-black uppercase tracking-wider"
+                    [ngClass]="{
+                      'text-red-600': modelDriftData().performanceStatus === 'CRITICAL',
+                      'text-amber-600': modelDriftData().performanceStatus === 'WARNING',
+                      'text-emerald-600': modelDriftData().performanceStatus === 'NORMAL',
+                      'text-gray-500': modelDriftData().performanceStatus === 'INSUFFICIENT_DATA'
+                    }">{{ translateStatus(modelDriftData().performanceStatus) }}</span>
+                </div>
               </div>
-            </div>
-            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Distribution Données</p>
-              <div class="flex items-center gap-2">
-                <div class="w-2 h-2 rounded-full" 
-                  [ngClass]="modelDriftData().distributionStatus === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500'"></div>
-                <p class="text-lg font-black text-slate-800">{{ modelDriftData().distributionStatus || 'NORMAL' }}</p>
+              <div class="p-5">
+
+                <!-- INSUFFICIENT_DATA state -->
+                <div *ngIf="modelDriftData().performanceStatus === 'INSUFFICIENT_DATA'" 
+                  class="bg-gray-50 rounded-xl p-5 border border-dashed border-gray-200 text-center">
+                  <div class="p-3 bg-gray-100 rounded-full inline-flex mb-3">
+                    <i-feather name="clock" class="w-5 h-5 text-gray-400"></i-feather>
+                  </div>
+                  <p class="text-sm font-bold text-gray-700 mb-1">Données insuffisantes</p>
+                  <p class="text-xs text-gray-400 leading-relaxed max-w-xs mx-auto">
+                    Pas assez d'alertes validées par les analystes 
+                    (<span class="font-black text-gray-600">{{ modelDriftData().alertsSampleSize }}/5</span> minimum). 
+                    Les analystes doivent confirmer ou rejeter les alertes pour calculer ce drift.
+                  </p>
+                </div>
+
+                <!-- Performance metrics when available -->
+                <div *ngIf="modelDriftData().performanceStatus !== 'INSUFFICIENT_DATA'" class="grid grid-cols-2 gap-4">
+                   <!-- Drift de perf (Previously Dérive Globale) -->
+                   <div class="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100 custom-tooltip"
+                        data-tooltip="Indique l'amélioration ou la dégradation de la performance (F1) par rapport à la baseline d'entraînement">
+                     <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Drift de perf</p>
+                     <div class="flex items-baseline gap-2">
+                        <p class="text-2xl font-black"
+                          [ngClass]="{
+                            'text-emerald-600': modelDriftData().currentPerformanceDrift >= 0,
+                            'text-red-600': modelDriftData().currentPerformanceDrift <= -driftThreshold,
+                            'text-amber-500': modelDriftData().currentPerformanceDrift < 0 && modelDriftData().currentPerformanceDrift > -driftThreshold
+                          }">
+                          {{ modelDriftData().currentPerformanceDrift.toFixed(1) }}%
+                        </p>
+                     </div>
+                   </div>
+
+                  <!-- Alertes résolues -->
+                  <div class="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100 custom-tooltip"
+                       data-tooltip="Nombre d'alertes total ayant reçu une décision (Confirmé ou Faux Positif)">
+                    <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Validées par l'analyste</p>
+                    <p class="text-2xl font-black text-slate-800">{{ modelDriftData().alertsSampleSize }}</p>
+                  </div>
+
+                  <!-- F1 Baseline -->
+                  <div class="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100 custom-tooltip"
+                       data-tooltip="Score de performance enregistré lors de l'entraînement ou du déploiement du modèle">
+                    <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">F1 Baseline (Entraîn.)</p>
+                    <p class="text-2xl font-black text-slate-600">
+                      {{ modelDriftData().baselineF1.toFixed(2) }}%
+                    </p>
+                  </div>
+
+                  <!-- F1 Actuel (Validation) (Moved here) -->
+                  <div class="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100 custom-tooltip" 
+                       data-tooltip="Performance actuelle calculée sur les alertes que vous avez validées">
+                    <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5">F1 Actuel (Validation)</p>
+                    <p class="text-2xl font-black"
+                      [ngClass]="{
+                        'text-emerald-600': modelDriftData().currentF1 >= modelDriftData().baselineF1 * 0.9,
+                        'text-red-600': modelDriftData().currentF1 < modelDriftData().baselineF1 * 0.9
+                      }">
+                      {{ modelDriftData().currentF1.toFixed(2) }}%
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Seuil Alerte</p>
-              <p class="text-lg font-black text-slate-800">{{ driftThreshold }}%</p>
             </div>
           </div>
 
-          <!-- 1. ALERTE CRITIQUE / PLAN D'ACTION (Orange - Visible if >= 10%) -->
-          <div *ngIf="modelDriftData().isCritical || modelDriftData().currentDrift >= driftThreshold"
-            class="mt-6 bg-amber-50 rounded-2xl p-6 border border-amber-200 animate-fadeIn">
+          <!-- ═══════════════════════════════════════════════ -->
+          <!-- Global Summary KPI Row                          -->
+          <!-- ═══════════════════════════════════════════════ -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm custom-tooltip"
+                 data-tooltip="Nombre total de points d'analyse stockés dans l'historique">
+              <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2">Historique d'analyses</p>
+              <p class="text-2xl font-black text-slate-800">{{ modelDriftData().dataPoints?.length || 0 }}</p>
+            </div>
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm custom-tooltip"
+                 data-tooltip="Limite de dérive autorisée avant que le modèle ne soit considéré comme obsolète">
+              <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2">Seuil Critique</p>
+              <p class="text-lg font-black text-slate-800">{{ driftThreshold }}%</p>
+              <p class="text-[10px] text-gray-400 font-medium mt-0.5">Alerte à {{ driftWarningThreshold }}%</p>
+            </div>
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm custom-tooltip"
+                 data-tooltip="Indique si une mise à jour du modèle est nécessaire basée sur les seuils de dérive dépassés">
+              <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2">Réentraînement</p>
+              <p class="text-lg font-black" [ngClass]="(driftAlert().level === 'critical') ? 'text-red-600' : 'text-emerald-600'">
+                {{ (driftAlert().level === 'critical') ? 'Requis' : 'Non requis' }}
+              </p>
+            </div>
+            <!-- Performance Retention Index -->
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm custom-tooltip"
+                 data-tooltip="Pourcentage de la performance initiale (F1-Score) conservé par le modèle par rapport à sa baseline d'entraînement">
+              <p class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2">Rétention Performance</p>
+              <div class="flex items-baseline gap-2">
+                <p class="text-2xl font-black"
+                  [ngClass]="{
+                    'text-emerald-600': (modelDriftData().currentF1 / modelDriftData().baselineF1) >= 0.9,
+                    'text-amber-500': (modelDriftData().currentF1 / modelDriftData().baselineF1) >= 0.8 && (modelDriftData().currentF1 / modelDriftData().baselineF1) < 0.9,
+                    'text-red-600': (modelDriftData().currentF1 / modelDriftData().baselineF1) < 0.8
+                  }">
+                  {{ (modelDriftData().currentF1 / modelDriftData().baselineF1 * 100) | number:'1.1-1' }}%
+                </p>
+                <span class="text-[10px] font-bold text-gray-400">vs Baseline</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. ALERTE CRITIQUE / PLAN D'ACTION (Visible if Critical && Not Insufficient Data) -->
+          @if (driftAlert().level === 'critical' && modelDriftData().performanceStatus !== 'INSUFFICIENT_DATA' && modelDriftData().dataPoints?.length > 0) {
+          <div class="mt-6 bg-amber-50 rounded-2xl p-6 border border-amber-200 animate-fadeIn">
             <div class="flex items-start gap-4">
               <div class="p-2 bg-amber-100 rounded-xl">
                 <i-feather name="zap" class="w-5 h-5 text-amber-600"></i-feather>
@@ -631,10 +820,11 @@
               </div>
             </div>
           </div>
+          }
 
-          <!-- 2. VIGILANCE (Orange - Visible if 8% to 10%) -->
-          <div *ngIf="!modelDriftData().isCritical && modelDriftData().currentDrift >= driftThreshold * 0.8 && modelDriftData().currentDrift < driftThreshold && !isLoadingDrift()"
-            class="mt-6 bg-amber-50 rounded-2xl p-6 border border-amber-200 animate-fadeIn">
+          <!-- 2. VIGILANCE (Orange - Visible if Warning) -->
+          @if (driftAlert().level === 'warning' && !isLoadingDrift() && modelDriftData().dataPoints?.length > 0) {
+          <div class="mt-6 bg-amber-50 rounded-2xl p-6 border border-amber-200 animate-fadeIn">
             <div class="flex items-start gap-4">
               <div class="p-2 bg-amber-100 rounded-xl">
                 <i-feather name="shield" class="w-5 h-5 text-amber-600"></i-feather>
@@ -648,10 +838,11 @@
               </div>
             </div>
           </div>
+          }
 
-          <!-- 3. STABILITÉ (Vert - Visible if < 12%) -->
-          <div *ngIf="!modelDriftData().isCritical && modelDriftData().currentDrift < driftThreshold * 0.8 && !isLoadingDrift()"
-            class="mt-6 bg-emerald-50 rounded-2xl p-6 border border-emerald-200 animate-fadeIn">
+          <!-- 3. STABILITÉ (Vert - Visible if Success) -->
+          @if (driftAlert().level === 'success' && !isLoadingDrift() && modelDriftData().dataPoints?.length > 0) {
+          <div class="mt-6 bg-emerald-50 rounded-2xl p-6 border border-emerald-200 animate-fadeIn">
             <div class="flex items-start gap-4">
               <div class="p-2 bg-emerald-100 rounded-xl">
                 <i-feather name="check-circle" class="w-5 h-5 text-emerald-600"></i-feather>
@@ -664,6 +855,7 @@
               </div>
             </div>
           </div>
+          }
         </div>
       </div>
     </div>

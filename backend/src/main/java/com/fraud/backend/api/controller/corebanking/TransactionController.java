@@ -71,12 +71,13 @@ public class TransactionController {
 
     @GetMapping("/analyzed")
     public ResponseEntity<Page<TransactionSummaryResponse>> getAnalyzed(
+            @RequestParam(required = false) UUID datasetUuid,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("transactionDate").descending());
         return ResponseEntity.ok(
-                transactionService.getAnalyzed(pageable).map(transactionMapper::toSummaryResponse));
+                transactionService.getAnalyzed(datasetUuid, pageable).map(transactionMapper::toSummaryResponse));
     }
 
     @GetMapping("/meta/statuses")
@@ -92,12 +93,14 @@ public class TransactionController {
     @GetMapping("/stats/time-series")
     public ResponseEntity<java.util.List<java.util.Map<String, Object>>> getTimeSeriesStats(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
-        return ResponseEntity.ok(transactionService.getTimeSeriesStats(start, end));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
+            @RequestParam(required = false) String datasetUuid) {
+        return ResponseEntity.ok(transactionService.getTimeSeriesStats(start, end, datasetUuid));
     }
 
     @GetMapping("/stats/analyzed-global")
-    public ResponseEntity<java.util.Map<String, Object>> getGlobalAnalyzedStats() {
-        return ResponseEntity.ok(transactionService.getGlobalAnalyzedStats());
+    public ResponseEntity<java.util.Map<String, Object>> getGlobalAnalyzedStats(
+            @RequestParam(required = false) String datasetUuid) {
+        return ResponseEntity.ok(transactionService.getGlobalAnalyzedStats(datasetUuid));
     }
 }

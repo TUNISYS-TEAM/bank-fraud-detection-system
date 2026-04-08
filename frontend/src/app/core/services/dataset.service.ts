@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, Subject } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { AuthService } from './auth.service';
 
 export enum DatasetStatus {
     PROCESSED = 'PROCESSED',
@@ -27,6 +28,9 @@ export interface Dataset {
     type: DatasetType;
     importedAt: string;
     visibility: boolean;
+    assignedManagerId?: number;
+    assignedManagerName?: string;
+    assignedManagerEmail?: string;
 }
 
 export interface DatasetPreviewResponse {
@@ -72,14 +76,21 @@ export interface ApiResponse<T> {
 })
 export class DatasetService {
     private http = inject(HttpClient);
+    private authService = inject(AuthService);
     private readonly apiUrl = `${environment.apiUrl}/datasets`;
+    private readonly userUrl = `${environment.apiUrl}/users`;
 
-    list(params: { q?: string; status?: DatasetStatus; type?: DatasetType; visibility?: boolean; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
+    list(params: { q?: string; status?: DatasetStatus; type?: DatasetType; visibility?: boolean; managerId?: number; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
+        const teamContext = this.authService.getTeamContext();
         let httpParams = new HttpParams();
+        
+        const finalManagerId = params.managerId || teamContext.managerId;
+        
         if (params.q) httpParams = httpParams.set('q', params.q);
         if (params.status) httpParams = httpParams.set('status', params.status);
         if (params.type) httpParams = httpParams.set('type', params.type);
         if (params.visibility !== undefined) httpParams = httpParams.set('visibility', params.visibility.toString());
+        if (finalManagerId !== undefined) httpParams = httpParams.set('managerId', finalManagerId.toString());
         if (params.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
         if (params.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
 
@@ -116,12 +127,16 @@ export class DatasetService {
         return this.http.delete<void>(`${this.apiUrl}/${uuid}`);
     }
 
-    update(uuid: string, data: { datasetName?: string; status?: DatasetStatus; visibility?: boolean }): Observable<Dataset> {
+    update(uuid: string, data: { datasetName?: string; status?: DatasetStatus; visibility?: boolean; assignedManagerId?: number }): Observable<Dataset> {
         return this.http.put<Dataset>(`${this.apiUrl}/${uuid}`, data);
     }
 
     download(uuid: string): Observable<Blob> {
         return this.http.get(`${this.apiUrl}/${uuid}/download`, { responseType: 'blob' });
+    }
+
+    getManagers(): Observable<any[]> {
+        return this.http.get<any[]>(`${this.userUrl}/available-managers`);
     }
 
     count(): Observable<number> {

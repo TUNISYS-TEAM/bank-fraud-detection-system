@@ -8,7 +8,6 @@ import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingReposit
 import com.fraud.backend.data.repository.accessmanagement.RoleRepository;
 import com.fraud.backend.data.repository.accessmanagement.UserSessionRepository;
 import jakarta.persistence.EntityNotFoundException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,9 +19,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 @Slf4j
 @Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class UserService {
 
@@ -31,6 +32,7 @@ public class UserService {
     private final UserSessionRepository userSessionRepository;
     private final RoleRepository roleRepository;
     private final KeycloakService keycloakService;
+    private final OtpService otpService;  // ADDED: OTP Service dependency
     private final BCryptPasswordEncoder passwordEncoder;
 
     // Hierarchical rules for manager assignment
@@ -40,6 +42,24 @@ public class UserService {
         ALLOWED_MANAGER_ROLES.put("ANALYST", Arrays.asList("MANAGER", "ADMIN"));
         ALLOWED_MANAGER_ROLES.put("MANAGER", Arrays.asList("ADMIN"));
         ALLOWED_MANAGER_ROLES.put("ADMIN", Collections.emptyList());
+    }
+
+    // Constructor with all dependencies (replaces @RequiredArgsConstructor for clarity)
+    public UserService(
+            AppUserRepository appUserRepository,
+            KeycloakMappingRepository keycloakMappingRepository,
+            UserSessionRepository userSessionRepository,
+            RoleRepository roleRepository,
+            KeycloakService keycloakService,
+            OtpService otpService,
+            BCryptPasswordEncoder passwordEncoder) {
+        this.appUserRepository = appUserRepository;
+        this.keycloakMappingRepository = keycloakMappingRepository;
+        this.userSessionRepository = userSessionRepository;
+        this.roleRepository = roleRepository;
+        this.keycloakService = keycloakService;
+        this.otpService = otpService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public void setAllowedManagerRolesForCustomRole(String customRoleName, List<String> allowedManagerRoles) {
@@ -146,6 +166,18 @@ public class UserService {
         return appUserRepository.findByRoleNames(managerRoles);
     }
 
+    private AppUser getManagerForRole(String roleName) {
+        List<String> allowedManagers = ALLOWED_MANAGER_ROLES.getOrDefault(roleName, Collections.emptyList());
+
+        for (String managerRole : allowedManagers) {
+            Optional<AppUser> manager = appUserRepository.findFirstByRoleName(managerRole);
+            if (manager.isPresent()) {
+                return manager.get();
+            }
+        }
+        return null;
+    }
+
     // ==================== CREATE METHOD ====================
     @Transactional
     public AppUser createUser(String email, String password, String firstName,
@@ -165,62 +197,73 @@ public class UserService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new EntityNotFoundException("Rôle non trouvé: " + roleId));
 
-        // Create user in Keycloak - NO email sent automatically
+        // Create user in Keycloak using the keycloak role name
         String keycloakId = keycloakService.createUser(email, firstName, lastName, password, role.getName());
 
-        boolean active = isActive != null ? isActive : true;
+        try {
+            boolean active = isActive != null ? isActive : true;
 
-        AppUser user = AppUser.builder()
-                .uuid(UUID.randomUUID())
-                .email(email)
-                .passwordHash(passwordEncoder.encode(password))
-                .firstName(firstName)
-                .lastName(lastName)
-                .phoneNumber(normalizedPhone)
-                .dateOfBirth(dateOfBirth)
-                .address(address)
-                .role(role)
-                .isActive(active)
-                .build();
+            AppUser user = AppUser.builder()
+                    .uuid(UUID.randomUUID())
+                    .email(email)
+                    .passwordHash(passwordEncoder.encode(password))
+                    .firstName(firstName)
+                    .lastName(lastName)
+                    .phoneNumber(normalizedPhone)
+                    .dateOfBirth(dateOfBirth)
+                    .address(address)
+                    .role(role)
+                    .isActive(active)
+                    .build();
 
-        // Manager assignment
-        if (managerId != null) {
-            AppUser manager = getById(managerId);
-            validateManagerCapability(manager);
-            validateManagerAssignment(user, manager);
-            user.setManager(manager);
-        } else {
-            AppUser autoManager = getManagerForRole(role.getName());
-            if (autoManager != null) {
-                user.setManager(autoManager);
+            // Manager assignment
+            if (managerId != null) {
+                AppUser manager = getById(managerId);
+                validateManagerCapability(manager);
+                validateManagerAssignment(user, manager);
+                user.setManager(manager);
+            } else {
+                AppUser autoManager = getManagerForRole(role.getName());
+                if (autoManager != null) {
+                    user.setManager(autoManager);
+                }
             }
-        }
 
-        AppUser savedUser = appUserRepository.save(user);
+            AppUser savedUser = appUserRepository.save(user);
 
-        // Save Keycloak mapping
-        KeycloakMapping mapping = KeycloakMapping.builder()
-                .keycloakId(keycloakId)
-                .user(savedUser)
-                .username(email)
-                .email(email)
-                .lastSync(LocalDateTime.now())
-                .build();
-        keycloakMappingRepository.save(mapping);
+            // Save Keycloak mapping
+            KeycloakMapping mapping = KeycloakMapping.builder()
+                    .keycloakId(keycloakId)
+                    .user(savedUser)
+                    .username(email)
+                    .email(email)
+                    .lastSync(LocalDateTime.now())
+                    .build();
+            keycloakMappingRepository.save(mapping);
 
-        if (!active) {
+            if (!active) {
+                try {
+                    keycloakService.disableUser(keycloakId);
+                } catch (Exception e) {
+                    log.error("Erreur lors de la désactivation dans Keycloak: {}", e.getMessage());
+                }
+            }
+
+            return savedUser;
+        } catch (Exception e) {
+            // Rollback: delete user from Keycloak if DB save fails
+            log.error("Erreur lors de la création en BD, rollback Keycloak pour l'utilisateur: {}", email, e);
             try {
-                keycloakService.disableUser(keycloakId);
-            } catch (Exception e) {
-                log.error("Erreur lors de la désactivation dans Keycloak: {}", e.getMessage());
+                keycloakService.deleteUser(keycloakId);
+                log.info("Utilisateur supprimé de Keycloak suite à l'échec BD: {}", keycloakId);
+            } catch (Exception keycloakEx) {
+                log.error("Échec de la suppression Keycloak lors du rollback: {}", keycloakEx.getMessage());
             }
+            throw e;
         }
-
-        return savedUser;
     }
 
-    // ==================== EMAIL VERIFICATION METHODS (UPDATED FOR OTP)
-    // ====================
+    // ==================== EMAIL VERIFICATION METHODS (UPDATED FOR OTP) ====================
 
     /**
      * Called when user tries to login but email is not verified
@@ -234,8 +277,8 @@ public class UserService {
             throw new IllegalArgumentException("Compte désactivé");
         }
 
-        // Generate and send OTP via email
-        keycloakService.generateAndSendOTP(email, user.getFirstName());
+        // Use OtpService instead of KeycloakService
+        otpService.generateAndSendOtp(email, user.getFirstName(), "VERIFICATION");
         log.info("OTP sent automatically on login attempt for: {}", email);
     }
 
@@ -244,7 +287,7 @@ public class UserService {
      */
     @Transactional
     public boolean verifyEmailWithOTP(String email, String otpCode) {
-        // Verify OTP
+        // Verify OTP using KeycloakService which delegates to OtpCacheService
         if (!keycloakService.verifyOTP(email, otpCode)) {
             log.warn("Invalid OTP for email: {}", email);
             return false;
@@ -285,8 +328,7 @@ public class UserService {
     }
 
     /**
-     * Verify email using email address (for login flow) - kept for backward
-     * compatibility
+     * Verify email using email address (for login flow) - kept for backward compatibility
      * This now uses OTP
      */
     @Transactional
@@ -311,25 +353,12 @@ public class UserService {
                     "Impossible d'envoyer un email de vérification à un utilisateur désactivé");
         }
 
-        // Generate and send new OTP
-        keycloakService.generateAndSendOTP(user.getEmail(), user.getFirstName());
+        // Use OtpService instead of KeycloakService
+        otpService.generateAndSendOtp(user.getEmail(), user.getFirstName(), "VERIFICATION");
         log.info("OTP resent to user: {}", user.getEmail());
     }
 
-    private AppUser getManagerForRole(String roleName) {
-        List<String> allowedManagers = ALLOWED_MANAGER_ROLES.getOrDefault(roleName, Collections.emptyList());
-
-        for (String managerRole : allowedManagers) {
-            Optional<AppUser> manager = appUserRepository.findFirstByRoleName(managerRole);
-            if (manager.isPresent()) {
-                return manager.get();
-            }
-        }
-        return null;
-    }
-
-    // ==================== UPDATE, ROLE, MANAGER, DELETE METHODS
-    // ====================
+    // ==================== UPDATE, ROLE, MANAGER, DELETE METHODS ====================
     @Transactional
     public AppUser updateUser(Long id, String firstName, String lastName, String email,
             String phoneNumber, String address, LocalDate dateOfBirth,
@@ -506,8 +535,7 @@ public class UserService {
     // ==================== SELF-SERVICE PROFILE METHODS ====================
 
     /**
-     * Update own profile (self-service) — only personal info, no
-     * role/active/manager changes
+     * Update own profile (self-service) — only personal info, no role/active/manager changes
      */
     @Transactional
     public AppUser updateProfile(String email, String firstName, String lastName,
@@ -604,5 +632,15 @@ public class UserService {
             return appUserRepository.existsByPhoneNumberAndUuidNot(normalizedPhone, excludeUuid);
         }
         return appUserRepository.existsByPhoneNumber(normalizedPhone);
+    }
+
+    public AppUser getCurrentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+
+        // Utilisation directe du repository pour éviter l'exception EntityNotFoundException
+        return appUserRepository.findByEmail(auth.getName()).orElse(null);
     }
 }

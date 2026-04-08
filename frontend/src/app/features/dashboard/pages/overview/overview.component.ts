@@ -13,6 +13,8 @@ import { FraudAlertResponse } from '../../../../core/models/fraud-alert.model';
 import { UserRole } from '../../../../core/models/auth.model';
 import { KpiCard } from '../../../../shared/cards/cards.component';
 import { SystemMetricsService, SystemMetrics } from '../../../../core/services/system-metrics.service';
+import { ToastrService } from 'ngx-toastr';
+import { DatasetService, Dataset, DatasetType } from '../../../../core/services/dataset.service';
 
 interface AlertStats {
   total: number;
@@ -48,9 +50,12 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   private authService = inject(AuthService);
   private http = inject(HttpClient);
   private systemMetricsService = inject(SystemMetricsService);
+  private toastr = inject(ToastrService);
+  private datasetService = inject(DatasetService);
 
   userRole = signal<UserRole | null>(null);
   isLoading = signal(true);
+  isModalProcessing = signal(false);
   private adminChartsInitialized = false;
 
   @HostListener('window:resize')
@@ -124,9 +129,34 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   stats = signal<OverviewStats | null>(null);
   isLoadingCharts = signal(true);
   latestAlerts = signal<FraudAlertResponse[]>([]);
+  
+  // Datasets filtering
+  availableDatasets = signal<Dataset[]>([]);
+  selectedDatasetUuid = signal<string | null>(null);
+  selectedDataset = computed(() => {
+    const uuid = this.selectedDatasetUuid();
+    return this.availableDatasets().find((d) => d.datasetUuid === uuid) || null;
+  });
+  
+  prioritizedAlerts = computed(() => {
+    return [...this.latestAlerts()].sort((a, b) => {
+      const riskScores: Record<string, number> = { 'CRITICAL': 40, 'HIGH': 30, 'MEDIUM': 20, 'LOW': 10 };
+      const statusScores: Record<string, number> = { 'PENDING': 100, 'REVIEWED': 50 };
+
+      const aScore = (statusScores[a.status] || 0) + (riskScores[a.riskLevel] || 0);
+      const bScore = (statusScores[b.status] || 0) + (riskScores[b.riskLevel] || 0);
+      
+      if (aScore !== bScore) {
+        return bScore - aScore;
+      }
+      
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  });
 
   selectedAlert = signal<FraudAlertResponse | null>(null);
   hideAiInModal = signal(false);
+  hideActionsInModal = signal(false);
   isDetailsOpen = signal(false);
 
   private fraudEvolutionChart: echarts.ECharts | null = null;
@@ -229,6 +259,11 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   timeSeriesData = signal<TimeSeriesPoint[]>([]);
   riskDistributionData = signal<any[]>([]);
   recentAlerts = signal<any[]>([]);
+  adminConfirmedAlerts = signal<any[]>([]);
+  adminPageIdx = signal(0);
+  adminTotalAlerts = signal(0);
+  adminPageSize = signal(5);
+  adminTotalPages = computed(() => Math.ceil(this.adminTotalAlerts() / this.adminPageSize()));
 
   systemMetrics = signal<SystemMetrics>({
     uptime: 0,
@@ -627,6 +662,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
       case 'REVIEWED':
         return 'bg-blue-50 text-blue-600 border-blue-100';
       case 'RESOLVED':
+      case 'CONFIRMED':
         return 'bg-emerald-50 text-emerald-600 border-emerald-100';
       case 'FALSE_POSITIVE':
         return 'bg-slate-50 text-slate-600 border-slate-100';
@@ -642,7 +678,8 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
       case 'REVIEWED':
         return 'En Cours';
       case 'RESOLVED':
-        return 'Résolue';
+      case 'CONFIRMED':
+        return 'Confirmée';
       case 'FALSE_POSITIVE':
         return 'Faux Positif';
       default:
@@ -677,6 +714,10 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
         return 'Montant Anormal';
       case 'NEW_DEVICE':
         return 'Nouvel Appareil';
+      case 'NO_HISTORY':
+        return 'Aucun Historique';
+      case 'BEHAVIORAL':
+        return 'Comportement Suspect';
       default:
         return type;
     }
@@ -703,12 +744,25 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   onExamine(alert: FraudAlertResponse): void {
-    this.openDetails(alert, false);
+    this.openDetails(alert, false, false);
   }
 
-  openDetails(alert: FraudAlertResponse, hideAi: boolean = false): void {
+  onAdminPageChange(page: number): void {
+    this.adminPageIdx.set(page);
+    this.refreshData();
+  }
+
+  getAdminAlertDisplayRange() {
+    const total = this.adminTotalAlerts();
+    const start = this.adminPageIdx() * this.adminPageSize() + 1;
+    const end = Math.min((this.adminPageIdx() + 1) * this.adminPageSize(), total);
+    return { start, end, total };
+  }
+
+  openDetails(alert: FraudAlertResponse, hideAi: boolean = false, hideActions: boolean = false): void {
     this.selectedAlert.set(alert);
     this.hideAiInModal.set(hideAi);
+    this.hideActionsInModal.set(hideActions);
     this.isDetailsOpen.set(true);
   }
 
@@ -717,9 +771,57 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     this.selectedAlert.set(null);
   }
 
-  handleAlertAction(event: any): void {
-    this.closeDetails();
-    this.loadRecentAnomalies();
+  handleAlertAction(event: {uuid: string, type: string, comment: string}): void {
+    let status = 'PENDING';
+    let actionTaken = '';
+
+    if (event.type === 'VALIDE_FRAUDE') {
+      status = 'CONFIRMED';
+      actionTaken = 'CONFIRMED_FRAUD';
+    } else if (event.type === 'REJETTE_ALERTE') {
+      status = 'FALSE_POSITIVE';
+      actionTaken = 'DISMISSED';
+    } else if (event.type === 'MARK_AS_REVIEWED') {
+      status = 'REVIEWED';
+      actionTaken = 'REVIEWED';
+    } else if (event.type === 'CONTACT_CLIENT') {
+      this.toastr.info('Fonctionnalité de contact client en attente d\'implémentation backend.', 'Information');
+      this.closeDetails();
+      return;
+    } else {
+      return;
+    }
+
+    this.isModalProcessing.set(true);
+    this.alertService.updateAlertStatus(event.uuid, {
+      status: status,
+      reviewComment: event.comment,
+      actionTaken: actionTaken
+    }).subscribe({
+      next: () => {
+        const alertId = this.selectedAlert()?.id;
+        let message = '';
+        
+        if (event.type === 'VALIDE_FRAUDE') {
+          message = `L'alerte d'id #${alertId} a été validée comme fraude`;
+        } else if (event.type === 'REJETTE_ALERTE') {
+          message = `L'alerte d'id #${alertId} a été rejetée`;
+        } else if (event.type === 'MARK_AS_REVIEWED') {
+          message = `L'alerte d'id #${alertId} a été marquée comme en cours d'analyse`;
+        }
+        
+        this.toastr.success(message, 'Succès');
+        this.isModalProcessing.set(false);
+        this.closeDetails();
+        this.loadRecentAnomalies();
+        this.loadStats();
+      },
+      error: (err) => {
+        console.error('Error updating alert status', err);
+        this.toastr.error('Erreur lors de la mise à jour de l\'alerte', 'Erreur');
+        this.isModalProcessing.set(false);
+      }
+    });
   }
 
   // =========================================================
@@ -815,16 +917,37 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     this.apiError.set(null);
 
     const apiBaseUrl = environment.apiUrl;
-
-    forkJoin({
+    const requests: any = {
       recent: this.http.get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`).pipe(
         timeout(10000),
         catchError(() => of([]))
-      ),
-    }).subscribe({
-      next: (results) => {
-        if (results.recent && results.recent.length > 0) {
-          this.recentAlerts.set(results.recent);
+      )
+    };
+
+    if (this.isAdmin()) {
+      const datasetParam = this.selectedDatasetUuid() ? `&datasetUuid=${this.selectedDatasetUuid()}` : '';
+      requests.confirmed = this.http.get<any>(`${apiBaseUrl}/fraud-alerts?status=CONFIRMED&page=${this.adminPageIdx()}&size=${this.adminPageSize()}&sortBy=createdAt&sortDirection=DESC${datasetParam}`).pipe(
+        timeout(10000),
+        catchError(() => of({ content: [], totalElements: 0 }))
+      );
+      
+      // Also fetch datasets for the dropdown if not already loaded
+      if (this.availableDatasets().length === 0) {
+        requests.datasets = this.datasetService.list({ size: 100, type: DatasetType.TRANSACTIONS_VAL }).pipe(
+          catchError(() => of({ content: [] }))
+        );
+      }
+    }
+
+    forkJoin(requests).subscribe({
+      next: (results: any) => {
+        this.recentAlerts.set(results.recent || []);
+        if (results.confirmed) {
+          this.adminConfirmedAlerts.set(results.confirmed.content || []);
+          this.adminTotalAlerts.set(results.confirmed.totalElements || 0);
+        }
+        if (results.datasets) {
+          this.availableDatasets.set(results.datasets.content || []);
         }
         this.isLoading.set(false);
       },
@@ -839,17 +962,27 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   private refreshData(): void {
     const apiBaseUrl = environment.apiUrl;
 
-    this.http
-      .get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`)
-      .pipe(catchError(() => of([])))
-      .subscribe({
-        next: (recent) => {
-          if (recent && recent.length > 0) this.recentAlerts.set(recent);
-        },
-        error: (err) => {
-          console.error('Error refreshing data:', err);
-        },
-      });
+    const requests: any = {
+      recent: this.http.get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`).pipe(catchError(() => of([])))
+    };
+
+    if (this.isAdmin()) {
+      const datasetParam = this.selectedDatasetUuid() ? `&datasetUuid=${this.selectedDatasetUuid()}` : '';
+      requests.confirmed = this.http.get<any>(`${apiBaseUrl}/fraud-alerts?status=CONFIRMED&page=${this.adminPageIdx()}&size=${this.adminPageSize()}&sortBy=createdAt&sortDirection=DESC${datasetParam}`).pipe(catchError(() => of({ content: [], totalElements: 0 })));
+    }
+
+    forkJoin(requests).subscribe({
+      next: (results: any) => {
+        if (results.recent && results.recent.length > 0) this.recentAlerts.set(results.recent);
+        if (results.confirmed) {
+          this.adminConfirmedAlerts.set(results.confirmed.content || []);
+          this.adminTotalAlerts.set(results.confirmed.totalElements || 0);
+        }
+      },
+      error: (err) => {
+        console.error('Error refreshing data:', err);
+      },
+    });
   }
 
   // =========================================================
@@ -1178,5 +1311,11 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     const previous = history[history.length - 2].value;
     const change = previous ? ((current - previous) / previous) * 100 : 0;
     return `${change.toFixed(0)}%`;
+  }
+
+  onDatasetFilterChange(uuid: string | null): void {
+    this.selectedDatasetUuid.set(uuid === 'all' ? null : uuid);
+    this.adminPageIdx.set(0); // Reset to first page
+    this.refreshData();
   }
 }

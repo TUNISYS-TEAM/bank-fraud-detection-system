@@ -11,6 +11,7 @@ export interface FraudAlertResponse {
   alertType: string;
   status: string;
   reviewedBy?: number;
+  reviewedByName?: string;
   reviewDate?: string;
   reviewComment?: string;
   actionTaken?: string;
@@ -23,7 +24,8 @@ export interface FraudAlertResponse {
   transactionCategory: string;
   clientName?: string;
   accountNumber?: string;
-  fraudReason?: any; // Can be StructuredFraudReason
+  fraudReason?: any; 
+  assignedManagerName?: string;
 }
 
 export interface FraudContribution {

@@ -82,6 +82,7 @@ public class FraudAlertController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID datasetUuid,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "createdAt") String sortBy,
@@ -89,6 +90,6 @@ public class FraudAlertController {
         Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
         return ResponseEntity
-                .ok(fraudAlertService.getAlerts(riskLevel, status, alertType, search, startDate, endDate, pageable));
+                .ok(fraudAlertService.getAlerts(riskLevel, status, alertType, search, datasetUuid, startDate, endDate, pageable));
     }
 }

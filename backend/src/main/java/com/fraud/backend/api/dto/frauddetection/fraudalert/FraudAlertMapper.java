@@ -50,6 +50,10 @@ public class FraudAlertMapper {
                     builder.clientName(alert.getTransaction().getAccount().getClient().getFullName());
                 }
             }
+            
+            if (alert.getTransaction().getDataset() != null && alert.getTransaction().getDataset().getAssignedManager() != null) {
+                builder.assignedManagerName(alert.getTransaction().getDataset().getAssignedManager().getFirstName() + " " + alert.getTransaction().getDataset().getAssignedManager().getLastName());
+            }
         }
         
         if (alert.getUser() != null) {
@@ -62,6 +66,7 @@ public class FraudAlertMapper {
         
         if (alert.getReviewedBy() != null) {
             builder.reviewedBy(alert.getReviewedBy().getId());
+            builder.reviewedByName(alert.getReviewedBy().getFirstName() + " " + alert.getReviewedBy().getLastName());
         }
         
         return builder.build();

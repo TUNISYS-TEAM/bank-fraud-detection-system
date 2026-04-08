@@ -17,4 +17,5 @@ public class DatasetUpdateRequest {
     private DatasetStatus status;
     private DatasetType type;
     private Boolean visibility;
+    private Long assignedManagerId;
 }

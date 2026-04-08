@@ -47,13 +47,17 @@ public class ModelDriftMonitoringService {
     @Scheduled(cron = "0 0 2 * * *")
     public void scheduledDriftCheck() {
         log.info("Starting scheduled model drift check...");
-        checkModelDrift();
+        checkModelDrift(null);
     }
 
     @Transactional
-    public Map<String, Object> checkModelDrift() {
-        Optional<ModelDeploymentHistory> deploymentOpt = deploymentHistoryRepository
-                .findFirstByStatusOrderByDeploymentDateDesc("ACTIVE");
+    public Map<String, Object> checkModelDrift(Long managerId) {
+        Optional<ModelDeploymentHistory> deploymentOpt;
+        if (managerId != null) {
+            deploymentOpt = deploymentHistoryRepository.findFirstByStatusAndDeployedBy_IdOrderByDeploymentDateDesc("ACTIVE", managerId);
+        } else {
+            deploymentOpt = deploymentHistoryRepository.findFirstByStatusOrderByDeploymentDateDesc("ACTIVE");
+        }
 
         if (deploymentOpt.isEmpty()) {
             log.warn("No active model deployment found");
@@ -81,15 +85,19 @@ public class ModelDriftMonitoringService {
         }
 
         List<FraudAlert> recentAlerts = fraudAlertRepository.findByModelUsedAndCreatedAtAfter(model, weekAgo);
+        List<FraudAlert> resolvedAlerts = recentAlerts.stream()
+                .filter(a -> a.getStatus() != null &&
+                        ("CONFIRMED".equals(a.getStatus()) || "FALSE_POSITIVE".equals(a.getStatus())))
+                .toList();
 
         double deployedThreshold = extractModelThreshold(model);
 
         Map<String, Double> currentMetrics;
-        if (recentAlerts.size() >= MINIMUM_ALERTS_FOR_PERFORMANCE_CHECK) {
+        if (resolvedAlerts.size() >= MINIMUM_ALERTS_FOR_PERFORMANCE_CHECK) {
             currentMetrics = calculateCurrentPerformance(recentAlerts, deployedThreshold);
         } else {
-            log.info("Not enough alerts ({}) for performance analysis. Skipping supervised metrics.",
-                    recentAlerts.size());
+            log.info("Not enough resolved alerts ({}/{} total) for performance analysis. Skipping supervised metrics.",
+                    resolvedAlerts.size(), recentAlerts.size());
             currentMetrics = new HashMap<>();
         }
 
@@ -103,18 +111,27 @@ public class ModelDriftMonitoringService {
         double globalAvgScore = transactionRepository
                 .findRecentAverageFraudScoreByModelId(model.getId(), validationSize)
                 .orElse(currentMetrics.getOrDefault("avg_fraud_score", 0.0));
+        
+        // If no alerts calculated avg_fraud_score yet, try to get it from all recent alerts if possible
+        if (globalAvgScore == 0.0 && !recentAlerts.isEmpty()) {
+            globalAvgScore = recentAlerts.stream()
+                    .filter(a -> a.getFraudScore() != null)
+                    .mapToDouble(FraudAlert::getFraudScore)
+                    .average()
+                    .orElse(0.0);
+        }
 
         double baselineAvgScoreForLog = getDoubleFromMapFlexible(
                 baselineMetrics, List.of("avg_fraud_score", "avgFraudScore"), 0.5);
 
         log.info(
-                "Drift Calculation - Window Size: {}, Baseline Avg: {}, Global Production Avg: {}, Alerts Sample Size: {}, Threshold: {}",
-                validationSize, baselineAvgScoreForLog, globalAvgScore, recentAlerts.size(), deployedThreshold);
+                "Drift Calculation - Window Size: {}, Baseline Avg: {}, Global Production Avg: {}, Resolved Samples: {}, Total Samples: {}, Threshold: {}",
+                validationSize, baselineAvgScoreForLog, globalAvgScore, resolvedAlerts.size(), recentAlerts.size(), deployedThreshold);
 
         currentMetrics.put("avg_fraud_score", globalAvgScore);
 
         Map<String, Object> driftAnalysis = analyzeDrift(
-                baselineMetrics, currentMetrics, recentAlerts.size(), (int) totalRecentTransactions);
+                baselineMetrics, currentMetrics, resolvedAlerts.size(), (int) totalRecentTransactions);
 
         updateModelDriftMetadata(model, driftAnalysis);
 
@@ -278,6 +295,8 @@ public class ModelDriftMonitoringService {
         analysis.put("distribution_status", distributionStatus);
         analysis.put("overall_drift_percentage", round(Math.max(Math.max(0, -f1Drift), scoreDrift) * 100, 2));
         analysis.put("f1_drift", round(f1Drift * 100, 2));
+        analysis.put("baseline_f1", round(baselineF1 * 100, 2));
+        analysis.put("current_f1", currentF1 >= 0 ? round(currentF1 * 100, 2) : 0.0);
         analysis.put("score_distribution_drift", round(scoreDrift * 100, 2));
         analysis.put("baseline_avg_fraud_score", round(baselineAvgScore, 6));
         analysis.put("current_avg_fraud_score", round(currentAvgScore, 6));
@@ -333,9 +352,13 @@ public class ModelDriftMonitoringService {
         log.info("Updated model drift metadata. Status: {}", driftAnalysis.get("drift_status"));
     }
 
-    public Map<String, Object> getDriftStatus() {
-        Optional<ModelDeploymentHistory> deploymentOpt = deploymentHistoryRepository
-                .findFirstByStatusOrderByDeploymentDateDesc("ACTIVE");
+    public Map<String, Object> getDriftStatus(Long managerId) {
+        Optional<ModelDeploymentHistory> deploymentOpt;
+        if (managerId != null) {
+            deploymentOpt = deploymentHistoryRepository.findFirstByStatusAndDeployedBy_IdOrderByDeploymentDateDesc("ACTIVE", managerId);
+        } else {
+            deploymentOpt = deploymentHistoryRepository.findFirstByStatusOrderByDeploymentDateDesc("ACTIVE");
+        }
 
         if (deploymentOpt.isEmpty()) {
             return Map.of("status", "NO_ACTIVE_MODEL");

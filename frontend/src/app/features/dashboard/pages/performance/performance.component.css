@@ -114,3 +114,61 @@
     font-size: 9px;
   }
 }
+
+/* Custom Premium Tooltip */
+.custom-tooltip {
+  position: relative;
+}
+
+.custom-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  visibility: hidden;
+  opacity: 0;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(5px);
+  background: #ffffff;
+  color: #334155;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  width: max-content;
+  max-width: 260px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+  pointer-events: none;
+  transition: all 0.2s ease-out;
+  margin-bottom: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.custom-tooltip::before {
+  content: '';
+  position: absolute;
+  visibility: hidden;
+  opacity: 0;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #ffffff;
+  z-index: 101;
+  pointer-events: none;
+  transition: all 0.2s ease-out;
+}
+
+.custom-tooltip:hover::after {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.custom-tooltip:hover::before {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%);
+}

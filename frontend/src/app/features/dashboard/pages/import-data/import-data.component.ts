@@ -3,6 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../environments/environment';
 import { AuthStore } from '../../../../core/store/auth.store';
+import { AuthService } from '../../../../core/services/auth.service';
 import { KpiCard } from '../../../../shared/cards/cards.component';
 
 export interface Dataset {
@@ -17,6 +18,9 @@ export interface Dataset {
   processedFilePath?: string;
   featureColumns?: any;
   statistics?: any;
+  assignedManagerId?: number;
+  assignedManagerName?: string;
+  assignedManagerEmail?: string;
 }
 
 export interface ApiResponse {
@@ -71,6 +75,7 @@ export interface ColumnInfo {
 export class ImportDataComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private route = inject(ActivatedRoute);
+  private authService = inject(AuthService);
   authStore = inject(AuthStore);
 
   // États pour la liste des datasets
@@ -189,6 +194,11 @@ export class ImportDataComponent implements OnInit, OnDestroy {
 
     // Use the training endpoint to get only TRANSACTIONS_TRAIN datasets
     let url = `${environment.apiUrl}/datasets/training?page=${this.currentPage()}&size=${this.pageSize}`;
+
+    const teamContext = this.authService.getTeamContext();
+    if (teamContext.managerId !== undefined) {
+      url += `&managerId=${teamContext.managerId}`;
+    }
 
     if (this.searchQuery()) {
       url += `&q=${encodeURIComponent(this.searchQuery())}`;

@@ -29,9 +29,10 @@ public class TransactionMapper {
                 .postalCodeClient(transaction.getPostalCodeClient())
                 .isFraud(transaction.getIsFraud())
                 .fraudScore(transaction.getFraudScore())
-                .riskLevel(transaction.getFraudReason() != null && transaction.getFraudReason().has("risk_level") ? 
-                        transaction.getFraudReason().get("risk_level").asText().toUpperCase() : "UNKNOWN")
-                .fraudReason(transaction.getFraudReason())  // Directly pass JsonNode
+                .riskLevel(transaction.getFraudReason() != null && transaction.getFraudReason().has("risk_level")
+                        ? transaction.getFraudReason().get("risk_level").asText().toUpperCase()
+                        : "UNKNOWN")
+                .fraudReason(transaction.getFraudReason()) // Directly pass JsonNode
                 .ipAddress(transaction.getIpAddress())
                 .deviceId(transaction.getDeviceId())
                 .accountId(transaction.getAccount() != null ? transaction.getAccount().getId() : null)
@@ -45,7 +46,7 @@ public class TransactionMapper {
         JsonNode fraudReasonNode = transaction.getFraudReason();
         String riskLevel = "UNKNOWN";
         JsonNode summaryFraudReason = null;
-        
+
         if (fraudReasonNode != null) {
             // 1. Extract risk level for the dedicated field
             if (fraudReasonNode.has("risk_level")) {
@@ -77,8 +78,9 @@ public class TransactionMapper {
                 .riskLevel(riskLevel)
                 .fraudReason(summaryFraudReason)
                 .accountNumber(transaction.getAccount() != null ? transaction.getAccount().getAccountNumber() : null)
-                .clientName(transaction.getAccount() != null && transaction.getAccount().getClient() != null ? 
-                        transaction.getAccount().getClient().getFullName() : "Unknown Client")
+                .clientName(transaction.getAccount() != null && transaction.getAccount().getClient() != null
+                        ? transaction.getAccount().getClient().getFullName()
+                        : "Unknown Client")
                 .build();
     }
 
@@ -90,18 +92,18 @@ public class TransactionMapper {
         if (fraudReasonNode == null) {
             return null;
         }
-        
+
         JsonNode summaryNode = fraudReasonNode.get("summary");
         if (summaryNode != null && summaryNode.isTextual()) {
             return summaryNode.textValue();
         }
-        
+
         // Fallback to primary factor if available
         JsonNode primaryFactorNode = fraudReasonNode.get("primary_factor_display");
         if (primaryFactorNode != null && primaryFactorNode.isTextual()) {
             return "Risk: " + primaryFactorNode.textValue();
         }
-        
+
         return null;
     }
 
@@ -120,7 +122,7 @@ public class TransactionMapper {
         if (fraudReasonNode == null) {
             return false;
         }
-        
+
         JsonNode contributionsNode = fraudReasonNode.get("contributions");
         return contributionsNode != null && contributionsNode.isArray() && contributionsNode.size() > 0;
     }
@@ -133,17 +135,17 @@ public class TransactionMapper {
         if (fraudReasonNode == null) {
             return null;
         }
-        
+
         JsonNode primaryFactorNode = fraudReasonNode.get("primary_factor_display");
         if (primaryFactorNode != null && primaryFactorNode.isTextual()) {
             return primaryFactorNode.textValue();
         }
-        
+
         JsonNode primaryFactorNodeAlt = fraudReasonNode.get("primary_factor");
         if (primaryFactorNodeAlt != null && primaryFactorNodeAlt.isTextual()) {
             return primaryFactorNodeAlt.textValue();
         }
-        
+
         return null;
     }
 
@@ -155,12 +157,12 @@ public class TransactionMapper {
         if (fraudReasonNode == null) {
             return null;
         }
-        
+
         JsonNode totalRiskNode = fraudReasonNode.get("total_risk_points");
         if (totalRiskNode != null && totalRiskNode.isNumber()) {
             return totalRiskNode.intValue();
         }
-        
+
         return null;
     }
 
@@ -172,7 +174,7 @@ public class TransactionMapper {
         if (fraudReasonNode == null) {
             return null;
         }
-        
+
         return fraudReasonNode.get("contributions");
     }
 }

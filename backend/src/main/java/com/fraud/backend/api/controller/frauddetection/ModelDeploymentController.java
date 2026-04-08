@@ -72,13 +72,24 @@ public class ModelDeploymentController {
                         .build());
     }
 
+    private Long getEffectiveManagerId() {
+        AppUser user = getCurrentUser();
+        if (user == null || user.getRole() == null) return null;
+        
+        String role = user.getRole().getName().toUpperCase();
+        if ("ADMIN".equals(role)) return null;
+        if ("MANAGER".equals(role)) return user.getId();
+        if ("ANALYST".equals(role) && user.getManager() != null) return user.getManager().getId();
+        return null;
+    }
+
     /**
      * Get all validated models (available for deployment) - Returns DTOs
      */
     @GetMapping("/validated-models")
     public ResponseEntity<List<ModelSummaryResponse>> getValidatedModels() {
         log.info("Getting validated models available for deployment");
-        return ResponseEntity.ok(deploymentService.getValidatedModels());
+        return ResponseEntity.ok(deploymentService.getValidatedModels(null));
     }
 
     /**
@@ -87,7 +98,7 @@ public class ModelDeploymentController {
     @GetMapping("/history")
     public ResponseEntity<List<DeploymentResponse>> getDeploymentHistory() {
         log.info("Getting deployment history");
-        return ResponseEntity.ok(deploymentService.getDeploymentHistory());
+        return ResponseEntity.ok(deploymentService.getDeploymentHistory(null));
     }
 
     /**
@@ -96,7 +107,7 @@ public class ModelDeploymentController {
     @GetMapping("/active/summary")
     public ResponseEntity<ModelSummaryResponse> getActiveDeploymentSummary() {
         log.info("Getting active deployment summary");
-        return deploymentService.getDeployedModelSummary()
+        return deploymentService.getDeployedModelSummary(null)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -107,7 +118,7 @@ public class ModelDeploymentController {
     @GetMapping("/active")
     public ResponseEntity<DeploymentResponse> getActiveDeployment() {
         log.info("Getting active deployment");
-        return deploymentService.getDeployedModelResponse()
+        return deploymentService.getDeployedModelResponse(null)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.ok().body(null)); 
     }
@@ -126,8 +137,9 @@ public class ModelDeploymentController {
         
         // Automatically trigger backfill for existing transactions
         try {
-            log.info("Automatically triggering backfill for model: {}", request.getModelUuid());
-            backfillScoringService.startBackfillForDeployedModel();
+            log.info("Automatically triggering backfill for model: {} for manager: {}", 
+                    request.getModelUuid(), deployedBy.getId());
+            backfillScoringService.startBackfillForDeployedModel(deployedBy.getId());
         } catch (Exception e) {
             log.warn("Auto-backfill failed to start: {}. User can manually trigger it.", e.getMessage());
         }
@@ -222,7 +234,7 @@ public class ModelDeploymentController {
                     "message", "Backfill is already in progress"));
         }
 
-        UUID jobId = backfillScoringService.startBackfillForDeployedModel();
+        UUID jobId = backfillScoringService.startBackfillForDeployedModel(getCurrentUser().getId());
 
         return ResponseEntity.ok(Map.of(
                 "status", "STARTED",
@@ -247,7 +259,7 @@ public class ModelDeploymentController {
     @GetMapping("/drift/status")
     public ResponseEntity<Map<String, Object>> getDriftStatus() {
         log.info("Getting model drift status");
-        return ResponseEntity.ok(driftMonitoringService.getDriftStatus());
+        return ResponseEntity.ok(driftMonitoringService.getDriftStatus(getEffectiveManagerId()));
     }
 
     /**
@@ -256,6 +268,6 @@ public class ModelDeploymentController {
     @PostMapping("/drift/check")
     public ResponseEntity<Map<String, Object>> checkDrift() {
         log.info("Triggering manual drift check");
-        return ResponseEntity.ok(driftMonitoringService.checkModelDrift());
+        return ResponseEntity.ok(driftMonitoringService.checkModelDrift(getEffectiveManagerId()));
     }
 }

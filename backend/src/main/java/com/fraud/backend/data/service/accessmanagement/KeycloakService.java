@@ -14,7 +14,6 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -24,11 +23,9 @@ public class KeycloakService {
     private final Keycloak keycloak;
     private final KeycloakProperties keycloakProperties;
     private final EmailService emailService;
-    
-    // Store OTP codes temporarily (in production, use Redis with TTL)
-    private final ConcurrentHashMap<String, OTPData> otpStore = new ConcurrentHashMap<>();
+    private final OtpCacheService otpCacheService;  // Use centralized OTP cache
 
-    private RealmResource getRealm() {
+    public RealmResource getRealm() {
         return keycloak.realm(keycloakProperties.getRealm());
     }
 
@@ -119,51 +116,15 @@ public class KeycloakService {
     // ==================== EMAIL VERIFICATION WITH OTP ====================
     
     /**
-     * Generate and send OTP to user's email
-     */
-    public String generateAndSendOTP(String email, String firstName) {
-        String otp = String.format("%06d", (int)(Math.random() * 1000000));
-        
-        // Store OTP with expiration (5 minutes)
-        otpStore.put(email, new OTPData(otp, System.currentTimeMillis() + 300000));
-        
-        // Send OTP via email
-        try {
-            emailService.sendOtpEmail(email, otp, firstName);
-            log.info("OTP email sent successfully to: {}", email);
-        } catch (Exception e) {
-            log.error("Failed to send OTP email to {}: {}", email, e.getMessage());
-            // Still log OTP for development debugging
-            log.info("OTP for {}: {} (expires in 5 minutes)", email, otp);
-        }
-        
-        return otp;
-    }
-    
-    /**
-     * Verify OTP code
+     * Verify OTP code - Delegates to centralized OtpCacheService
      */
     public boolean verifyOTP(String email, String code) {
-        OTPData otpData = otpStore.get(email);
-        if (otpData == null) {
-            log.warn("No OTP found for email: {}", email);
-            return false;
-        }
-        
-        if (System.currentTimeMillis() > otpData.expiry) {
-            otpStore.remove(email);
-            log.warn("OTP expired for email: {}", email);
-            return false;
-        }
-        
-        boolean isValid = otpData.code.equals(code);
+        boolean isValid = otpCacheService.verifyOtp(email, code);
         if (isValid) {
-            otpStore.remove(email);
             log.info("OTP verified successfully for email: {}", email);
         } else {
             log.warn("Invalid OTP attempt for email: {}", email);
         }
-        
         return isValid;
     }
     
@@ -232,6 +193,37 @@ public class KeycloakService {
         }
     }
 
+    /**
+     * Find Keycloak user ID by email
+     */
+    public String findKeycloakIdByEmail(String email) {
+        try {
+            List<UserRepresentation> users = getRealm().users().search(email, true);
+            if (users.isEmpty()) {
+                return null;
+            }
+            return users.get(0).getId();
+        } catch (Exception e) {
+            log.error("Failed to find Keycloak user by email {}: {}", email, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get user's first name by email
+     */
+    public String getUserFirstNameByEmail(String email) {
+        try {
+            List<UserRepresentation> users = getRealm().users().search(email, true);
+            if (!users.isEmpty()) {
+                return users.get(0).getFirstName();
+            }
+        } catch (Exception e) {
+            log.warn("Could not find user with email: {}", email);
+        }
+        return "User"; // Default fallback
+    }
+
     // ==================== ROLE MANAGEMENT ====================
     public String createRole(String roleName, String description) {
         RoleRepresentation role = new RoleRepresentation();
@@ -294,16 +286,5 @@ public class KeycloakService {
         realm.setPasswordPolicy(newPolicy);
         getRealm().update(realm);
         log.info("Keycloak password expiry updated to {} days", days);
-    }
-
-    // OTP Data holder
-    private static class OTPData {
-        final String code;
-        final long expiry;
-        
-        OTPData(String code, long expiry) {
-            this.code = code;
-            this.expiry = expiry;
-        }
     }
 }

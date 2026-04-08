@@ -24,4 +24,9 @@ public class DatasetResponse {
     private DatasetType type;
     private Boolean visibility;
     private LocalDateTime importedAt;
+
+    // ==================== TEAM ASSIGNMENT ====================
+    private Long assignedManagerId;
+    private String assignedManagerName;
+    private String assignedManagerEmail;
 }

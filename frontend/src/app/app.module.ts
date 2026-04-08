@@ -2,6 +2,8 @@ import { NgModule, LOCALE_ID } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { HttpClientModule, HttpClientXsrfModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ReactiveFormsModule } from '@angular/forms';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { ToastrModule } from 'ngx-toastr';
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { AuthInterceptor } from './core/interceptors/auth.interceptor';
@@ -45,7 +47,7 @@ import {
   Phone,
   MapPin,
   MessageCircle,
-  BellOff,
+  BellOff, Clipboard,
   Filter,
 } from 'angular-feather/icons';
 const icons = {
@@ -55,7 +57,7 @@ const icons = {
   CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader, GitMerge, Zap,
   AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, Layers, Server,
   CheckSquare, Square, ChevronUp, CreditCard, ChevronDown, Check, RotateCcw, Award, XCircle, PieChart, DollarSign, UserCheck,
-  ShieldOff, User, TrendingDown, PauseCircle, Share2, Archive, Inbox, Send, Phone, MapPin, MessageCircle, BellOff, Filter
+  ShieldOff, User, TrendingDown, PauseCircle, Share2, Archive, Inbox, Send, Phone, MapPin, MessageCircle, BellOff, Filter, Clipboard
 };
 
 @NgModule({
@@ -68,6 +70,14 @@ const icons = {
     HttpClientModule,
     ReactiveFormsModule,
     FeatherModule.pick(icons),
+
+    BrowserAnimationsModule,
+    ToastrModule.forRoot({
+      timeOut: 3000,
+      positionClass: 'toast-top-right',
+      preventDuplicates: true,
+      progressBar: true
+    }),
 
     HttpClientXsrfModule.withOptions({
       cookieName: 'XSRF-TOKEN',

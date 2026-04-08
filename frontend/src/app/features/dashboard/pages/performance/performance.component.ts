@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../environments/environment';
 import * as echarts from 'echarts';
 import { AuthService } from '../../../../core/services/auth.service';
+import { ToastrService } from 'ngx-toastr';
 
 interface ModelMetrics {
   modelUuid: string;
@@ -68,6 +69,7 @@ interface CardData {
 export class PerformanceComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private toastr = inject(ToastrService);
 
   // Data signals
   private rawModels = signal<ModelMetrics[]>([]);
@@ -287,6 +289,12 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   hasComparisonStats = computed(() => this.comparisonStats() !== null);
   hasFilteredModels = computed(() => this.filteredModels().length > 0);
   hasMultiplePages = computed(() => this.totalPages() > 1);
+  canShowDrift = computed(() => {
+    if (!this.isManager()) return false;
+    const deployed = this.activeDeployedModel();
+    if (!deployed) return false;
+    return (deployed.deployedByEmail || deployed.deployedBy) === this.currentUserEmail();
+  });
 
   statusFilterLabel = computed(() => {
     const filter = this.statusFilter();
@@ -429,7 +437,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   deployModel(model: any): void {
     if (!this.isManager()) {
-      alert('Seuls les managers peuvent déployer des modèles');
+      this.toastr.warning('Seuls les managers peuvent déployer des modèles', 'Accès restreint');
       return;
     }
 
@@ -447,16 +455,13 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     this.http.post(`${environment.apiUrl}/v1/fraud-detection/deployment/deploy`, request)
       .subscribe({
         next: () => {
+          this.toastr.success(`Modèle "${model.modelName}" déployé avec succès !`, 'Déploiement Réussi');
           this.loadActiveDeployedModel();
           this.isDeploying.set(false);
-          this.loadModels(() => {
-            setTimeout(() => {
-              alert(`Modèle "${model.modelName}" déployé avec succès !`);
-            }, 100);
-          });
+          this.loadModels();
         },
         error: (error) => {
-          alert(`Erreur lors du déploiement: ${error.error?.message || 'Unknown error'}`);
+          this.toastr.error(`Erreur lors du déploiement: ${error.error?.message || 'Erreur inconnue'}`, 'Échec du Déploiement');
           this.isDeploying.set(false);
         }
       });
@@ -464,13 +469,13 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   undeployModel(): void {
     if (!this.isManager()) {
-      alert('Seuls les managers peuvent déployer/retirer des modèles');
+      this.toastr.warning('Seuls les managers peuvent retirer des modèles', 'Accès restreint');
       return;
     }
-
+ 
     const currentModel = this.activeDeployedModel();
     if (!currentModel) {
-      alert('Aucun modèle n\'est actuellement déployé');
+      this.toastr.info('Aucun modèle n\'est actuellement déployé', 'Information');
       return;
     }
 
@@ -483,17 +488,14 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     this.http.post(`${environment.apiUrl}/v1/fraud-detection/deployment/undeploy?modelUuid=${currentModel.modelUuid}`, {})
       .subscribe({
         next: () => {
+          this.toastr.success(`Modèle "${currentModel.modelName}" retiré avec succès !`, 'Retrait Réussi');
           this.activeDeployedModel.set(null);
           this.loadActiveDeployedModel();
           this.isUndeploying.set(false);
-          this.loadModels(() => {
-            setTimeout(() => {
-              alert(`Modèle "${currentModel.modelName}" retiré avec succès !`);
-            }, 100);
-          });
+          this.loadModels();
         },
         error: (error) => {
-          alert(`Erreur lors du retrait: ${error.error?.message || 'Unknown error'}`);
+          this.toastr.error(`Erreur lors du retrait: ${error.error?.message || 'Erreur inconnue'}`, 'Erreur');
           this.isUndeploying.set(false);
         }
       });
@@ -552,7 +554,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       const isValidForManager = model.status === 'Deployed' ||
         (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail());
       if (!isValidForManager) {
-        alert('Vous ne pouvez pas sélectionner ce modèle');
+        this.toastr.warning('Vous ne pouvez pas sélectionner ce modèle', 'Accès restreint');
         return;
       }
     }
@@ -564,7 +566,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         return current.filter(m => m.modelUuid !== model.modelUuid);
       } else {
         if (current.length >= 5) {
-          alert('Vous pouvez comparer jusqu\'à 5 modèles maximum');
+          this.toastr.info('Vous pouvez comparer jusqu\'à 5 modèles maximum', 'Comparaison');
           return current;
         }
         return [...current, model];
@@ -1142,24 +1144,44 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   private transformBackendDriftData(response: any): any {
     const history = response.drift_history || [];
     const driftValues = history.map((h: any) => h.overall_drift_percentage || 0);
+    const distributionDriftValues = history.map((h: any) => h.score_distribution_drift || 0);
+    const performanceDriftValues = history.map((h: any) => Math.abs(h.f1_drift || 0));
     const periods = history.map((h: any) => {
       const date = new Date(h.checked_at);
       return date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric', hour: '2-digit' });
     });
 
-    // Ensure we have at least 5 points for the chart if possible, or just what we have
     const lastPoint = history.length > 0 ? history[history.length - 1] : null;
+
+    const currentDist = lastPoint?.score_distribution_drift || 0;
+    const baselineF1 = lastPoint?.baseline_f1 || 0;
+    const currentF1 = lastPoint?.current_f1 || 0;
+    const currentPerf = (baselineF1 > 0) ? ((currentF1 / baselineF1) - 1) * 100 : 0;
+    const overallDrift = lastPoint?.overall_drift_percentage || currentDist; 
 
     return {
       periods: periods,
       driftValues: driftValues,
+      distributionDriftValues: distributionDriftValues,
+      performanceDriftValues: performanceDriftValues,
       threshold: this.driftThreshold,
-      currentDrift: lastPoint?.overall_drift_percentage || 0,
-      isCritical: response.current_status === 'CRITICAL_DRIFT',
+      currentDrift: Math.abs(currentDist), 
+      currentDistributionDrift: Math.abs(currentDist),
+      currentPerformanceDrift: currentPerf, 
+      baselineF1: baselineF1,
+      currentF1: currentF1,
+      performanceStatus: lastPoint?.performance_status === 'INSUFFICIENT_DATA' ? 'INSUFFICIENT_DATA' : this.getAlertLevel(currentPerf, 'performance').toUpperCase(),
+      distributionStatus: this.getAlertLevel(currentDist, 'distribution').toUpperCase(),
+      baselineAvgScore: lastPoint?.baseline_avg_fraud_score || 0,
+      currentAvgScore: lastPoint?.current_avg_fraud_score || 0,
+      alertsSampleSize: lastPoint?.alerts_sample_size || 0,
+      distributionSampleSize: lastPoint?.distribution_sample_size || 0,
+      needsRetraining: lastPoint?.needs_retraining || false,
+      isCritical: response.current_status === 'CRITICAL_DRIFT' || (this.getAlertLevel(currentPerf, 'performance') === 'critical'),
       recommendations: this.getRecommendationsBasedOnDrift(lastPoint?.overall_drift_percentage || 0, response.current_status),
       performanceMetrics: lastPoint?.current_metrics || {},
       dataPoints: history,
-      alertLevel: this.getAlertLevel(lastPoint?.overall_drift_percentage || 0),
+      alertLevel: this.getAlertLevel(lastPoint?.overall_drift_percentage || 0, 'distribution'), // Par défaut, on garde la logique dist pour le niveau global
       modelName: response.model_name,
       deploymentDate: response.last_check
     };
@@ -1175,17 +1197,35 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const deploymentDate = model.deployedAt ? new Date(model.deployedAt) : new Date();
     const weeksSinceDeployment = Math.floor((Date.now() - deploymentDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
     const driftValues = [];
+    const distributionDriftValues = [];
+    const performanceDriftValues = [];
     for (let i = 0; i < 5; i++) {
       const weekOffset = Math.max(0, weeksSinceDeployment - (4 - i));
       const progressionFactor = Math.min(1, weekOffset / 12);
-      driftValues.push(Math.min(this.driftThreshold * 1.2, driftPercentage * progressionFactor));
+      const val = Math.min(this.driftThreshold * 1.2, driftPercentage * progressionFactor);
+      driftValues.push(val);
+      distributionDriftValues.push(val * 0.6);
+      performanceDriftValues.push(val * 0.4);
     }
     const periods = this.generatePeriods(5);
     const driftData = {
       periods: periods,
       driftValues: driftValues,
+      distributionDriftValues: distributionDriftValues,
+      performanceDriftValues: performanceDriftValues,
       threshold: this.driftThreshold,
       currentDrift: driftValues[driftValues.length - 1],
+      currentDistributionDrift: distributionDriftValues[distributionDriftValues.length - 1],
+      currentPerformanceDrift: performanceDriftValues[performanceDriftValues.length - 1],
+      baselineF1: trainingF1 * 100,
+      currentF1: testF1 * 100,
+      performanceStatus: 'INSUFFICIENT_DATA',
+      distributionStatus: 'NORMAL',
+      baselineAvgScore: 0,
+      currentAvgScore: 0,
+      alertsSampleSize: 0,
+      distributionSampleSize: 0,
+      needsRetraining: false,
       isCritical: driftValues[driftValues.length - 1] >= this.driftThreshold,
       recommendations: this.getRecommendationsBasedOnDrift(driftValues[driftValues.length - 1]),
       performanceMetrics: {
@@ -1195,7 +1235,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         auc_roc: modelMetrics.auc_roc || 0
       },
       dataPoints: [],
-      alertLevel: this.getAlertLevel(driftValues[driftValues.length - 1]),
+      alertLevel: this.getAlertLevel(driftValues[driftValues.length - 1], 'distribution'),
       modelName: model.modelName,
       deploymentDate: model.deployedAt
     };
@@ -1216,29 +1256,57 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     return periods;
   }
 
-  private getAlertLevel(driftPercentage: number): string {
-    if (driftPercentage >= this.driftCriticalThreshold) return 'critical';
-    if (driftPercentage >= this.driftWarningThreshold) return 'warning';
-    return 'success';
+  private getAlertLevel(value: number, type: 'distribution' | 'performance'): 'critical' | 'warning' | 'success' {
+    const absValue = Math.abs(value);
+    
+    if (type === 'distribution') {
+      if (absValue >= this.driftCriticalThreshold) return 'critical';
+      if (absValue >= this.driftWarningThreshold) return 'warning';
+      return 'success';
+    } else {
+      // Performance Drift: Alert ONLY if it's a degradation (negative value) 
+      // exceeding the critical threshold (e.g., -10%, which means 90% retention or less)
+      if (value <= -this.driftCriticalThreshold) return 'critical';
+      if (value <= -this.driftWarningThreshold) return 'warning';
+      return 'success';
+    }
   }
 
   private updateDriftAlert(driftData: any): void {
-    const drift = driftData.currentDrift;
-    if (drift >= this.driftCriticalThreshold) {
+    // 0. If no history has been recorded yet, do not show any alert
+    if (!driftData || !driftData.dataPoints || driftData.dataPoints.length === 0) {
+      this.driftAlert.set({ show: false, message: '', driftPercentage: 0, level: 'success' });
+      return;
+    }
+
+    const distDrift = driftData.currentDistributionDrift;
+    const perfDrift = driftData.currentPerformanceDrift;
+    
+    const perfLevel = this.getAlertLevel(perfDrift, 'performance');
+    const distLevel = this.getAlertLevel(distDrift, 'distribution');
+
+    if (distLevel === 'critical' || perfLevel === 'critical') {
+      const message = distLevel === 'critical' 
+        ? `ALERTE CRITIQUE : Dérive de Distribution à ${distDrift.toFixed(1)}% - Seuil de danger (> ${this.driftCriticalThreshold}%) dépassé.`
+        : `ALERTE CRITIQUE : Performance (F1) trop basse. Dégradation de ${Math.abs(perfDrift).toFixed(1)}% par rapport à l'entraînement initiale (Seuil de perte > ${this.driftCriticalThreshold}%).`;
+        
       this.driftAlert.set({
         show: true,
-        message: `ALERTE CRITIQUE : Dérive à ${drift.toFixed(1)}% - Le modèle a dépassé le seuil de danger de ${this.driftCriticalThreshold}%. Mise en production à risque.`,
-        driftPercentage: drift,
+        message: message + " Mise en production à risque.",
+        driftPercentage: distLevel === 'critical' ? distDrift : Math.abs(perfDrift),
         level: 'critical'
       });
-    } else if (drift >= this.driftWarningThreshold) {
+    } 
+    else if (distLevel === 'warning' || perfLevel === 'warning') {
       this.driftAlert.set({
         show: true,
-        message: `AVERTISSEMENT : Dérive à ${drift.toFixed(1)}% - La performance dévie du comportement normal (> ${this.driftWarningThreshold}%). Planifiez un réentraînement.`,
-        driftPercentage: drift,
+        message: `AVERTISSEMENT : Détection de dérive (Dist: ${distDrift.toFixed(1)}%, Perf: ${perfDrift.toFixed(1)}%). La donnée dévie du comportement normal (> ${this.driftWarningThreshold}%). Planifiez un réentraînement.`,
+        driftPercentage: Math.max(distDrift, Math.abs(perfDrift)),
         level: 'warning'
       });
-    } else {
+    } 
+    else {
+      // Success case (could be improvement or small stable change)
       this.driftAlert.set({ show: false, message: '', driftPercentage: 0, level: 'success' });
     }
   }
@@ -1277,9 +1345,18 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const isInvalidDate = !deploymentDateValue || deploymentDateValue === 'Never' || isNaN(new Date(deploymentDateValue).getTime());
     const displayDate = isInvalidDate ? 'Non spécifié' : new Date(deploymentDateValue).toLocaleDateString('fr-FR');
 
-    const option = {
+    const allValues = [
+      ...data.distributionDriftValues,
+      ...data.performanceDriftValues,
+      this.driftCriticalThreshold
+    ];
+    const yMax = Math.max(12, Math.ceil(Math.max(...allValues) * 1.3));
+
+    const hasPerformanceData = data.performanceStatus !== 'INSUFFICIENT_DATA';
+
+    const option: any = {
       title: {
-        text: 'Dérive du Modèle (Model Drift)',
+        text: 'Évolution des Dérives',
         subtext: `Modèle: ${data.modelName || 'Non spécifié'} | Déployé le: ${displayDate}`,
         left: 'center',
         top: 10,
@@ -1288,20 +1365,30 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       },
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'shadow' },
+        axisPointer: { type: 'cross', crossStyle: { color: '#999' } },
         formatter: (params: any) => {
-          if (params && params[0]) {
-            const dataPoint = data.dataPoints?.find((dp: any, idx: number) => idx === params[0].dataIndex);
-            return `<strong>${params[0].axisValue}</strong><br/>Dérive: ${params[0].value.toFixed(1)}%<br/>${dataPoint ? `F1-Score: ${(dataPoint.f1_score * 100).toFixed(1)}%` : ''}`;
-          }
-          return '';
+          if (!params || params.length === 0) return '';
+          let result = `<strong>${params[0].axisValue}</strong><br/>`;
+          params.forEach((p: any) => {
+            result += `${p.marker} ${p.seriesName}: <strong>${p.value.toFixed(2)}%</strong><br/>`;
+          });
+          return result;
         }
       },
+      legend: {
+        data: [
+          'Drift Distribution',
+          ...(hasPerformanceData ? ['Drift Performance (F1)'] : [])
+        ],
+        top: 55,
+        left: 'center',
+        textStyle: { fontSize: 12, fontWeight: 'bold' }
+      },
       grid: {
-        left: '10%',
-        right: '10%',
+        left: '8%',
+        right: '8%',
         bottom: '10%',
-        top: '18%',
+        top: '22%',
         containLabel: true
       },
       xAxis: {
@@ -1319,77 +1406,90 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         nameLocation: 'middle',
         nameGap: 45,
         min: 0,
-        max: Math.max(10, Math.ceil(Math.max(...data.driftValues) * 1.2)),
+        max: yMax,
         axisLabel: { fontSize: 11, formatter: (value: number) => value.toFixed(0) + '%' },
         splitLine: { lineStyle: { type: 'dashed', color: '#e5e7eb' } }
       },
-      series: [{
-        name: 'Dérive',
-        type: 'line',
-        data: data.driftValues,
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 10,
-        lineStyle: {
-          color: data.currentDrift >= this.driftCriticalThreshold ? '#dc2626' : 
-                 (data.currentDrift >= this.driftWarningThreshold ? '#f59e0b' : '#10b981'),
-          width: 3,
-          shadowBlur: 10,
-          shadowColor: data.currentDrift >= this.driftCriticalThreshold ? 'rgba(220, 38, 38, 0.3)' : 
-                       (data.currentDrift >= this.driftWarningThreshold ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)')
-        },
-        itemStyle: {
-          color: (params: any) => {
-            const val = params.value;
-            if (val >= this.driftCriticalThreshold) return '#dc2626';
-            if (val >= this.driftWarningThreshold) return '#f59e0b';
-            return '#10b981';
+      series: [
+        {
+          name: 'Drift Distribution',
+          type: 'line',
+          data: data.distributionDriftValues,
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 8,
+          lineStyle: { color: '#8b5cf6', width: 3 },
+          itemStyle: { color: '#8b5cf6', borderColor: '#ffffff', borderWidth: 2 },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(139, 92, 246, 0.15)' },
+              { offset: 1, color: 'transparent' }
+            ])
           },
-          borderColor: '#ffffff',
-          borderWidth: 2
-        },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { 
-              offset: 0, 
-              color: data.currentDrift >= this.driftThreshold ? 'rgba(220, 38, 38, 0.2)' : 
-                     (data.currentDrift >= this.driftThreshold * 0.8 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)')
-            },
-            { offset: 1, color: 'transparent' }
-          ])
-        },
           markLine: {
-          data: [{
-            name: 'Seuil Critique',
-            yAxis: this.driftCriticalThreshold,
-            lineStyle: { color: '#ef4444', width: 2, type: 'dashed' },
-            label: { show: true, formatter: `Seuil Critique: ${this.driftCriticalThreshold}%`, position: 'end', color: '#ef4444', fontWeight: 'bold' }
-          }, {
-            name: 'Seuil Alerte',
-            yAxis: this.driftWarningThreshold,
-            lineStyle: { color: '#f59e0b', width: 2, type: 'dashed' },
-            label: { show: true, formatter: `Alerte: ${this.driftWarningThreshold}%`, position: 'end', color: '#f59e0b', fontWeight: 'bold' }
-          }],
-          symbol: 'none'
-        },
-        label: {
-          show: true,
-          position: 'top',
-          formatter: (params: any) => params.value.toFixed(1) + '%',
-          fontSize: 11,
-          fontWeight: 'bold',
-          color: (params: any) => {
-            const val = params.value;
-            if (val >= this.driftThreshold) return '#dc2626';
-            if (val >= this.driftThreshold * 0.8) return '#f59e0b';
-            return '#10b981';
+            data: [{
+              name: 'Seuil Critique',
+              yAxis: this.driftCriticalThreshold,
+              lineStyle: { color: '#ef4444', width: 2, type: 'dashed' },
+              label: { show: true, formatter: `Seuil Critique: ${this.driftCriticalThreshold}%`, position: 'end', color: '#ef4444', fontWeight: 'bold', fontSize: 10 }
+            }],
+            symbol: 'none'
+          },
+          label: {
+            show: true,
+            position: 'top',
+            formatter: (params: any) => params.value.toFixed(1) + '%',
+            fontSize: 10,
+            fontWeight: 'bold',
+            color: '#8b5cf6'
           }
-        }
-      }]
+        },
+        ...(hasPerformanceData ? [{
+          name: 'Drift Performance (F1)',
+          type: 'line',
+          data: data.performanceDriftValues,
+          smooth: true,
+          symbol: 'diamond',
+          symbolSize: 8,
+          lineStyle: { color: '#f59e0b', width: 3 },
+          itemStyle: { color: '#f59e0b', borderColor: '#ffffff', borderWidth: 2 },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(245, 158, 11, 0.12)' },
+              { offset: 1, color: 'transparent' }
+            ])
+          },
+          label: {
+            show: true,
+            position: 'bottom',
+            formatter: (params: any) => params.value.toFixed(1) + '%',
+            fontSize: 10,
+            fontWeight: 'bold',
+            color: '#f59e0b'
+          }
+        }] : [])
+      ]
     };
 
     this.driftChart.setOption(option);
     window.addEventListener('resize', () => this.driftChart?.resize());
+  }
+
+  translateStatus(status: string): string {
+    if (!status) return 'Inconnu';
+    switch (status.toUpperCase()) {
+      case 'NORMAL':
+      case 'SUCCESS':
+        return '';
+      case 'WARNING':
+        return 'AVERTISSEMENT';
+      case 'CRITICAL':
+        return 'CRITIQUE';
+      case 'INSUFFICIENT_DATA':
+        return 'DONNÉES INSUFFISANTES';
+      default:
+        return status;
+    }
   }
 
   formatPercent(value: number): string {

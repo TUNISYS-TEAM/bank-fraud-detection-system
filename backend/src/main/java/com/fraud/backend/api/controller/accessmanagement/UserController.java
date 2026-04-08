@@ -145,10 +145,16 @@ public class UserController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<UserResponse> getCurrentUser() {
+        return ResponseEntity.ok(userMapper.toResponse(userService.getCurrentUser()));
+    }
+
     // ==================== OTHER OPERATIONS ====================
 
     @GetMapping("/available-managers")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<UserSummaryResponse>> getAvailableManagers() {
         return ResponseEntity.ok(
                 userService.getAvailableManagers().stream()

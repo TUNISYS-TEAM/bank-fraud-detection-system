@@ -26,6 +26,7 @@ public class FraudAlertResponse {
     private String alertType;
     private String status;
     private Long reviewedBy;
+    private String reviewedByName;
     private LocalDateTime reviewDate;
     private String reviewComment;
     private String actionTaken;
@@ -41,4 +42,5 @@ public class FraudAlertResponse {
     private String clientName;
     private String accountNumber;
     private Object fraudReason;
+    private String assignedManagerName;
 }

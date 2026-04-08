@@ -35,19 +35,31 @@ export class TransactionService {
   private http = inject(HttpClient);
   private apiUrl = `${environment.apiUrl}/transactions`;
 
-  getAnalyzedTransactions(page: number = 0, size: number = 20): Observable<PageResponse<TransactionSummary>> {
-    const params = new HttpParams()
+  getAnalyzedTransactions(page: number = 0, size: number = 20, datasetUuid?: string): Observable<PageResponse<TransactionSummary>> {
+    let params = new HttpParams()
       .set('page', page.toString())
       .set('size', size.toString());
+    
+    if (datasetUuid) {
+      params = params.set('datasetUuid', datasetUuid);
+    }
     
     return this.http.get<PageResponse<TransactionSummary>>(`${this.apiUrl}/analyzed`, { params });
   }
 
-  getTransactionStats(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.apiUrl}/stats/time-series`);
+  getTransactionStats(datasetUuid?: string): Observable<any[]> {
+    let params = new HttpParams();
+    if (datasetUuid) {
+      params = params.set('datasetUuid', datasetUuid);
+    }
+    return this.http.get<any[]>(`${this.apiUrl}/stats/time-series`, { params });
   }
 
-  getGlobalAnalyzedStats(): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}/stats/analyzed-global`);
+  getGlobalAnalyzedStats(datasetUuid?: string): Observable<any> {
+    let params = new HttpParams();
+    if (datasetUuid) {
+      params = params.set('datasetUuid', datasetUuid);
+    }
+    return this.http.get<any>(`${this.apiUrl}/stats/analyzed-global`, { params });
   }
 }

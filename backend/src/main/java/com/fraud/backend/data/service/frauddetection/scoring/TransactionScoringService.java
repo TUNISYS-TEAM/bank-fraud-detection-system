@@ -475,7 +475,7 @@ public class TransactionScoringService {
             transactionsSinceLastDriftCheck.set(0);
             driftExecutor.submit(() -> {
                 try {
-                    modelDriftMonitoringService.getDriftStatus();
+                    modelDriftMonitoringService.getDriftStatus(null);
                 } catch (Exception e) {
                     log.warn("Drift check failed: {}", e.getMessage());
                 }

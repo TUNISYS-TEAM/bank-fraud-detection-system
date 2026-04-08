@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { DatasetService, Dataset, DatasetStatus } from '../../../../core/services/dataset.service';
@@ -11,13 +11,15 @@ import { FeatherModule } from 'angular-feather';
   templateUrl: './dataset-update-modal.component.html',
   styleUrls: ['./dataset-update-modal.component.css']
 })
-export class DatasetUpdateModalComponent {
+export class DatasetUpdateModalComponent implements OnInit {
   @Input({ required: true }) set dataset(value: Dataset) {
     this.selectedDataset.set(value);
     this.datasetForm.patchValue({
       datasetName: value.datasetName,
-      visibility: value.visibility
+      visibility: value.visibility,
+      assignedManagerId: value.assignedManagerId || null
     });
+    this.updateManagerValidation(value.visibility);
   }
   @Output() close = new EventEmitter<void>();
   @Output() updated = new EventEmitter<void>();
@@ -29,11 +31,43 @@ export class DatasetUpdateModalComponent {
   isLoading = signal(false);
   errorMessage = signal('');
   selectedDataset = signal<Dataset | null>(null);
+  managers = signal<any[]>([]);
 
   datasetForm: FormGroup = this.fb.group({
     datasetName: ['', [Validators.required, Validators.minLength(3)]],
-    visibility: [false, Validators.required]
+    visibility: [false, Validators.required],
+    assignedManagerId: [null]
   });
+
+  ngOnInit(): void {
+    this.loadManagers();
+    
+    // Watch visibility change to trigger manager requirement
+    this.datasetForm.get('visibility')?.valueChanges.subscribe(visible => {
+      this.updateManagerValidation(visible);
+    });
+  }
+
+  loadManagers(): void {
+    this.datasetService.getManagers().subscribe({
+      next: (data) => {
+        // Filtrer pour exclure les administrateurs et ne garder que les vrais managers
+        const managersOnly = data.filter((m: any) => m.roleName !== 'ADMIN');
+        this.managers.set(managersOnly);
+      },
+      error: (err) => console.error('Error loading managers', err)
+    });
+  }
+
+  updateManagerValidation(visible: boolean): void {
+    const managerControl = this.datasetForm.get('assignedManagerId');
+    if (visible && this.selectedDataset()?.type === 'TRANSACTIONS_VAL') {
+      managerControl?.setValidators([Validators.required]);
+    } else {
+      managerControl?.clearValidators();
+    }
+    managerControl?.updateValueAndValidity();
+  }
 
   closeModal(): void {
     this.isVisible.set(false);
@@ -41,7 +75,10 @@ export class DatasetUpdateModalComponent {
   }
 
   onSubmit(): void {
-    if (this.datasetForm.invalid || !this.selectedDataset()) return;
+    if (this.datasetForm.invalid || !this.selectedDataset()) {
+      this.datasetForm.markAllAsTouched();
+      return;
+    }
 
     this.isLoading.set(true);
     this.errorMessage.set('');
@@ -59,9 +96,9 @@ export class DatasetUpdateModalComponent {
           this.closeModal();
         }
       },
-      error: () => {
+      error: (err) => {
         this.isLoading.set(false);
-        this.errorMessage.set('Erreur lors de la mise à jour du dataset');
+        this.errorMessage.set(err.error?.message || 'Erreur lors de la mise à jour du dataset');
       }
     });
   }

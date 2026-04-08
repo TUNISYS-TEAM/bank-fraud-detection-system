@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { AuthService } from './auth.service';
 import { 
   Dataset, 
   TrainingJobRequest, 
@@ -14,12 +15,17 @@ import {
 })
 export class MlModelsService {
   private apiUrl = environment.apiUrl;
+  private authService = inject(AuthService);
 
   constructor(private http: HttpClient) {}
 
   getProcessedDatasets(): Observable<Dataset[]> {
-    // Get all training datasets (TRANSACTIONS_TRAIN) with status PROCESSED
-    return this.http.get<Dataset[]>(`${this.apiUrl}/datasets/training?status=PROCESSED`);
+    const teamContext = this.authService.getTeamContext();
+    let url = `${this.apiUrl}/datasets/training?status=PROCESSED`;
+    if (teamContext.managerId) {
+      url += `&managerId=${teamContext.managerId}`;
+    }
+    return this.http.get<Dataset[]>(url);
   }
 
   getDataset(datasetUuid: string): Observable<Dataset> {

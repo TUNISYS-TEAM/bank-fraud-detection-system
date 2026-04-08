@@ -9,6 +9,7 @@ import org.hibernate.type.SqlTypes;
 
 import com.fraud.backend.data.enums.datasets.DatasetStatus;
 import com.fraud.backend.data.enums.datasets.DatasetType;
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -75,6 +76,11 @@ public class Dataset {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "statistics", columnDefinition = "jsonb")
     private Map<String, Object> statistics;
+
+    // ==================== TEAM ASSIGNMENT ====================
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_manager_id")
+    private AppUser assignedManager;
 
     // =========================
     // Lifecycle Hooks

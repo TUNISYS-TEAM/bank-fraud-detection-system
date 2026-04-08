@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,11 +46,12 @@ public class DatasetController {
             @RequestParam(value = "status", required = false) DatasetStatus status,
             @RequestParam(value = "type", required = false) DatasetType type,
             @RequestParam(value = "visibility", required = false) Boolean visibility,
+            @RequestParam(value = "managerId", required = false) Long managerId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
         
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
-        return datasetService.list(q, status, type, visibility, pageable)
+        return datasetService.list(q, status, type, visibility, managerId, pageable)
                 .map(datasetMapper::toResponse);
     }
 
@@ -61,24 +63,26 @@ public class DatasetController {
     @GetMapping("/training")
     public Page<DatasetResponse> listTrainingDatasets(
             @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "managerId", required = false) Long managerId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
 
-        log.info("Récupération paginée des datasets d'entraînement - page: {}, size: {}, search: {}", page, size, q);
+        log.info("Récupération paginée des datasets d'entraînement - page: {}, size: {}, search: {}, manager: {}", page, size, q, managerId);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
-        return datasetService.listTrainingDatasets(q, pageable).map(datasetMapper::toResponse);
+        return datasetService.listTrainingDatasets(q, managerId, pageable).map(datasetMapper::toResponse);
     }
 
     @GetMapping("/training/all")
     public Page<DatasetResponse> listAllTrainingDatasets(
             @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "managerId", required = false) Long managerId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
 
-        log.info("Récupération paginée de TOUS les datasets d'entraînement - page: {}, size: {}, search: {}", page,
-                size, q);
+        log.info("Récupération paginée de TOUS les datasets d'entraînement - page: {}, size: {}, search: {}, manager: {}", page,
+                size, q, managerId);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
-        return datasetService.listAllTrainingDatasets(q, pageable).map(datasetMapper::toResponse);
+        return datasetService.listAllTrainingDatasets(q, managerId, pageable).map(datasetMapper::toResponse);
     }
 
     @GetMapping("/{uuid}/preview")
@@ -170,22 +174,25 @@ public class DatasetController {
 
     @GetMapping("/count")
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Long> count(@RequestParam(required = false) List<DatasetType> types) {
-        long count = datasetService.count(types);
+    public ResponseEntity<Long> count(@RequestParam(value = "types", required = false) List<DatasetType> types,
+                                      @RequestParam(value = "managerId", required = false) Long managerId) {
+        long count = datasetService.count(types, managerId);
         return ResponseEntity.ok(count);
     }
 
     @GetMapping("/total-size")
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<BigDecimal> getTotalSize(@RequestParam(required = false) List<DatasetType> types) {
-        BigDecimal totalSize = datasetService.getTotalSize(types);
+    public ResponseEntity<BigDecimal> getTotalSize(@RequestParam(value = "types", required = false) List<DatasetType> types,
+                                                   @RequestParam(value = "managerId", required = false) Long managerId) {
+        BigDecimal totalSize = datasetService.getTotalSize(types, managerId);
         return ResponseEntity.ok(totalSize);
     }
 
     @GetMapping("/latest-import")
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<java.time.LocalDateTime> getLatestImportDate(@RequestParam(required = false) List<DatasetType> types) {
-        java.time.LocalDateTime latestImport = datasetService.getLatestImportDate(types);
+    public ResponseEntity<LocalDateTime> getLatestImportDate(@RequestParam(value = "types", required = false) List<DatasetType> types,
+                                                             @RequestParam(value = "managerId", required = false) Long managerId) {
+        LocalDateTime latestImport = datasetService.getLatestImportDate(types, managerId);
         return ResponseEntity.ok(latestImport);
     }
 

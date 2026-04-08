@@ -129,6 +129,7 @@ public class SecurityConfig {
         @Bean
         public JwtAuthenticationConverter jwtAuthenticationConverter() {
                 JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+                converter.setPrincipalClaimName("preferred_username");
                 converter.setJwtGrantedAuthoritiesConverter(jwt -> {
                         var realmAccess = jwt.getClaimAsMap("realm_access");
                         if (realmAccess == null || realmAccess.isEmpty()) {

@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FraudAlertService } from '../../../../core/services/fraud-alert.service';
 import { FraudAlertResponse, AlertStatsResponse } from '../../../../core/models/fraud-alert.model';
 import { KpiCard } from '../../../../shared/cards/cards.component';
+import { ToastrService } from 'ngx-toastr';
+import { AuthStore } from '../../../../core/store/auth.store';
 
 @Component({
   selector: 'app-alerts',
@@ -11,6 +13,10 @@ import { KpiCard } from '../../../../shared/cards/cards.component';
 })
 export class AlertsComponent implements OnInit {
   private alertService = inject(FraudAlertService);
+  private toastr = inject(ToastrService);
+  private authStore = inject(AuthStore);
+
+  userRole = computed(() => this.authStore.user()?.role);
 
   // Data signals
   private allAlerts = signal<FraudAlertResponse[]>([]);
@@ -19,41 +25,50 @@ export class AlertsComponent implements OnInit {
 
   // Pagination signals
   currentPage = signal(0);
-  pageSize = signal(8);
-  totalElements = signal(0);
-  totalPages = signal(0);
+  pageSize = signal(5);
 
   // Filter signals
   searchQuery = signal('');
   statusFilter = signal<string>('all');
   riskLevelFilter = signal<string>('all');
 
-  // Computed: filtered alerts based on search query
-  alerts = computed(() => {
+  // 1. Computed: applied global filter on full dataset
+  filteredAlerts = computed(() => {
     const query = this.stripAccents(this.searchQuery().trim().toLowerCase());
     const all = this.allAlerts();
+    
     if (!query) return all;
 
     return all.filter(alert => {
       const txnId = String(alert.transactionId ?? '').toLowerCase();
       const txnIdWithPrefix = 'txn-' + txnId;
-      const alertType = this.stripAccents((alert.alertType ?? '').toLowerCase());
+      const type = this.stripAccents((alert.alertType ?? '').toLowerCase());
       const translatedType = this.stripAccents(this.translateAlertType(alert.alertType).toLowerCase());
       const amount = String(alert.transactionAmount ?? '').toLowerCase();
-      const uuid = (alert.alertUuid ?? '').toLowerCase();
-      const status = this.stripAccents((alert.status ?? '').toLowerCase());
-      const translatedStatus = this.stripAccents(this.translateStatus(alert.status).toLowerCase());
+      const status = this.stripAccents(this.translateStatus(alert.status).toLowerCase());
 
       return txnId.includes(query)
         || txnIdWithPrefix.includes(query)
-        || alertType.includes(query)
+        || type.includes(query)
         || translatedType.includes(query)
         || amount.includes(query)
-        || uuid.includes(query)
-        || status.includes(query)
-        || translatedStatus.includes(query);
+        || status.includes(query);
     });
   });
+
+  // 2. Computed: stats and pagination metadata (Automatic)
+  totalElements = computed(() => this.filteredAlerts().length);
+  totalPages = computed(() => Math.ceil(this.totalElements() / this.pageSize()));
+
+  // 3. Computed: Final slice displayed in the table
+  alerts = computed(() => {
+    const start = this.currentPage() * this.pageSize();
+    const end = start + this.pageSize();
+    return this.filteredAlerts().slice(start, end);
+  });
+
+  // Helper for Export
+  filteredAlertsForExport = computed(() => this.filteredAlerts());
 
   // Strip accents for accent-insensitive search
   private stripAccents(str: string): string {
@@ -96,6 +111,7 @@ export class AlertsComponent implements OnInit {
   // Modal signals
   selectedAlert = signal<FraudAlertResponse | null>(null);
   isDetailsOpen = signal(false);
+  isModalProcessing = signal(false);
 
   ngOnInit(): void {
     this.loadStats();
@@ -112,10 +128,53 @@ export class AlertsComponent implements OnInit {
     this.selectedAlert.set(null);
   }
 
-  handleAlertAction(event: {id: number, type: string, comment: string}): void {
-    console.log('Action performed:', event);
-    // TODO: Connect to backend service
-    this.closeDetails();
+  handleAlertAction(event: {uuid: string, type: string, comment: string}): void {
+    let status = 'PENDING';
+    let actionTaken = '';
+
+    if (event.type === 'VALIDE_FRAUDE') {
+      status = 'CONFIRMED';
+      actionTaken = 'CONFIRMED_FRAUD';
+    } else if (event.type === 'REJETTE_ALERTE') {
+      status = 'FALSE_POSITIVE';
+      actionTaken = 'DISMISSED';
+    } else if (event.type === 'MARK_AS_REVIEWED') {
+      status = 'REVIEWED';
+      actionTaken = 'REVIEWED';
+    } else {
+      return; // Action not handled here
+    }
+
+    const alertId = this.selectedAlert()?.id;
+    this.isModalProcessing.set(true);
+    this.alertService.updateAlertStatus(event.uuid, {
+      status: status,
+      reviewComment: event.comment,
+      actionTaken: actionTaken
+    }).subscribe({
+      next: () => {
+        let message = '';
+        
+        if (event.type === 'VALIDE_FRAUDE') {
+          message = `L'alerte d'id #${alertId} a été validée comme fraude`;
+        } else if (event.type === 'REJETTE_ALERTE') {
+          message = `L'alerte d'id #${alertId} a été rejetée`;
+        } else if (event.type === 'MARK_AS_REVIEWED') {
+          message = `L'alerte d'id #${alertId} a été marquée comme en cours d'analyse`;
+        }
+        
+        this.toastr.success(message, 'Succès');
+        this.isModalProcessing.set(false);
+        this.closeDetails();
+        this.loadAlerts();
+        this.loadStats();
+      },
+      error: (err) => {
+        console.error('Error updating alert status', err);
+        this.toastr.error('Erreur lors de la mise à jour de l\'alerte', 'Erreur');
+        this.isModalProcessing.set(false);
+      }
+    });
   }
 
   loadStats(): void {
@@ -134,14 +193,12 @@ export class AlertsComponent implements OnInit {
       this.riskLevelFilter(),
       this.statusFilter(),
       undefined,
-      undefined,
-      this.currentPage(),
-      this.pageSize()
+      undefined, // No server-side search to keep the "old" behavior's flexibility
+      0,
+      2000 // Large size to have all alerts for filtering/export
     ).subscribe({
       next: (response) => {
         this.allAlerts.set(response.content);
-        this.totalElements.set(response.totalElements);
-        this.totalPages.set(response.totalPages);
         this.isLoading.set(false);
       },
       error: (err) => {
@@ -165,6 +222,7 @@ export class AlertsComponent implements OnInit {
   onSearchChange(query: string): void {
     this.searchQuery.set(query);
     this.currentPage.set(0);
+    this.loadAlerts(); // Re-trigger load from server with search query
   }
 
   setRiskFilter(risk: string): void {
@@ -183,7 +241,7 @@ export class AlertsComponent implements OnInit {
     switch (status?.toUpperCase()) {
       case 'PENDING': return 'bg-amber-100 text-amber-700 border-amber-200';
       case 'REVIEWED': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'RESOLVED': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case 'CONFIRMED': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       case 'FALSE_POSITIVE': return 'bg-gray-100 text-gray-700 border-gray-200';
       default: return 'bg-gray-50 text-gray-600 border-gray-100';
     }
@@ -193,7 +251,7 @@ export class AlertsComponent implements OnInit {
     switch (status?.toUpperCase()) {
       case 'PENDING': return 'En Attente';
       case 'REVIEWED': return 'En Cours';
-      case 'RESOLVED': return 'Résolue';
+      case 'CONFIRMED': return 'Confirmée';
       case 'FALSE_POSITIVE': return 'Faux Positif';
       default: return status;
     }
@@ -240,37 +298,46 @@ export class AlertsComponent implements OnInit {
   }
 
   exportToCSV(): void {
-    const data = this.alerts();
+    const data = this.filteredAlertsForExport();
     if (!data || data.length === 0) {
-      alert('Aucune alerte à exporter');
+      this.toastr.warning('Aucune alerte à exporter', 'Export');
       return;
     }
 
-    // Headers with semicolon delimiter for French Excel
-    const headers = ['ID Transaction;Date de Création;Type d\'Alerte;Montant;Score de Fraude;Statut'];
-    
-    // Rows
-    const rows = data.map(alert => [
-      `TXN-${alert.transactionId ?? ''}`,
-      new Date(alert.createdAt).toLocaleString('fr-FR'),
-      this.translateAlertType(alert.alertType),
-      `${(alert.transactionAmount ?? 0).toFixed(2)}`,
-      `${(alert.fraudScore * 100).toFixed(0)}%`,
-      this.translateStatus(alert.status)
-    ].join(';'));
+        // Headers with semicolon delimiter for French Excel
+        const headers = ['ID Transaction;Nom Client;Date de Création;Type d\'Alerte;Montant;Niveau de Risque;Score de Fraude;Statut;Commentaire'];
+        
+        // Rows
+        const rows = data.map((alert: FraudAlertResponse) => [
+          `TXN-${alert.transactionId ?? ''}`,
+          alert.clientName || `CLIENT-${alert.userId}`,
+          new Date(alert.createdAt).toLocaleString('fr-FR'),
+          this.translateAlertType(alert.alertType),
+          `${(alert.transactionAmount ?? 0).toFixed(2)} ${alert.transactionCurrency || 'TND'}`,
+          this.translateRisk(alert.riskLevel),
+          `${(alert.fraudScore * 100).toFixed(0)}%`,
+          this.translateStatus(alert.status),
+          (alert.reviewComment || '').replace(/;/g, ',').replace(/\n/g, ' ') // Escape semicolons and newlines
+        ].join(';'));
 
-    const csvContent = [headers, ...rows].join('\n');
+        const csvContent = [headers, ...rows].join('\r\n');
 
-    // Create and trigger download
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `alertes_fraude_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+        // Create and trigger download with BOM for Excel UTF-8 support
+        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Rapport_Alertes_Fraude_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        this.toastr.success(`${data.length} alertes exportées avec succès`, 'Export Terminé', {
+          positionClass: 'toast-bottom-right',
+          timeOut: 5000,
+          progressBar: true
+        });
   }
 }

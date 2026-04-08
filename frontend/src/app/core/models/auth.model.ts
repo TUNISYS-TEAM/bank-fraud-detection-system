@@ -1,4 +1,3 @@
-// core/models/auth.model.ts
 export interface LoginRequest {
   email: string;
   password: string;
@@ -41,6 +40,7 @@ export interface AuthUser {
   permissions: Permission[];
   userId?: number;
   roleId?: number;
+  managerId?: number;
 }
 
 export type UserRole = 'ADMIN' | 'MANAGER' | 'ANALYST';

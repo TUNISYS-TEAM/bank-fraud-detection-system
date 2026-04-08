@@ -9,8 +9,14 @@ import com.fraud.backend.data.entity.frauddetection.FraudAlert;
 import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
+import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
+import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +30,102 @@ public class FraudAlertService {
 
     private final FraudAlertRepository fraudAlertRepository;
     private final FraudAlertMapper fraudAlertMapper;
+    private final KeycloakMappingRepository keycloakMappingRepository;
+
+    private AppUser getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            log.error("No authentication found");
+            throw new IllegalStateException("Utilisateur non authentifié");
+        }
+
+        Object principal = authentication.getPrincipal();
+        String email = null;
+
+        if (principal instanceof Jwt) {
+            Jwt jwt = (Jwt) principal;
+            email = jwt.getClaim("preferred_username");
+            if (email == null)
+                email = jwt.getClaim("email");
+            if (email == null)
+                email = jwt.getClaim("sub");
+        } else if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
+            email = ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+        } else if (principal instanceof String) {
+            email = (String) principal;
+        }
+
+        if (email == null || email.isEmpty()) {
+            email = authentication.getName();
+        }
+
+        final String userEmail = email;
+        if (userEmail == null || userEmail.isEmpty()) {
+            throw new IllegalStateException("Impossible d'extraire l'email de l'authentification");
+        }
+
+        return keycloakMappingRepository.findByEmail(userEmail)
+                .map(KeycloakMapping::getUser)
+                .orElseThrow(() -> new IllegalStateException("Utilisateur non trouvé avec l'email: " + userEmail));
+    }
+
+    /**
+     * Determine the effective manager ID for data filtering.
+     * - Admin: null (sees everything)
+     * - Manager: their own user ID
+     * - Analyst: their supervisor's user ID
+     */
+    private Long getEffectiveManagerId(AppUser user) {
+        String role = user.getRole().getName().toUpperCase();
+        if ("ADMIN".equals(role)) {
+            return null;
+        }
+        if ("MANAGER".equals(role)) {
+            return user.getId();
+        }
+        if ("ANALYST".equals(role) && user.getManager() != null) {
+            return user.getManager().getId();
+        }
+        return null;
+    }
 
     public Long getTotalAlerts() {
+        AppUser currentUser = getCurrentUser();
+        Long managerId = getEffectiveManagerId(currentUser);
+        if (managerId != null) {
+            // Reusing the count method instead of a specific repo call for simplicity if
+            // possible,
+            // or we can add a simple countByManagerId to repo.
+            // For now, let's use the list method logic or add countByManagerId.
+            return (long) fraudAlertRepository
+                    .findAllByManagerId(managerId, org.springframework.data.domain.PageRequest.of(0, 1))
+                    .getTotalElements();
+        }
         return fraudAlertRepository.count();
     }
 
     public Long getCriticalAlertsCount() {
+        AppUser currentUser = getCurrentUser();
+        Long managerId = getEffectiveManagerId(currentUser);
+        if (managerId != null) {
+            // Simplified: get stats and extract critical
+            AlertStatsResponse stats = getAlertStats();
+            return stats.getCritical();
+        }
         return fraudAlertRepository.countByRiskLevel("CRITICAL");
     }
 
     public AlertStatsResponse getAlertStats() {
-        List<Object[]> results = fraudAlertRepository.getAlertStats();
+        AppUser currentUser = getCurrentUser();
+        Long managerId = getEffectiveManagerId(currentUser);
+        List<Object[]> results;
+
+        if (managerId != null) {
+            results = fraudAlertRepository.getAlertStatsByManagerId(managerId);
+        } else {
+            results = fraudAlertRepository.getAlertStats();
+        }
 
         if (results != null && !results.isEmpty() && results.get(0) != null) {
             Object[] stats = results.get(0);
@@ -52,15 +143,8 @@ public class FraudAlertService {
         }
 
         return AlertStatsResponse.builder()
-                .total(0L)
-                .critical(0L)
-                .high(0L)
-                .medium(0L)
-                .low(0L)
-                .pending(0L)
-                .reviewed(0L)
-                .resolved(0L)
-                .falsePositive(0L)
+                .total(0L).critical(0L).high(0L).medium(0L).low(0L)
+                .pending(0L).reviewed(0L).resolved(0L).falsePositive(0L)
                 .build();
     }
 
@@ -72,7 +156,16 @@ public class FraudAlertService {
             endDate = LocalDateTime.now();
         }
 
-        List<Object[]> results = fraudAlertRepository.getTimeSeriesData(startDate, endDate);
+        AppUser currentUser = getCurrentUser();
+        Long managerId = getEffectiveManagerId(currentUser);
+        List<Object[]> results;
+
+        if (managerId != null) {
+            results = fraudAlertRepository.getTimeSeriesDataByManagerId(startDate, endDate, managerId);
+        } else {
+            results = fraudAlertRepository.getTimeSeriesData(startDate, endDate);
+        }
+
         Map<String, TimeSeriesDataResponse> dataByDate = new HashMap<>();
 
         for (Object[] row : results) {
@@ -88,7 +181,6 @@ public class FraudAlertService {
             dataByDate.put(dateStr, point);
         }
 
-        // Fill gaps with zeros
         List<TimeSeriesDataResponse> timeSeries = new ArrayList<>();
         LocalDateTime current = startDate;
         while (!current.isAfter(endDate)) {
@@ -114,7 +206,16 @@ public class FraudAlertService {
             endDate = LocalDateTime.now();
         }
 
-        List<Object[]> results = fraudAlertRepository.getRiskDistribution(startDate, endDate);
+        AppUser currentUser = getCurrentUser();
+        Long managerId = getEffectiveManagerId(currentUser);
+        List<Object[]> results;
+
+        if (managerId != null) {
+            results = fraudAlertRepository.getRiskDistributionByManagerId(startDate, endDate, managerId);
+        } else {
+            results = fraudAlertRepository.getRiskDistribution(startDate, endDate);
+        }
+
         List<Map<String, Object>> distribution = new ArrayList<>();
 
         for (Object[] row : results) {
@@ -129,9 +230,19 @@ public class FraudAlertService {
     }
 
     public List<FraudAlertResponse> getRecentAnomalies(int limit) {
-        return fraudAlertRepository.findTop8ByOrderByCreatedAtDesc()
-                .stream()
-                .limit(limit)
+        AppUser currentUser = getCurrentUser();
+        Long managerId = getEffectiveManagerId(currentUser);
+        List<FraudAlert> alerts;
+        org.springframework.data.domain.PageRequest pageRequest = org.springframework.data.domain.PageRequest.of(0,
+                limit);
+
+        if (managerId != null) {
+            alerts = fraudAlertRepository.findPrioritizedAnomaliesByManagerId(managerId, pageRequest);
+        } else {
+            alerts = fraudAlertRepository.findPrioritizedAnomalies(pageRequest);
+        }
+
+        return alerts.stream()
                 .map(fraudAlertMapper::toResponse)
                 .toList();
     }
@@ -147,31 +258,49 @@ public class FraudAlertService {
         FraudAlert alert = fraudAlertRepository.findByAlertUuid(alertUuid)
                 .orElseThrow(() -> new RuntimeException("Alert not found with UUID: " + alertUuid));
 
+        AppUser currentUser = getCurrentUser();
+
         alert.setStatus(request.getStatus());
         alert.setReviewComment(request.getReviewComment());
         alert.setActionTaken(request.getActionTaken());
         alert.setReviewDate(LocalDateTime.now());
+        alert.setReviewedBy(currentUser);
 
         FraudAlert updatedAlert = fraudAlertRepository.save(alert);
         return fraudAlertMapper.toResponse(updatedAlert);
     }
 
     public Page<FraudAlertResponse> getAlerts(String riskLevel, String status, String alertType, String search,
-            LocalDateTime startDate, LocalDateTime endDate,
+            UUID datasetUuid, LocalDateTime startDate, LocalDateTime endDate,
             Pageable pageable) {
+
+        AppUser currentUser = getCurrentUser();
+        Long managerId = getEffectiveManagerId(currentUser);
+
         Page<FraudAlert> alerts = fraudAlertRepository.findAll((root, query, cb) -> {
             List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
 
-            if (riskLevel != null && !riskLevel.isEmpty()) {
+            // Team Context Filtering
+            if (managerId != null) {
+                predicates.add(cb.equal(
+                        root.get("transaction").get("dataset").get("assignedManager").get("id"),
+                        managerId));
+            }
+
+            if (riskLevel != null && !riskLevel.isEmpty() && !"all".equalsIgnoreCase(riskLevel)) {
                 predicates.add(cb.equal(root.get("riskLevel"), riskLevel));
             }
-            if (status != null && !status.isEmpty()) {
+            if (status != null && !status.isEmpty() && !"all".equalsIgnoreCase(status)) {
                 predicates.add(cb.equal(root.get("status"), status));
             }
-            if (alertType != null && !alertType.isEmpty()) {
+            if (alertType != null && !alertType.isEmpty() && !"all".equalsIgnoreCase(alertType)) {
                 predicates.add(cb.equal(root.get("alertType"), alertType));
             }
-            // Search filtering is handled on the frontend side
+            if (datasetUuid != null) {
+                predicates.add(cb.equal(
+                        root.get("transaction").get("dataset").get("datasetUuid"),
+                        datasetUuid));
+            }
             if (startDate != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), startDate));
             }

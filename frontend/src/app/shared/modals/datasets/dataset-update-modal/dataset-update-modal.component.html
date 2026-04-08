@@ -7,13 +7,12 @@
         [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()" (click)="$event.stopPropagation()">
 
         <!-- Header -->
-        <div
-            class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50">
+        <div class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50">
             <div class="flex items-center space-x-4">
                 <div class="p-3 bg-indigo-100 rounded-xl">
                     <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
                 </div>
                 <div>
@@ -21,8 +20,8 @@
                     <p class="text-sm text-gray-500 mt-1">Mettre à jour les informations du dataset</p>
                 </div>
             </div>
-            <button (click)="closeModal()"
-                class="text-gray-400 hover:text-gray-600 hover:bg-white/50 p-2 rounded-lg transition-colors">
+            <button (click)="closeModal()" 
+                    class="text-gray-400 hover:text-gray-600 hover:bg-white/50 p-2 rounded-lg transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -37,8 +36,7 @@
                 <div class="space-y-2">
                     <label class="flex items-center text-sm font-semibold text-gray-700">
                         <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                         </svg>
                         Nom du Dataset
                     </label>
@@ -64,33 +62,78 @@
                             [class.bg-indigo-600]="datasetForm.get('visibility')?.value"
                             [class.bg-gray-200]="!datasetForm.get('visibility')?.value">
                             <span class="sr-only">Basculer la visibilité</span>
-                            <span
-                                class="inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform"
-                                [class.translate-x-5]="datasetForm.get('visibility')?.value"
-                                [class.translate-x-0.5]="!datasetForm.get('visibility')?.value">
+                            <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform"
+                                  [class.translate-x-5]="datasetForm.get('visibility')?.value"
+                                  [class.translate-x-0.5]="!datasetForm.get('visibility')?.value">
                             </span>
                         </button>
                         <span class="text-sm text-gray-600">Visible</span>
                     </div>
                     <p class="mt-3 text-xs text-gray-400">
                         @if (datasetForm.get('visibility')?.value) {
-                        Le dataset est visible dans les listes et utilisable
+                            Le dataset est visible dans les listes et utilisable
                         } @else {
-                        Le dataset est masqué et non disponible pour utilisation
+                            Le dataset est masqué et non disponible pour utilisation
                         }
                     </p>
                 </div>
+                
+                <!-- Manager Assignment (only for VAL datasets and when visible) -->
+                @if (selectedDataset()?.type === 'TRANSACTIONS_VAL' && datasetForm.get('visibility')?.value) {
+                    <div class="space-y-4 animate-fadeIn">
+                        <div class="p-5 rounded-2xl bg-indigo-50/50 border border-indigo-100 shadow-sm transition-all hover:shadow-md">
+                            <label class="flex items-center text-sm font-bold text-indigo-900 mb-3">
+                                <div class="p-1.5 bg-indigo-100 rounded-lg mr-2">
+                                    <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                    </svg>
+                                </div>
+                                Affecter à une Équipe (Manager)
+                                <span class="ml-1 text-red-500">*</span>
+                            </label>
+                            
+                            <div class="relative group">
+                                <select formControlName="assignedManagerId"
+                                    class="w-full pl-4 pr-10 py-3 bg-white border-2 border-indigo-100 rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 appearance-none cursor-pointer hover:border-indigo-300 shadow-sm"
+                                    [class.border-red-300]="datasetForm.get('assignedManagerId')?.invalid && datasetForm.get('assignedManagerId')?.touched">
+                                    <option [ngValue]="null" disabled>Sélectionner le manager responsable...</option>
+                                    @for (manager of managers(); track manager.id) {
+                                        <option [ngValue]="manager.id">
+                                            {{ manager.firstName }} {{ manager.lastName }} ({{ manager.email }})
+                                        </option>
+                                    }
+                                </select>
+                                <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-indigo-400 group-hover:text-indigo-600 transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            @if (datasetForm.get('assignedManagerId')?.invalid && datasetForm.get('assignedManagerId')?.touched) {
+                                <p class="mt-2 text-xs text-red-500 flex items-center">
+                                    <svg class="w-3.5 h-3.5 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                                    </svg>
+                                    Veuillez affecter un manager avant de rendre ce dataset visible.
+                                </p>
+                            }
+                            
+                            <p class="mt-3 text-xs font-medium text-indigo-400 leading-relaxed">
+                                En rendant ce dataset visible, le manager sélectionné et son équipe pourront l'utiliser pour valider des modèles et visualiser leurs transactions.
+                            </p>
+                        </div>
+                    </div>
+                }
 
                 <!-- Alerte de conflit -->
                 @if (errorMessage()) {
-                <div
-                    class="p-4 bg-red-50/80 border border-red-100 rounded-xl flex items-start space-x-3 animate-message shadow-sm">
+                <div class="p-4 bg-red-50/80 border border-red-100 rounded-xl flex items-start space-x-3 animate-message shadow-sm">
                     <div class="flex-shrink-0 mt-0.5">
-                        <div
-                            class="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-sm shadow-red-200">
+                        <div class="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-sm shadow-red-200">
                             <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
-                                    d="M6 18L18 6M6 6l12 12" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </div>
                     </div>
@@ -105,8 +148,8 @@
                     <div class="flex items-start space-x-3">
                         <div class="p-1 bg-indigo-100 rounded-lg flex-shrink-0">
                             <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                         </div>
                         <p class="text-xs text-indigo-800 leading-relaxed">
@@ -124,15 +167,13 @@
                     <button type="submit" [disabled]="datasetForm.invalid || isLoading()"
                         class="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all text-sm font-medium shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
                         @if (isLoading()) {
-                        <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-                                fill="none" />
-                            <path class="opacity-75" fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        <span>Mise à jour...</span>
+                            <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            <span>Mise à jour...</span>
                         } @else {
-                        <span>Enregistrer</span>
+                            <span>Enregistrer</span>
                         }
                     </button>
                 </div>

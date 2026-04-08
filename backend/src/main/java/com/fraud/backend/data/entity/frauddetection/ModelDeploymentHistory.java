@@ -1,5 +1,6 @@
 package com.fraud.backend.data.entity.frauddetection;
 
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -7,8 +8,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-
-import com.fraud.backend.data.entity.accessmanagement.AppUser;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -47,4 +46,9 @@ public class ModelDeploymentHistory {
     private Map<String, Object> performanceAtDeployment;
     
     private String notes;
+
+    // ==================== TEAM ASSIGNMENT ====================
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "team_manager_id")
+    private AppUser teamManager;
 }
