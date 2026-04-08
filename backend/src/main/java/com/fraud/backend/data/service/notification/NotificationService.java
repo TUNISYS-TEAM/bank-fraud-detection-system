@@ -2,9 +2,10 @@ package com.fraud.backend.data.service.notification;
 
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.frauddetection.Notification;
+import com.fraud.backend.data.event.NotificationEvent;
 import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import com.fraud.backend.data.repository.frauddetection.NotificationRepository;
-import com.fraud.backend.kafka.NotificationEvent;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;

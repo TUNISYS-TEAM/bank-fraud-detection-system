@@ -4,10 +4,10 @@ import com.fraud.backend.api.dto.messaging.request.SendMessageRequest;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
 import com.fraud.backend.data.entity.messaging.Message;
+import com.fraud.backend.data.event.NotificationEvent;
 import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
 import com.fraud.backend.data.repository.messaging.MessageRepository;
-import com.fraud.backend.kafka.NotificationEvent;
 import com.fraud.backend.data.service.notification.NotificationEventProducer;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,7 @@ public class MessageService {
     private final AppUserRepository appUserRepository;
     private final KeycloakMappingRepository keycloakMappingRepository;
     private final SimpMessagingTemplate messagingTemplate;
-    private final NotificationEventProducer notificationEventProducer; // 🔥 Kafka producer
+    private final NotificationEventProducer notificationEventProducer; 
 
     private AppUser findUserByKeycloakId(String keycloakId) {
         return keycloakMappingRepository.findByKeycloakId(keycloakId)

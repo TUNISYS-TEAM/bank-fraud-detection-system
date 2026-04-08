@@ -1,6 +1,5 @@
 package com.fraud.backend.data.service.accessmanagement;
 
-import com.fraud.backend.config.KeycloakProperties;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +11,9 @@ import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
+
+import com.fraud.backend.config.keycloak.KeycloakProperties;
+import com.fraud.backend.data.service.accessmanagement.authverification.OtpCacheService;
 
 import java.util.List;
 

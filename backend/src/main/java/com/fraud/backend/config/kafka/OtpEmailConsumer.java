@@ -1,7 +1,8 @@
 package com.fraud.backend.config.kafka;
 
+import com.fraud.backend.data.event.OtpEvent;
 import com.fraud.backend.data.service.accessmanagement.EmailService;
-import com.fraud.backend.kafka.OtpEvent;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;

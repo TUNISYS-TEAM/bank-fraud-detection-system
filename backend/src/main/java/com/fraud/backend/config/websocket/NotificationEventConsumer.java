@@ -2,8 +2,8 @@ package com.fraud.backend.config.websocket;
 
 import com.fraud.backend.data.service.notification.NotificationService;
 import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
+import com.fraud.backend.data.event.NotificationEvent;
 import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
-import com.fraud.backend.kafka.NotificationEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

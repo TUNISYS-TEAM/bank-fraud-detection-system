@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.accessmanagement;
+package com.fraud.backend.data.service.accessmanagement.authverification;
 
 import com.fraud.backend.data.service.notification.OtpEventProducer;
 import lombok.RequiredArgsConstructor;

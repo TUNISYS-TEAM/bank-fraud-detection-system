@@ -1,4 +1,4 @@
-package com.fraud.backend.data.service.accessmanagement;
+package com.fraud.backend.data.service.accessmanagement.authverification;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

@@ -1,4 +1,4 @@
-package com.fraud.backend.config;
+package com.fraud.backend.config.keycloak;
 
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;

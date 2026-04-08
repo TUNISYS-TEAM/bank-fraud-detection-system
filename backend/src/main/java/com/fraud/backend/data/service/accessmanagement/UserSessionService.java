@@ -1,6 +1,6 @@
 package com.fraud.backend.data.service.accessmanagement;
 
-import com.fraud.backend.config.KeycloakProperties;
+import com.fraud.backend.config.keycloak.KeycloakProperties;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.accessmanagement.UserSession;
 import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;

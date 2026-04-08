@@ -1,12 +1,12 @@
 package com.fraud.backend.data.service.notification;
 
-import com.fraud.backend.kafka.NotificationEvent;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+
+import com.fraud.backend.data.event.NotificationEvent;
 
 import java.util.UUID;
 

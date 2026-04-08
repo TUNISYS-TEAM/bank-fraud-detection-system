@@ -7,6 +7,8 @@ import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
 import com.fraud.backend.data.repository.accessmanagement.RoleRepository;
 import com.fraud.backend.data.repository.accessmanagement.UserSessionRepository;
+import com.fraud.backend.data.service.accessmanagement.authverification.OtpService;
+
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;

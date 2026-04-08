@@ -1,4 +1,4 @@
-package com.fraud.backend.kafka;
+package com.fraud.backend.data.event;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

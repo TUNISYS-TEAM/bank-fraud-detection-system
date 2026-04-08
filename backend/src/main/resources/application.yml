@@ -20,7 +20,7 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
-        spring.json.type.mapping: notification:com.fraud.backend.kafka.NotificationEvent
+        spring.json.type.mapping:  notification:com.fraud.backend.data.event.NotificationEvent
     listener:
       auto-startup: true
 
