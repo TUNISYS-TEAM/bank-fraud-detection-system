@@ -1,13 +1,14 @@
+
 package com.fraud.backend.data.service.messaging;
 
 import com.fraud.backend.api.dto.messaging.request.SendMessageRequest;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.accessmanagement.KeycloakMapping;
 import com.fraud.backend.data.entity.messaging.Message;
-import com.fraud.backend.data.event.NotificationEvent;
 import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import com.fraud.backend.data.repository.accessmanagement.KeycloakMappingRepository;
 import com.fraud.backend.data.repository.messaging.MessageRepository;
+import com.fraud.backend.data.event.NotificationEvent;
 import com.fraud.backend.data.service.notification.NotificationEventProducer;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +37,7 @@ public class MessageService {
     private final AppUserRepository appUserRepository;
     private final KeycloakMappingRepository keycloakMappingRepository;
     private final SimpMessagingTemplate messagingTemplate;
-    private final NotificationEventProducer notificationEventProducer; 
+    private final NotificationEventProducer notificationEventProducer;
 
     private AppUser findUserByKeycloakId(String keycloakId) {
         return keycloakMappingRepository.findByKeycloakId(keycloakId)
@@ -114,21 +115,37 @@ public class MessageService {
                     ? "VALIDATION_REQUEST"
                     : "NEW_MESSAGE";
 
-            String principalName = message.getReceiver().getEmail() != null
-                    ? message.getReceiver().getEmail()
-                    : String.valueOf(message.getReceiver().getId());
+
+            // Build base payload
+            java.util.Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+                    "messageUuid", message.getMessageUuid().toString(),
+                    "subject", message.getSubject(),
+                    "senderName", message.getSender().getFirstName() + " " + message.getSender().getLastName(),
+                    "senderEmail", message.getSender().getEmail(),
+                    "messageType", message.getMessageType()));
+
+            // For VALIDATION messages, extract modelName and modelUuid from the JSON content
+            if ("VALIDATION".equals(message.getMessageType()) && message.getContent() != null) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    var contentMap = mapper.readValue(message.getContent(), java.util.Map.class);
+                    if (contentMap.get("modelName") != null) {
+                        payload.put("modelName", String.valueOf(contentMap.get("modelName")));
+                    }
+                    if (contentMap.get("modelUuid") != null) {
+                        payload.put("modelUuid", String.valueOf(contentMap.get("modelUuid")));
+                    }
+                } catch (Exception parseEx) {
+                    log.warn("Failed to parse validation message content for notification payload", parseEx);
+                }
+            }
 
             NotificationEvent event = NotificationEvent.builder()
                     .eventId(UUID.randomUUID().toString())
                     .eventType(eventType)
                     .userId(message.getReceiver().getId())
                     .userEmail(message.getReceiver().getEmail())
-                    .payload(Map.of(
-                            "messageUuid", message.getMessageUuid().toString(),
-                            "subject", message.getSubject(),
-                            "senderName", message.getSender().getFirstName() + " " + message.getSender().getLastName(),
-                            "senderEmail", message.getSender().getEmail(),
-                            "messageType", message.getMessageType()))
+                    .payload(payload)
                     .timestamp(Instant.now())
                     .build();
 
@@ -137,6 +154,7 @@ public class MessageService {
             log.error("FAILED TO SEND KAFKA NOTIFICATION", e);
         }
     }
+
 
     public Page<Message> getInbox(String userKeycloakId, int page, int size) {
         AppUser user = findUserByKeycloakId(userKeycloakId);

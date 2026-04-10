@@ -457,6 +457,68 @@ public class ModelTrainingService {
         return response;
     }
 
+    @Transactional
+    public TrainingJobResponse trainBalancedRandomForest(TrainingJobRequest request) throws Exception {
+        log.info("Starting Balanced Random Forest training for dataset: {}", request.getDatasetUuid());
+
+        AppUser currentUser = getCurrentUser();
+        log.info("Training initiated by user: {}", currentUser.getEmail());
+
+        Dataset dataset = datasetRepository.findByDatasetUuid(request.getDatasetUuid())
+                .orElseThrow(() -> new IllegalArgumentException("Dataset not found: " + request.getDatasetUuid()));
+
+        if (dataset.getStatus() != DatasetStatus.PROCESSED) {
+            throw new IllegalStateException(
+                    "Dataset must be PROCESSED before training. Current status: " + dataset.getStatus());
+        }
+
+        Map<String, Object> hyperparameters = new HashMap<>();
+        if (request.getHyperparameters() != null) {
+            hyperparameters.putAll(request.getHyperparameters());
+        }
+
+        hyperparameters.put("random_state", request.getRandomSeed());
+
+        Map<String, Object> trainingMetadata = new HashMap<>();
+        trainingMetadata.put("datasetUuid", request.getDatasetUuid().toString());
+        trainingMetadata.put("datasetName", dataset.getDatasetName());
+        trainingMetadata.put("testSize", request.getTestSize());
+        trainingMetadata.put("randomSeed", request.getRandomSeed());
+        trainingMetadata.put("trainingDate", LocalDateTime.now().toString());
+        trainingMetadata.put("createdBy", currentUser.getEmail());
+
+        hyperparameters.put("_trainingMetadata", trainingMetadata);
+
+        if (Boolean.TRUE.equals(request.getIsTest())) {
+            return launchTraining(
+                    "train-balanced-random-forest",
+                    dataset.getFilePath(),
+                    dataset.getDatasetUuid(),
+                    UUID.randomUUID(),
+                    hyperparameters,
+                    request.getTestSize(),
+                    request.getRandomSeed(),
+                    true
+            );
+        }
+
+        ModelML model = getOrCreateModel(request, hyperparameters, currentUser, "BALANCED_RANDOM_FOREST");
+
+        TrainingJobResponse response = launchTraining(
+                "train-balanced-random-forest",
+                dataset.getFilePath(),
+                dataset.getDatasetUuid(),
+                model.getModelUuid(),
+                hyperparameters,
+                request.getTestSize(),
+                request.getRandomSeed(),
+                false);
+
+        updateModelWithResults(model, response);
+        return response;
+    }
+
+
     private ModelML getOrCreateModel(TrainingJobRequest request, Map<String, Object> hyperparameters, AppUser creator) {
         return getOrCreateModel(request, hyperparameters, creator, "RANDOM_FOREST");
     }
@@ -744,10 +806,17 @@ public class ModelTrainingService {
         if (modelName.startsWith("XGB")) {
             modelType = "XGBOOST";
         } else if (modelName.startsWith("RF") || modelName.contains("Random Forest")) {
-            modelType = "RANDOM_FOREST";
+            if (modelName.contains("Balanced")) {
+                modelType = "BALANCED_RANDOM_FOREST";
+            } else {
+                modelType = "RANDOM_FOREST";
+            }
         } else if (modelName.startsWith("LGBM") || modelName.contains("LightGBM")) {
             modelType = "LIGHTGBM";
+        } else if (modelName.startsWith("BRF") || modelName.contains("Balanced RF")) {
+            modelType = "BALANCED_RANDOM_FOREST";
         }
+
 
         TrainingJobResponse response = TrainingJobResponse.builder()
                 .jobUuid(jobUuid)
@@ -800,10 +869,17 @@ public class ModelTrainingService {
         if (model.getModelName().startsWith("XGB")) {
             model.setModelType("XGBOOST");
         } else if (model.getModelName().startsWith("RF")) {
-            model.setModelType("RANDOM_FOREST");
+            if (model.getModelName().contains("Balanced") || model.getModelName().startsWith("BRF")) {
+                model.setModelType("BALANCED_RANDOM_FOREST");
+            } else {
+                model.setModelType("RANDOM_FOREST");
+            }
         } else if (model.getModelName().startsWith("LGBM") || model.getModelName().contains("LightGBM")) {
             model.setModelType("LIGHTGBM");
+        } else if (model.getModelName().startsWith("BRF")) {
+            model.setModelType("BALANCED_RANDOM_FOREST");
         }
+
 
         if (response.getMetrics() != null) {
             model.setAuc(response.getAucRoc());

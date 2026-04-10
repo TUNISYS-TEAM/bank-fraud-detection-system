@@ -1177,7 +1177,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       alertsSampleSize: lastPoint?.alerts_sample_size || 0,
       distributionSampleSize: lastPoint?.distribution_sample_size || 0,
       needsRetraining: lastPoint?.needs_retraining || false,
-      isCritical: response.current_status === 'CRITICAL_DRIFT' || (this.getAlertLevel(currentPerf, 'performance') === 'critical'),
+      isCritical: response.current_status === 'CRITICAL_DRIFT' || (lastPoint?.performance_status !== 'INSUFFICIENT_DATA' && this.getAlertLevel(currentPerf, 'performance') === 'critical'),
       recommendations: this.getRecommendationsBasedOnDrift(lastPoint?.overall_drift_percentage || 0, response.current_status),
       performanceMetrics: lastPoint?.current_metrics || {},
       dataPoints: history,
@@ -1282,7 +1282,11 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const distDrift = driftData.currentDistributionDrift;
     const perfDrift = driftData.currentPerformanceDrift;
     
-    const perfLevel = this.getAlertLevel(perfDrift, 'performance');
+    // Performance level is only considered if data is sufficient
+    const perfLevel = driftData.performanceStatus === 'INSUFFICIENT_DATA' 
+      ? 'success' 
+      : this.getAlertLevel(perfDrift, 'performance');
+      
     const distLevel = this.getAlertLevel(distDrift, 'distribution');
 
     if (distLevel === 'critical' || perfLevel === 'critical') {
@@ -1293,15 +1297,15 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       this.driftAlert.set({
         show: true,
         message: message + " Mise en production à risque.",
-        driftPercentage: distLevel === 'critical' ? distDrift : Math.abs(perfDrift),
+        driftPercentage: (distLevel === 'critical') ? distDrift : Math.abs(perfDrift),
         level: 'critical'
       });
     } 
     else if (distLevel === 'warning' || perfLevel === 'warning') {
       this.driftAlert.set({
         show: true,
-        message: `AVERTISSEMENT : Détection de dérive (Dist: ${distDrift.toFixed(1)}%, Perf: ${perfDrift.toFixed(1)}%). La donnée dévie du comportement normal (> ${this.driftWarningThreshold}%). Planifiez un réentraînement.`,
-        driftPercentage: Math.max(distDrift, Math.abs(perfDrift)),
+        message: `AVERTISSEMENT : Détection de dérive (Dist: ${distDrift.toFixed(1)}%, Perf: ${perfLevel === 'success' ? '—' : perfDrift.toFixed(1)}%). La donnée dévie du comportement normal (> ${this.driftWarningThreshold}%). Planifiez un réentraînement.`,
+        driftPercentage: Math.max(distDrift, perfLevel === 'success' ? 0 : Math.abs(perfDrift)),
         level: 'warning'
       });
     } 

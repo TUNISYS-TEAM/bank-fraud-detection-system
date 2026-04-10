@@ -150,7 +150,7 @@ export class AnalyzedTransactionsComponent implements OnInit, OnDestroy {
   }
 
   loadDatasets(): void {
-    this.datasetService.list({ size: 100, type: DatasetType.TRANSACTIONS_VAL }).subscribe({
+    this.datasetService.list({ size: 100, type: DatasetType.TRANSACTIONS_VAL, visibility: true }).subscribe({
       next: (response) => {
         this.availableDatasets.set(response.content || []);
       },

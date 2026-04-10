@@ -115,6 +115,9 @@ public class DatasetService {
     public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, Boolean visibility, Long managerId, Pageable pageable) {
         if (managerId != null) {
             if (type != null) {
+                if (visibility != null) {
+                    return datasetRepository.findByTypeAndAssignedManagerId(type, managerId, pageable);
+                }
                 return datasetRepository.findByTypeAndAssignedManagerId(type, managerId, pageable);
             }
             return datasetRepository.findByAssignedManagerId(managerId, pageable);
@@ -123,6 +126,11 @@ public class DatasetService {
         if (status != null && type != null) {
             return datasetRepository.findByStatusAndType(status, type, pageable);
         }
+        
+        if (type != null && visibility != null) {
+            return datasetRepository.findByVisibilityAndType(visibility, type, pageable);
+        }
+
         if (status != null) {
             return datasetRepository.findByStatus(status, pageable);
         }

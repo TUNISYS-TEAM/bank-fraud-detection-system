@@ -58,3 +58,5 @@ torchvision>=0.15.0
 # Captum for integrated gradients
 captum>=0.6.0
 
+imbalanced-learn>=0.10.0
+

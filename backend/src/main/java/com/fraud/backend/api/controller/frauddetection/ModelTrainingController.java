@@ -63,6 +63,19 @@ public class ModelTrainingController {
         }
     }
 
+    @PostMapping("/balanced-random-forest")
+    public ResponseEntity<TrainingJobResponse> trainBalancedRandomForest(
+            @Valid @RequestBody TrainingJobRequest request) {
+        log.info("Training Balanced Random Forest request received for dataset: {}", request.getDatasetUuid());
+        try {
+            TrainingJobResponse response = trainingService.trainBalancedRandomForest(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error training Balanced Random Forest: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to train Balanced Random Forest model: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/{modelUuid}/metrics")
     public ResponseEntity<ModelMetricsResponse> getModelMetrics(@PathVariable UUID modelUuid) {
         log.info("Getting metrics for model: {}", modelUuid);

@@ -15,6 +15,8 @@ import pandas as pd
 from scripts.train_random_forest import main as train_random_forest_main
 from scripts.train_xgboost import main as train_xgboost_main
 from scripts.train_lightgbm import main as train_lightgbm_main
+from scripts.train_balanced_forest import main as train_balanced_forest_main
+
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,10 +51,24 @@ def build_parser() -> argparse.ArgumentParser:
     rf_parser.add_argument("--dataset-path", required=True)
     rf_parser.add_argument("--dataset-id", required=True)
     rf_parser.add_argument("--job-id", required=True)
-    rf_parser.add_argument("--timestamp", required=True)  # <-- ADDED
+    rf_parser.add_argument("--timestamp", required=True) 
     rf_parser.add_argument("--hyperparameters", required=True)
     rf_parser.add_argument("--test-size", type=float, default=0.2)
     rf_parser.add_argument("--random-seed", type=int, default=42)
+
+    # ---- train-balanced-random-forest ----
+    brf_parser = subparsers.add_parser(
+        "train-balanced-random-forest",
+        help="Entraîne un modèle Balanced Random Forest (imblearn)"
+    )
+    brf_parser.add_argument("--dataset-path", required=True)
+    brf_parser.add_argument("--dataset-id", required=True)
+    brf_parser.add_argument("--job-id", required=True)
+    brf_parser.add_argument("--timestamp", required=True)
+    brf_parser.add_argument("--hyperparameters", required=True)
+    brf_parser.add_argument("--test-size", type=float, default=0.2)
+    brf_parser.add_argument("--random-seed", type=int, default=42)
+
 
     # ---- train-xgboost ----
     xgb_parser = subparsers.add_parser(
@@ -450,6 +466,20 @@ def main() -> None:
             "--random-seed", str(args.random_seed),
         ]
         train_lightgbm_main()
+
+    elif args.command == "train-balanced-random-forest":
+        sys.argv = [
+            "train_balanced_forest",
+            "--dataset-path", args.dataset_path,
+            "--dataset-id", args.dataset_id,
+            "--job-id", args.job_id,
+            "--timestamp", args.timestamp,
+            "--hyperparameters", args.hyperparameters,
+            "--test-size", str(args.test_size),
+            "--random-seed", str(args.random_seed),
+        ]
+        train_balanced_forest_main()
+
 
     elif args.command == "export-onnx":
         sys.argv = [

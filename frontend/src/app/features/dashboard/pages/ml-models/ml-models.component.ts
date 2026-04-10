@@ -70,8 +70,18 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       color: 'blue',
       recommended: false,
       status: 'active'
+    },
+    {
+      type: 'BALANCED_RANDOM_FOREST',
+      name: 'Balanced Random Forest',
+      description: 'Idéal pour données déséquilibrées',
+      icon: 'shield',
+      color: 'emerald',
+      recommended: false,
+      status: 'active'
     }
   ];
+
   selectedModelType: string = 'RANDOM_FOREST';
 
   // Random Forest configuration – only user-adjustable parameters
@@ -116,6 +126,24 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     randomSeed: 42
   };
 
+  // Balanced Random Forest configuration
+  brfConfig: ModelConfig = {
+    modelName: 'Balanced Random Forest',
+    modelType: 'BALANCED_RANDOM_FOREST',
+    hyperparameters: {
+      n_estimators: 100,
+      max_depth: 15,
+      min_samples_split: 20,
+      min_samples_leaf: 10,
+      sampling_strategy: 'auto',
+      replacement: true,
+      bootstrap: true
+    },
+    testSize: 0.2,
+    randomSeed: 42
+  };
+
+
   // Detection threshold for UI
   detectionThreshold: number = 0.5;
 
@@ -150,6 +178,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   // History
   modelHistory: any[] = [];
+  historyTab: 'mine' | 'all' = 'mine';
   historyCurrentPage = 0;
   historyPageSize = 5;
   historyTotalElements = 0;
@@ -164,6 +193,9 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   showModelDetailsModal = false;
   selectedModelForDetails: any = null;
 
+  // Track model versions to generate sequential numbers
+  private modelVersions: Map<string, number> = new Map();
+
   // Original features mapping
   private readonly originalFeatures = new Set([
     'tx_amount', 'channel', 'category', 'customer_postal_code',
@@ -173,7 +205,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   ]);
 
   // Track model versions to generate sequential numbers
-  private modelVersions: Map<string, number> = new Map();
+  // (Moving to top after private originalFeatures if needed, but and removing duplicate declaration)
 
   constructor(
     private http: HttpClient,
@@ -234,8 +266,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     const prefixMap: Record<string, string> = {
       'RANDOM_FOREST': 'RF',
       'XGBOOST': 'XGB',
-      'LIGHTGBM': 'LGBM'
+      'LIGHTGBM': 'LGBM',
+      'BALANCED_RANDOM_FOREST': 'BRF'
     };
+
 
     const prefix = prefixMap[modelType] || 'MDL';
 
@@ -447,6 +481,26 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     return categoryFeatures.length > 0 && categoryFeatures.every(f => f.enabled);
   }
 
+  getSelectedCountInCategory(category: string): number {
+    return this.getFeaturesByCategory(category).filter(f => f.enabled).length;
+  }
+
+  isAllInCategorySelected(category: string): boolean {
+    return this.isCategoryAllSelected(category);
+  }
+
+  toggleCategorySelection(category: string, event: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.toggleCategory(category);
+  }
+
+  toggleFeature(feature: FeatureInfo): void {
+    feature.enabled = !feature.enabled;
+    this.onFeatureToggle();
+  }
+
   toggleCategory(category: string): void {
     const categoryFeatures = this.getFeaturesByCategory(category);
     const allSelected = this.isCategoryAllSelected(category);
@@ -530,6 +584,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       config = { ...this.xgbConfig };
     } else if (this.selectedModelType === 'LIGHTGBM') {
       config = { ...this.lgbmConfig };
+    } else if (this.selectedModelType === 'BALANCED_RANDOM_FOREST') {
+      config = { ...this.brfConfig };
     } else {
       config = { ...this.rfConfig };
     }
@@ -548,9 +604,12 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       config = this.xgbConfig;
     } else if (this.selectedModelType === 'LIGHTGBM') {
       config = this.lgbmConfig;
+    } else if (this.selectedModelType === 'BALANCED_RANDOM_FOREST') {
+      config = this.brfConfig;
     } else {
       config = this.rfConfig;
     }
+
     this.startTrainingWithConfig(config, false);
   }
 
@@ -591,7 +650,9 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     };
 
     const endpoint = config.modelType === 'XGBOOST' ? 'xgboost' :
-      config.modelType === 'LIGHTGBM' ? 'lightgbm' : 'random-forest';
+      config.modelType === 'LIGHTGBM' ? 'lightgbm' :
+        config.modelType === 'BALANCED_RANDOM_FOREST' ? 'balanced-random-forest' : 'random-forest';
+
 
     const request: TrainingJobRequest = {
       datasetUuid: this.selectedDatasetUuid,
@@ -659,12 +720,12 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         this.isSavingTestResult.set(false);
         this.saveSuccess.set(true);
         this.loadModelHistory();
-        
+
         // Hide success message after 5 seconds
         setTimeout(() => {
           this.saveSuccess.set(false);
         }, 5000);
-        
+
         // Transform the response for immediate use if needed
         const modelData = this.transformModelDataForModal(response);
         this.selectedModelForDetails = modelData;
@@ -740,6 +801,36 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     }, 5000);
   }
 
+  onHistoryTabChange(tab: 'mine' | 'all'): void {
+    this.historyTab = tab;
+    this.historyCurrentPage = 0;
+    this.loadModelHistory();
+  }
+
+  get historyModels(): any[] {
+    return this.modelHistory;
+  }
+
+  getStatusBadgeClass(status: string): string {
+    const s = status?.toLowerCase() || 'draft';
+    if (s === 'deployed') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (s === 'validated') return 'bg-blue-100 text-blue-700 border-blue-200';
+    if (s === 'rejected') return 'bg-red-100 text-red-700 border-red-200';
+    if (s === 'archived') return 'bg-gray-100 text-gray-700 border-gray-200';
+    return 'bg-amber-100 text-amber-700 border-amber-200';
+  }
+
+  getModelTypeBadgeClass(model: any): string {
+    const type = model.modelType || '';
+    if (type.includes('RANDOM_FOREST') || type.includes('BRF')) return 'bg-green-50 text-green-700 border-green-100';
+    if (type.includes('XGB')) return 'bg-orange-50 text-orange-700 border-orange-100';
+    return 'bg-blue-50 text-blue-700 border-blue-100';
+  }
+
+  viewModelDetailsFromHistory(model: any): void {
+    this.viewModelDetails(model.modelUuid);
+  }
+
   viewModelDetails(modelUuid: string): void {
     // If it's the last training/test result we have in memory, use it directly (fast path)
     if (this.lastTrainingResult && this.lastTrainingResult.modelUuid === modelUuid) {
@@ -790,12 +881,14 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       const nameToCheck = (model.modelName || model.jobName || '').toUpperCase();
       if (nameToCheck.includes('XGB')) modelType = 'XGBOOST';
       else if (nameToCheck.includes('LGBM') || nameToCheck.includes('LIGHTGBM')) modelType = 'LIGHTGBM';
+      else if (nameToCheck.includes('BRF') || nameToCheck.includes('BALANCED')) modelType = 'BALANCED_RANDOM_FOREST';
       else if (nameToCheck.includes('RF') || nameToCheck.includes('RANDOM')) modelType = 'RANDOM_FOREST';
     }
 
+
     // Infer model name
-    const modelName = model.modelName || model.jobName || 
-                     (modelType ? `${modelType} Model` : 'Machine Learning Model');
+    const modelName = model.modelName || model.jobName ||
+      (modelType ? `${modelType} Model` : 'Machine Learning Model');
 
     // Get metrics from various possible locations
     const metrics = model.metrics || trainingResults.metrics || {};
