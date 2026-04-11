@@ -592,8 +592,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     const testConfig = { ...config };
     testConfig.hyperparameters = {
-      ...config.hyperparameters,
-      n_estimators: 50
+      ...config.hyperparameters
     };
     this.startTrainingWithConfig(testConfig, true);
   }

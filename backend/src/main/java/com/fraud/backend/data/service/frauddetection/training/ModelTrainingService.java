@@ -2,6 +2,7 @@ package com.fraud.backend.data.service.frauddetection.training;
 
 import com.fraud.backend.api.dto.frauddetection.model.request.TrainingJobRequest;
 import com.fraud.backend.api.dto.frauddetection.model.response.ModelMetricsResponse;
+import com.fraud.backend.api.dto.frauddetection.model.response.ModelSummaryResponse;
 import com.fraud.backend.api.dto.frauddetection.model.response.TrainingJobResponse;
 import com.fraud.backend.api.dto.messaging.request.ModelValidationActionDTO;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
@@ -178,6 +179,27 @@ public class ModelTrainingService {
 
         return response;
     }
+
+    public ModelSummaryResponse toSummaryResponse(ModelML model) {
+        if (model == null) return null;
+        
+        return ModelSummaryResponse.builder()
+                .modelUuid(model.getModelUuid())
+                .modelName(model.getModelName())
+                .modelType(model.getModelType())
+                .version(model.getVersion())
+                .status(model.getStatus())
+                .createdAt(model.getCreatedAt())
+                .createdByEmail(model.getCreatedBy() != null ? model.getCreatedBy().getEmail() : null)
+                .createdByName(model.getCreatedBy() != null ? 
+                    model.getCreatedBy().getFirstName() + " " + model.getCreatedBy().getLastName() : null)
+                .auc(model.getAuc())
+                .precision(model.getPrecision())
+                .recall(model.getRecall())
+                .f1Score(model.getF1Score())
+                .build();
+    }
+
 
     public List<TrainingJobResponse> getModelHistory() {
         return modelMLRepository.findAllByOrderByCreatedAtDesc().stream()

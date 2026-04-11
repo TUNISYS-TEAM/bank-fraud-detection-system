@@ -1,6 +1,796 @@
-<div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-    <h2 class="text-2xl font-bold text-gray-800 mb-4">Simulation de Scénarios</h2>
-    <div class="p-12 border-2 border-dashed border-gray-100 rounded-2xl text-center">
-        <p class="text-gray-400 italic">Testez vos modèles contre des attaques simulées.</p>
+<div class="space-y-6 animate-fadeIn p-6 bg-[#f8fafc] min-h-screen">
+  <!-- Header Section -->
+  <div class="mb-8">
+    <h1 class="text-2xl font-black text-slate-800 tracking-tight">Simulation de Scénarios de Fraude</h1>
+    <p class="text-slate-500 font-medium mt-1">
+      Testez la robustesse du modèle avec des flux de fraude simulés
+    </p>
+  </div>
+
+  <!-- Configuration Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <!-- Left: Parameters -->
+    <div class="lg:col-span-8">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-8 py-6 border-b border-slate-100">
+          <h2 class="text-lg font-bold text-slate-800">Paramètres de Simulation</h2>
+        </div>
+
+        <div class="p-8 space-y-8">
+          <!-- Modèle ML à Tester -->
+          <div class="space-y-3">
+            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Modèle ML à Tester</label>
+            <div class="relative">
+              <select [ngModel]="selectedModelUuid()" (ngModelChange)="selectedModelUuid.set($event)"
+                class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all outline-none appearance-none cursor-pointer">
+                <option value="" disabled>Sélectionnez un modèle</option>
+                <option *ngFor="let model of availableModels()" [value]="model.modelUuid">
+                  {{ model.modelName }} (v{{ model.version }}) — {{ (model.recall || 0.95)*100 | number:'1.0-0' }}%
+                  Recall
+                </option>
+              </select>
+              <i-feather name="chevron-down"
+                class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i-feather>
+            </div>
+            <p *ngIf="availableModels().length === 0"
+              class="text-[10px] text-amber-600 font-bold flex items-center gap-1">
+              <i-feather name="alert-circle" class="w-3 h-3"></i-feather>
+              Aucun modèle validé disponible pour la simulation
+            </p>
+          </div>
+
+          <!-- Type de Scénario -->
+          <div class="space-y-3">
+            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Type de Scénario</label>
+            <div class="relative">
+              <select [ngModel]="selectedScenario()" (ngModelChange)="selectedScenario.set($event)"
+                class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all outline-none appearance-none cursor-pointer">
+                <option value="mixed">Fraude Mixte</option>
+                <option value="high_amount">Montants Élevés</option>
+                <option value="geo_anomaly">Anomalies Géographiques</option>
+                <option value="high_frequency">Haute Fréquence</option>
+                <option value="sophisticated">Fraude Sophistiquée</option>
+              </select>
+              <i-feather name="chevron-down"
+                class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i-feather>
+            </div>
+          </div>
+
+          <!-- Taux de Fraude Slider -->
+          <div class="space-y-4">
+            <div class="flex justify-between items-center">
+              <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Taux de Fraude dans le Flux ({{
+                (fraudRatio() * 100).toFixed(0) }}%)</label>
+            </div>
+            <input type="range" min="0.01" max="0.30" step="0.01" [value]="fraudRatio()"
+              (input)="updateFraudRatio($event)" [style.background]="getSliderBackground(fraudRatio(), 0.01, 0.30)"
+              class="simulation-slider w-full h-2 rounded-2xl appearance-none cursor-pointer accent-blue-600">
+            <p class="text-xs text-slate-400">Pourcentage de transactions frauduleuses dans le flux simulé</p>
+          </div>
+
+          <!-- Volume Slider -->
+          <div class="space-y-4">
+            <div class="flex justify-between items-center">
+              <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Volume de Transactions ({{
+                transactionCount() }})</label>
+            </div>
+            <input type="range" min="100" max="10000" step="100" [value]="transactionCount()"
+              (input)="updateTransactionCount($event)"
+              [style.background]="getSliderBackground(transactionCount(), 100, 10000)"
+              class="simulation-slider w-full h-2 rounded-2xl appearance-none cursor-pointer accent-blue-600">
+            <p class="text-xs text-slate-400">Nombre de transactions à générer pour la simulation</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            <!-- Période -->
+            <div class="space-y-3">
+              <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Période de Simulation</label>
+              <div class="relative">
+                <select [ngModel]="periodHours()" (ngModelChange)="periodHours.set($event)"
+                  class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all outline-none appearance-none cursor-pointer">
+                  <option [value]="12">12 heures</option>
+                  <option [value]="24" selected>24 heures</option>
+                  <option [value]="72">3 jours</option>
+                  <option [value]="168">7 jours</option>
+                </select>
+                <i-feather name="chevron-down"
+                  class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i-feather>
+              </div>
+            </div>
+
+            <!-- Distribution -->
+            <div class="space-y-3">
+              <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Distribution Temporelle</label>
+              <div class="relative">
+                <select [ngModel]="timeDistribution()" (ngModelChange)="timeDistribution.set($event)"
+                  class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all outline-none appearance-none cursor-pointer">
+                  <option value="realistic">Réaliste (heures de pointe)</option>
+                  <option value="uniform">Uniforme (répartition égale)</option>
+                  <option value="burst">Rafales (pics soudains)</option>
+                </select>
+                <i-feather name="chevron-down"
+                  class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i-feather>
+              </div>
+            </div>
+          </div>
+
+          <!-- Launch Button -->
+          <div class="pt-6">
+            <button (click)="runSimulation()" [disabled]="isSimulating() || isLoadingModels()"
+              class="w-full h-14 bg-[#1e40af] hover:bg-[#1e3a8a] disabled:bg-slate-300 text-white rounded-xl font-bold text-sm tracking-wide flex items-center justify-center gap-3 transition-all shadow-sm active:scale-[0.98]">
+              <i-feather [name]="isSimulating() ? 'loader' : 'play'" [class.animate-spin]="isSimulating()"
+                class="w-4 h-4"></i-feather>
+              Lancer la Simulation
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
-</div>
+
+    <!-- Right: Expected Metrics -->
+    <div class="lg:col-span-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 h-full flex flex-col">
+        <div class="px-8 py-6 border-b border-slate-100">
+          <h2 class="text-lg font-bold text-slate-800">Métriques Attendues</h2>
+        </div>
+
+        <div class="p-8 flex-1 space-y-6">
+          <p class="text-sm text-slate-400 font-medium">Basé sur les paramètres actuels</p>
+
+          <div class="space-y-4">
+            <!-- Totals -->
+            <div class="bg-blue-50/50 rounded-xl p-5 border border-blue-100">
+              <p class="text-xs font-bold text-blue-500 uppercase tracking-wider mb-2">Transactions Totales</p>
+              <p class="text-2xl font-black text-slate-800">{{ transactionCount() | number }}</p>
+            </div>
+
+            <!-- Injected -->
+            <div class="bg-red-50/50 rounded-xl p-5 border border-red-100">
+              <p class="text-xs font-bold text-red-500 uppercase tracking-wider mb-2">Fraudes Simulées</p>
+              <p class="text-2xl font-black text-red-600">{{ expectedFrauds() | number }}</p>
+            </div>
+
+            <!-- Detections -->
+            <div class="bg-emerald-50/50 rounded-xl p-5 border border-emerald-100">
+              <p class="text-xs font-bold text-emerald-500 uppercase tracking-wider mb-1">Detections Attendues</p>
+              <p class="text-2xl font-black text-emerald-600">{{ expectedDetections() | number }}</p>
+              <p class="text-[11px] font-bold text-emerald-500 mt-1">~{{ (selectedModelRecall() * 100).toFixed(0) }}% du
+                modèle actuel</p>
+            </div>
+
+            <!-- Duration -->
+            <div class="bg-slate-50 rounded-xl p-5 border border-slate-100">
+              <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Durée Estimée</p>
+              <p class="text-2xl font-black text-slate-800">{{ estimatedDuration() }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inline Progress Bar (Like Training Page) -->
+  <div *ngIf="isSimulating()" id="progressSection"
+    class="mt-8 bg-white rounded-3xl p-8 shadow-sm border border-slate-100 animate-slideUp border-l-4 border-l-blue-600">
+    <div class="flex items-center gap-4 mb-6 pb-4 border-b border-slate-50">
+      <div class="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shadow-sm">
+        <i-feather name="cpu" class="w-6 h-6 text-blue-600 animate-pulse"></i-feather>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold text-slate-800">Simulation de Scénario</h3>
+        <p class="text-xs text-slate-500 font-medium">Génération et évaluation en cours...</p>
+      </div>
+    </div>
+
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">État: <span class="text-blue-600">
+            {{ simulationProgress() < 40 ? 'Génération du flux...' : (simulationProgress() < 80 ? 'Inférence ML...'
+              : 'Agrégation finale...' ) }} </span></span>
+          <span class="font-black text-blue-600 text-lg">{{ simulationProgress().toFixed(0) }}%</span>
+      </div>
+
+      <div class="w-full h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner p-0.5 border border-slate-200/50">
+        <div
+          class="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full transition-all duration-500 relative"
+          [style.width.%]="simulationProgress()">
+          <div class="absolute inset-0 bg-white/20 animate-shimmer"></div>
+        </div>
+      </div>
+
+      <!-- Chrono / Timer moved below bar -->
+      <div class="flex flex-col items-start pt-2">
+        <div class="flex items-center gap-2">
+          <i-feather name="clock" class="w-3.5 h-3.5 text-slate-400"></i-feather>
+          <span class="text-xs font-bold text-slate-500 tabular-nums">Temps écoulé : <span
+              class="text-slate-700 font-black">{{ formatTime(simulationTime()) }}</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simulation Results Section (Visible only when result is available) -->
+  <div *ngIf="simulationResult() as res" id="resultsSection" class="space-y-8 pt-10 animate-slideUp">
+
+    <!-- 1. Reusable KPI Cards (Consistent with Platform style) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <app-cards [data]="f1ScoreCard()"></app-cards>
+      <app-cards [data]="detectionRateCard()"></app-cards>
+      <app-cards [data]="fraudsInjectedCard()"></app-cards>
+      <app-cards [data]="detectedFraudsCard()"></app-cards>
+    </div>
+
+    <!-- 2. Result Sections (Tabs Outside + Dynamic Info Inside) -->
+    <!-- Tab Navigation Row (Outside Container) -->
+    <div class="flex justify-start mb-6">
+      <div class="tab-container">
+        <button (click)="setTab('performance')" [class.active-tab]="activeTab() === 'performance'" class="tab-button">
+          <i-feather name="pie-chart" class="w-4 h-4"></i-feather>
+          <span>Performance</span>
+        </button>
+        <button (click)="setTab('sampling')" [class.active-tab]="activeTab() === 'sampling'" class="tab-button">
+          <i-feather name="list" class="w-4 h-4"></i-feather>
+          <span>Échantillonnage</span>
+        </button>
+        <button (click)="setTab('model')" [class.active-tab]="activeTab() === 'model'" class="tab-button">
+          <i-feather name="database" class="w-4 h-4"></i-feather>
+          <span>Métriques Modèle</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Result Card -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fadeIn">
+
+      <!-- Dynamic Header Area (Inside Container) -->
+      <div class="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
+        <!-- Performance Title -->
+        <div *ngIf="activeTab() === 'performance'" class="animate-fadeIn">
+          <h3 class="text-2xl font-bold text-slate-800 tracking-tight">Analytique des Transactions</h3>
+          <p class="text-sm text-slate-500 mt-1 font-medium">Segmentation et indicateurs de performance des analyses de
+            fraude</p>
+        </div>
+
+        <!-- Sampling Title -->
+        <div *ngIf="activeTab() === 'sampling'" class="animate-fadeIn">
+          <h3 class="text-2xl font-bold text-slate-800 tracking-tight">Échantillonnage des Transactions</h3>
+          <p class="text-sm text-slate-500 mt-1 font-medium">Détails des flux simulés et verdict du modèle</p>
+        </div>
+
+        <!-- Model Metrics Title -->
+        <div *ngIf="activeTab() === 'model'" class="animate-fadeIn">
+          <h3 class="text-2xl font-bold text-slate-800 tracking-tight">Métriques du Modèle</h3>
+          <p class="text-sm text-slate-500 mt-1 font-medium">Comparaison entre simulation actuelle et benchmarks</p>
+        </div>
+      </div>
+
+      <!-- Main Content Area -->
+      <div class="p-8 space-y-10">
+        <!-- Tab 1: Performance Analysis -->
+        <div *ngIf="activeTab() === 'performance'" class="animate-fadeIn space-y-8">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 1. Risk Distribution Card -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-6">
+                <div>
+                  <h3 class="text-lg font-bold text-slate-800">Répartition du Risque</h3>
+                  <p class="text-xs text-slate-500">Segmentation des transactions par dangerosité</p>
+                </div>
+                <div class="p-2 bg-emerald-50 rounded-xl">
+                  <i-feather name="bar-chart-2" class="w-5 h-5 text-emerald-600"></i-feather>
+                </div>
+              </div>
+              <div id="riskDistributionChart" style="height: 300px; width: 100%;"></div>
+            </div>
+
+            <!-- 2. Analysis Volume Card -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-6">
+                <div>
+                  <h3 class="text-lg font-bold text-slate-800">Volume des Analyses</h3>
+                  <p class="text-xs text-slate-400 font-medium">Évolution temporelle du flux ({{
+                    getPeriodLabel(periodHours()) }})</p>
+                </div>
+                <div class="p-2 bg-blue-50 rounded-xl">
+                  <i-feather name="trending-up" class="w-5 h-5 text-blue-600"></i-feather>
+                </div>
+              </div>
+              <div id="volumeChart" style="height: 300px; width: 100%;"></div>
+            </div>
+
+            <!-- 3. Channels Analysis Card -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-6">
+                <div>
+                  <h3 class="text-lg font-bold text-slate-800">Analyse des Canaux</h3>
+                  <p class="text-xs text-slate-500">Classification des sources de flux</p>
+                </div>
+                <div class="p-2 bg-indigo-50 rounded-xl">
+                  <i-feather name="share-2" class="w-5 h-5 text-indigo-600"></i-feather>
+                </div>
+              </div>
+              <div id="channelsChart" style="height: 300px; width: 100%;"></div>
+            </div>
+
+            <!-- 4. Financial Exposure Card -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-6">
+                <div>
+                  <h3 class="text-lg font-bold text-slate-800">Exposition Financière</h3>
+                  <p class="text-xs text-slate-500">Volume monétaire total à risque (TND)</p>
+                </div>
+                <div class="p-2 bg-amber-50 rounded-xl">
+                  <i-feather name="dollar-sign" class="w-5 h-5 text-amber-600"></i-feather>
+                </div>
+              </div>
+              <div id="exposureChart" style="height: 300px; width: 100%;"></div>
+            </div>
+          </div>
+
+          <!-- Bottom Summary Indicator -->
+          <div
+            class="relative overflow-hidden bg-gradient-to-r from-blue-50/50 to-white rounded-3xl p-6 border border-blue-100/50 shadow-sm flex items-start gap-6 group hover:shadow-md transition-all duration-300">
+            <div class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l-3xl"></div>
+            <div class="p-3 bg-white rounded-2xl shadow-sm border border-blue-50 shrink-0">
+              <i-feather name="info" class="w-5 h-5 text-blue-500"></i-feather>
+            </div>
+            <div class="space-y-1.5">
+              <h4 class="text-xs font-black text-blue-900 uppercase tracking-widest">Note Analytique</h4>
+              <p class="text-slate-600 leading-relaxed text-sm">
+                Les résultats ci-dessus représentent une simulation basée sur le modèle <span
+                  class="font-bold text-slate-800">{{ res.modelName }}</span>.
+                Le taux de précision globale s'établit à <span class="text-emerald-600 font-bold">{{ (res.precision *
+                  100).toFixed(1) }}%</span>
+                contre un taux d'injection de <span class="text-red-500 font-bold">{{ ((res.totalFraudsInjected /
+                  res.totalTransactions) * 100).toFixed(1) }}%</span> de fraudes.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Full Sampling -->
+        <div *ngIf="activeTab() === 'sampling'" class="animate-fadeIn space-y-6">
+
+          <!-- Sampling Filters Row (Full Width & Expanded) -->
+          <div class="flex flex-col md:flex-row items-center w-full gap-4 md:gap-0 px-2">
+
+            <!-- Type -->
+            <div class="flex-1 space-y-2 pr-4">
+              <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-1">Type
+                Transaction</label>
+              <div
+                class="relative flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2 hover:border-blue-400 group transition-all cursor-pointer w-full">
+                <select [ngModel]="filterType()" (ngModelChange)="filterType.set($event); currentPage.set(1)"
+                  class="w-full bg-transparent text-[12px] font-bold text-slate-700 outline-none appearance-none cursor-pointer pr-6 z-10">
+                  <option value="">Tous les Types</option>
+                  <option *ngFor="let t of types()" [value]="t">{{ t }}</option>
+                </select>
+                <i-feather name="chevron-down"
+                  class="w-3.5 h-3.5 text-slate-400 absolute right-3 pointer-events-none group-hover:text-blue-500 transition-colors"></i-feather>
+              </div>
+            </div>
+
+            <div class="h-8 w-px bg-slate-200 self-end mb-2 hidden md:block mx-4"></div>
+
+            <!-- Canal -->
+            <div class="flex-1 space-y-2 px-4">
+              <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-1">Canal</label>
+              <div
+                class="relative flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2 hover:border-blue-400 group transition-all cursor-pointer w-full">
+                <select [ngModel]="filterChannel()" (ngModelChange)="filterChannel.set($event); currentPage.set(1)"
+                  class="w-full bg-transparent text-[12px] font-bold text-slate-700 outline-none appearance-none cursor-pointer pr-6 z-10">
+                  <option value="">Tous les Canaux</option>
+                  <option *ngFor="let c of channels()" [value]="c">{{ c }}</option>
+                </select>
+                <i-feather name="chevron-down"
+                  class="w-3.5 h-3.5 text-slate-400 absolute right-3 pointer-events-none group-hover:text-blue-500 transition-colors"></i-feather>
+              </div>
+            </div>
+
+            <div class="h-8 w-px bg-slate-200 self-end mb-2 hidden md:block mx-4"></div>
+
+            <!-- Region -->
+            <div class="flex-1 space-y-2 px-4">
+              <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-1">Région
+                Habituelle</label>
+              <div
+                class="relative flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2 hover:border-blue-400 group transition-all cursor-pointer w-full">
+                <select [ngModel]="filterRegion()" (ngModelChange)="filterRegion.set($event); currentPage.set(1)"
+                  class="w-full bg-transparent text-[12px] font-bold text-slate-700 outline-none appearance-none cursor-pointer pr-6 z-10">
+                  <option value="">Toutes les Régions</option>
+                  <option *ngFor="let r of regions()" [value]="r">{{ r }}</option>
+                </select>
+                <i-feather name="chevron-down"
+                  class="w-3.5 h-3.5 text-slate-400 absolute right-3 pointer-events-none group-hover:text-blue-500 transition-colors"></i-feather>
+              </div>
+            </div>
+
+            <div class="h-8 w-px bg-slate-200 self-end mb-2 hidden md:block mx-4"></div>
+
+            <!-- Risk -->
+            <div class="flex-1 space-y-2 pl-4">
+              <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-1">Analyse
+                Risque</label>
+              <div
+                class="relative flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2 hover:border-blue-400 group transition-all cursor-pointer w-full">
+                <select [ngModel]="filterRisk()" (ngModelChange)="filterRisk.set($event); currentPage.set(1)"
+                  class="w-full bg-transparent text-[12px] font-bold text-slate-700 outline-none appearance-none cursor-pointer pr-6 z-10">
+                  <option value="">Tous les Risques</option>
+                  <option *ngFor="let level of riskLevels()" [value]="level">{{ getRiskLabelFrench(level) }}</option>
+                </select>
+                <i-feather name="chevron-down"
+                  class="w-3.5 h-3.5 text-slate-400 absolute right-3 pointer-events-none group-hover:text-blue-500 transition-colors"></i-feather>
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-hidden border border-slate-100 rounded-[1.5rem] bg-white shadow-sm mt-4">
+            <table class="w-full text-left">
+              <thead>
+                <tr
+                  class="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                  <th class="px-8 py-5">ID</th>
+                  <th class="px-4 py-5">Type</th>
+                  <th class="px-4 py-5">Canal</th>
+                  <th class="px-4 py-5">Région Habituelle</th>
+                  <th class="px-4 py-5">Montant</th>
+                  <th class="px-4 py-5">Analyse Risque</th>
+                  <th class="px-8 py-5 text-center">Verdict</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-[13px]">
+                <tr *ngFor="let tx of paginatedTransactions()" class="hover:bg-slate-50/30 transition-all">
+                  <td class="px-8 py-5 font-bold text-slate-800">#{{ tx.transactionId }}</td>
+                  <td class="px-4 py-5 text-slate-500 font-medium">{{ tx.category }}</td>
+                  <td class="px-4 py-5 text-slate-500 font-medium">{{ tx.channel }}</td>
+                  <td class="px-4 py-5 text-slate-500 font-medium">{{ tx.region }}</td>
+                  <td class="px-4 py-5 font-black text-slate-800">{{ tx.amount | number:'1.2-2' }} TND</td>
+                  <td class="px-4 py-5">
+                    <div class="flex items-center gap-3">
+                      <div class="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full" [style.width.%]="tx.fraudScore * 100"
+                          [style.backgroundColor]="getRiskColor(tx.riskLevel)"></div>
+                      </div>
+                      <div class="font-black text-xs min-w-[30px]" [style.color]="getRiskColor(tx.riskLevel)">{{
+                        (tx.fraudScore * 100).toFixed(0) }}%</div>
+                    </div>
+                  </td>
+                  <td class="px-8 py-5 text-center">
+                    <span
+                      [class]="tx.wasInjectedFraud ? 'px-3 py-1 bg-red-50 text-red-600 font-bold uppercase rounded-lg border border-red-100 text-[10px]' : 'px-3 py-1 bg-emerald-50 text-emerald-600 font-bold uppercase rounded-lg border border-emerald-100 text-[10px]'">
+                      {{ tx.wasInjectedFraud ? 'Fraude' : 'Légitime' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Empty State -->
+            <div *ngIf="paginatedTransactions().length === 0" class="p-20 text-center space-y-4">
+              <i-feather name="search" class="w-12 h-12 text-slate-200 mx-auto"></i-feather>
+              <div class="text-slate-400 font-medium">Aucune transaction ne correspond à vos filtres</div>
+              <button (click)="filterType.set(''); filterChannel.set(''); filterRegion.set(''); filterRisk.set('')"
+                class="text-blue-600 font-bold text-xs uppercase underline">Réinitialiser les filtres</button>
+            </div>
+          </div>
+
+          <!-- Sampling Pagination -->
+          <div class="flex items-center justify-between pt-4">
+            <p class="text-[11px] text-slate-400 font-medium italic">
+              Affichage de {{ (currentPage() - 1) * pageSize + 1 }} à {{ Math.min(currentPage() * pageSize,
+              res.topSuspiciousTransactions.length) }}
+            </p>
+            <div class="flex items-center gap-1.5 bg-slate-100/50 p-1 rounded-xl border border-slate-100">
+              <button (click)="prevPage()" [disabled]="currentPage() === 1"
+                class="p-2 rounded-lg bg-white shadow-sm border border-slate-200 text-slate-600 hover:text-blue-600 disabled:opacity-40 transition-all">
+                <i-feather name="chevron-left" class="w-4 h-4"></i-feather>
+              </button>
+              <div class="px-4 text-xs font-black text-slate-700">PAGE {{ currentPage() }} / {{ totalPages() }}</div>
+              <button (click)="nextPage()" [disabled]="currentPage() === totalPages()"
+                class="p-2 rounded-lg bg-white shadow-sm border border-slate-200 text-slate-600 hover:text-blue-600 disabled:opacity-40 transition-all">
+                <i-feather name="chevron-right" class="w-4 h-4"></i-feather>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Model Details -->
+        <div *ngIf="activeTab() === 'model'" class="animate-fadeIn space-y-12">
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+
+            <!-- Gauche: Fiche de Renseignement -->
+            <div class="lg:col-span-5 flex flex-col">
+              <div class="mb-6">
+                <h3 class="text-xl font-black text-slate-800 tracking-tight">État de Référence</h3>
+              </div>
+
+              <div *ngIf="selectedModel() as model" class="identity-sheet flex-1 flex flex-col justify-between">
+                <div class="identity-header flex items-center gap-4">
+                  <i-feather name="layers" class="w-8 h-8 text-indigo-600"></i-feather>
+                  <div>
+                    <p class="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-0.5">Identité du
+                      Modèle</p>
+                    <h4 class="text-lg font-black text-slate-800 leading-none">{{ model.modelName }}</h4>
+                  </div>
+                  <div class="ml-auto">
+                    <span class="px-2 py-1 bg-slate-100 rounded-lg text-[10px] font-black text-slate-500 uppercase">v{{
+                      model.version }}</span>
+                  </div>
+                </div>
+
+                <div class="identity-body">
+                  <div class="space-y-4 border-r border-slate-100 pr-6">
+                    <div>
+                      <label
+                        class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Algorithme</label>
+                      <p class="text-sm font-bold text-slate-700">{{ model.modelType }}</p>
+                    </div>
+                    <div>
+                      <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Seuil de
+                        Decision</label>
+                      <p class="text-sm font-bold text-slate-700">0.5 (Par Défaut)</p>
+                    </div>
+                    <div>
+                      <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Dernière
+                        Validation</label>
+                      <p class="text-sm font-bold text-slate-700">09 Avril 2026</p>
+                    </div>
+                  </div>
+                  <div class="space-y-4">
+                    <label
+                      class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Performances
+                      Validées</label>
+                    <div class="grid grid-cols-2 gap-4">
+                      <!-- Précision -->
+                      <div class="p-4 bg-white border border-emerald-100 rounded-2xl shadow-sm flex flex-col gap-2">
+                        <div class="flex items-center gap-1.5">
+                          <i-feather name="check-circle" class="w-4 h-4 text-emerald-600"></i-feather>
+                          <span
+                            class="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Précision</span>
+                        </div>
+                        <span class="text-xl font-black text-slate-800">{{ ((model.precision || 0) * 100).toFixed(1)
+                          }}%</span>
+                      </div>
+
+                      <!-- Rappel -->
+                      <div class="p-4 bg-white border border-indigo-100 rounded-2xl shadow-sm flex flex-col gap-2">
+                        <div class="flex items-center gap-1.5">
+                          <i-feather name="search" class="w-4 h-4 text-indigo-600"></i-feather>
+                          <span class="text-[10px] font-black text-indigo-700 uppercase tracking-widest">Rappel</span>
+                        </div>
+                        <span class="text-xl font-black text-slate-800">{{ ((model.recall || 0) * 100).toFixed(1)
+                          }}%</span>
+                      </div>
+
+                      <!-- F1-Score -->
+                      <div class="p-4 bg-white border border-rose-100 rounded-2xl shadow-sm flex flex-col gap-2">
+                        <div class="flex items-center gap-1.5">
+                          <i-feather name="target" class="w-4 h-4 text-rose-600"></i-feather>
+                          <span class="text-[10px] font-black text-rose-700 uppercase tracking-widest">F1-Score</span>
+                        </div>
+                        <span class="text-xl font-black text-slate-800">{{ ((model.f1Score || 0) * 100).toFixed(1)
+                          }}%</span>
+                      </div>
+
+                      <!-- AUC -->
+                      <div class="p-4 bg-white border border-amber-100 rounded-2xl shadow-sm flex flex-col gap-2">
+                        <div class="flex items-center gap-1.5">
+                          <i-feather name="activity" class="w-4 h-4 text-amber-600"></i-feather>
+                          <span class="text-[10px] font-black text-amber-700 uppercase tracking-widest">AUC</span>
+                        </div>
+                        <span class="text-xl font-black text-slate-800">{{ ((model.auc || 0) * 100).toFixed(1)
+                          }}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Droite: Résultats Post-Simulation -->
+            <div class="lg:col-span-7 flex flex-col">
+              <div class="mb-6">
+                <h3 class="text-xl font-black text-slate-800 tracking-tight">Résultats Post-Simulation</h3>
+              </div>
+
+              <div class="flex flex-col flex-1 justify-between gap-6">
+                <!-- Cartes de Métriques Colorées -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <!-- F1 Card -->
+                  <div
+                    class="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all">
+                    <div>
+                      <div class="flex items-center justify-between mb-4">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">F1-Score</span>
+                        <i-feather name="target" class="w-4 h-4 text-slate-300"></i-feather>
+                      </div>
+                      <p class="text-3xl font-black tabular-nums transition-colors"
+                        [style.color]="res.f1Score >= 0.9 ? '#10b981' : (res.f1Score >= 0.7 ? '#f59e0b' : '#ef4444')">
+                        {{ (res.f1Score * 100).toFixed(1) }}%
+                      </p>
+                      <div class="mt-4">
+                        <span class="status-pill" [class.status-success]="res.f1Score >= 0.9"
+                          [class.status-warning]="res.f1Score < 0.9 && res.f1Score >= 0.7"
+                          [class.status-danger]="res.f1Score < 0.7">
+                          {{ res.f1Score >= 0.9 ? 'Optimal' : (res.f1Score >= 0.7 ? 'Moyen' : 'Critique') }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Precision Card -->
+                  <div
+                    class="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all">
+                    <div>
+                      <div class="flex items-center justify-between mb-4">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Précision</span>
+                        <i-feather name="check-circle" class="w-4 h-4 text-slate-300"></i-feather>
+                      </div>
+                      <p class="text-3xl font-black tabular-nums transition-colors"
+                        [style.color]="res.precision >= 0.9 ? '#10b981' : (res.precision >= 0.7 ? '#f59e0b' : '#ef4444')">
+                        {{ (res.precision * 100).toFixed(1) }}%
+                      </p>
+                      <div class="mt-4">
+                        <span class="status-pill" [class.status-success]="res.precision >= 0.9"
+                          [class.status-warning]="res.precision < 0.9 && res.precision >= 0.7"
+                          [class.status-danger]="res.precision < 0.7">
+                          {{ res.precision >= 0.9 ? 'Fiable' : (res.precision >= 0.7 ? 'Bruité' : 'Inexploitable') }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Recall Card -->
+                  <div
+                    class="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all">
+                    <div>
+                      <div class="flex items-center justify-between mb-4">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rappel</span>
+                        <i-feather name="search" class="w-4 h-4 text-slate-300"></i-feather>
+                      </div>
+                      <p class="text-3xl font-black tabular-nums transition-colors"
+                        [style.color]="res.detectionRate >= 0.9 ? '#10b981' : (res.detectionRate >= 0.7 ? '#f59e0b' : '#ef4444')">
+                        {{ (res.detectionRate * 100).toFixed(1) }}%
+                      </p>
+                      <div class="mt-4">
+                        <span class="status-pill" [class.status-success]="res.detectionRate >= 0.9"
+                          [class.status-warning]="res.detectionRate < 0.9 && res.detectionRate >= 0.7"
+                          [class.status-danger]="res.detectionRate < 0.7">
+                          {{ res.detectionRate >= 0.9 ? 'Exhaustif' : (res.detectionRate >= 0.7 ? 'Évasif' : 'Aveugle')
+                          }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Matrice de Confusion Containerisé -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                  <div class="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 class="text-lg font-bold text-slate-800">Matrice de Confusion</h3>
+                      <p class="text-xs text-slate-500 font-medium">Répartition des prédictions sur le flux simulé</p>
+                    </div>
+                    <div class="p-2 bg-slate-50 rounded-xl">
+                      <i-feather name="grid" class="w-5 h-5 text-slate-400"></i-feather>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-4">
+                    <div
+                      class="matrix-item matrix-positive transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5">
+                      <span class="matrix-label">Vrais Négatifs</span>
+                      <span class="matrix-value text-2xl font-black text-slate-800">{{ res.trueNegatives | number
+                        }}</span>
+                    </div>
+                    <div
+                      class="matrix-item matrix-negative transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5">
+                      <span class="matrix-label">Faux Positifs</span>
+                      <span class="matrix-value text-2xl font-black text-rose-500">{{ res.falsePositives | number
+                        }}</span>
+                    </div>
+                    <div
+                      class="matrix-item matrix-negative transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5">
+                      <span class="matrix-label">Faux Négatifs</span>
+                      <span class="matrix-value text-2xl font-black text-rose-500">{{ res.falseNegatives | number
+                        }}</span>
+                    </div>
+                    <div
+                      class="matrix-item matrix-positive transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5">
+                      <span class="matrix-label">Vrais Positifs</span>
+                      <span class="matrix-value text-2xl font-black text-emerald-500">{{ res.truePositives | number
+                        }}</span>
+                    </div>
+                  </div>
+                </div> <!-- End of Matrix Card -->
+              </div> <!-- End of right column flex body -->
+            </div> <!-- End of lg:col-span-7 -->
+          </div> <!-- End of grid-cols-12 -->
+
+          <!-- Analyse de Dérive (Drift) - Elegante & Pro Section -->
+          <div class="pt-10 border-t border-slate-100 space-y-8">
+            <div class="mb-6">
+              <h3 class="text-xl font-black text-slate-800 tracking-tight">Analyse Comparative & Drift Performance</h3>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              <!-- Drift Gauge Refined -->
+              <div
+                class="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-100 relative overflow-hidden flex flex-col justify-between shadow-sm">
+                <div class="absolute top-5 right-6">
+                  <span class="status-pill text-[9px] px-2.5 py-1 font-black tracking-tight"
+                    [class.status-success]="(comparisonStats()?.f1Drift || 0) >= -5"
+                    [class.status-warning]="(comparisonStats()?.f1Drift || 0) < -5 && (comparisonStats()?.f1Drift || 0) >= -15"
+                    [class.status-danger]="(comparisonStats()?.f1Drift || 0) < -15">
+                    {{ (comparisonStats()?.f1Drift || 0) >= -5 ? 'FLUX STABLE' : ((comparisonStats()?.f1Drift || 0) >=
+                    -15 ? 'DÉRIVE MODÉRÉE' : 'DÉRIVE CRITIQUE') }}
+                  </span>
+                </div>
+
+                <div>
+                  <h4 class="text-xs font-black text-slate-700 uppercase tracking-widest">Mouvement F1-Score</h4>
+                  <p class="text-[11px] text-slate-500 font-bold mt-1">Stabilité du modèle par rapport à la validation
+                    initiale</p>
+                </div>
+
+                <div class="mt-5 space-y-3">
+                  <div class="flex items-center justify-between px-1">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Variation de
+                      Performance</span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xl font-black tabular-nums"
+                        [class.text-rose-600]="(comparisonStats()?.f1Drift || 0) < 0"
+                        [class.text-emerald-600]="(comparisonStats()?.f1Drift || 0) >= 0">
+                        {{ (comparisonStats()?.f1Drift || 0) > 0 ? '+' : '' }}{{ (comparisonStats()?.f1Drift ||
+                        0).toFixed(2) }}%
+                      </span>
+                      <i-feather [name]="(comparisonStats()?.f1Drift || 0) < 0 ? 'trending-down' : 'trending-up'"
+                        [class]="(comparisonStats()?.f1Drift || 0) < 0 ? 'text-rose-600' : 'text-emerald-600'"
+                        class="w-5 h-5"></i-feather>
+                    </div>
+                  </div>
+                  <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-50">
+                    <div class="h-full rounded-full transition-all duration-1000 relative"
+                      [style.width.%]="Math.min(100, Math.abs(comparisonStats()?.f1Drift || 0))"
+                      [class]="(comparisonStats()?.f1Drift || 0) < 0 ? 'bg-rose-500' : 'bg-emerald-500'">
+                      <div class="absolute inset-0 bg-white/20 animate-shimmer"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Robustness Index - Centered & Narrow -->
+              <div
+                class="lg:col-span-1 bg-white border border-slate-100 p-6 rounded-2xl flex flex-col items-center justify-center text-center shadow-sm hover:border-indigo-100 transition-colors">
+                
+                <p class="text-[11px] font-black uppercase tracking-widest text-indigo-500 mb-5">Index de Robustesse</p>
+
+                <div class="flex flex-col items-center gap-1 mb-6">
+                  <div class="flex items-baseline gap-0.5">
+                    <span class="text-4xl font-black text-slate-800">{{ (comparisonStats()?.robustnessIndex ||
+                      0).toFixed(1) }}</span>
+                    <span class="text-[10px] font-bold text-indigo-400 mb-1">%</span>
+                  </div>
+                  <div class="w-8 h-1 bg-indigo-100 rounded-full mt-1"></div>
+                </div>
+
+                <div class="relative group/tooltip inline-block">
+                  <p class="text-[11px] font-bold text-slate-500 border-b border-dashed border-slate-400 pb-0.5 cursor-help transition-colors group-hover/tooltip:text-indigo-600 group-hover/tooltip:border-indigo-400">
+                    Résilience d'apprentissage
+                  </p>
+                  
+                  <!-- Tooltip personnalisé infaillible -->
+                  <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-3 bg-white border border-slate-100 text-slate-600 text-[10px] text-center rounded-xl shadow-xl opacity-0 translate-y-2 pointer-events-none transition-all duration-300 group-hover/tooltip:opacity-100 group-hover/tooltip:translate-y-0 z-[1000] font-medium leading-relaxed">
+                    Dès 80%, le modèle maintient au moins 80% de sa performance face aux dérives.
+                    <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b border-r border-slate-100 rotate-45 rounded-sm"></div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

@@ -133,6 +133,21 @@ export interface ModelMetricsResponse {
   hyperparameters?: Record<string, any>;
 }
 
+export interface ModelSummaryResponse {
+  modelUuid: string;
+  modelName: string;
+  modelType: string;
+  version: string;
+  status: string;
+  createdAt: string;
+  createdByEmail?: string;
+  createdByName?: string;
+  auc?: number;
+  precision?: number;
+  recall?: number;
+  f1Score?: number;
+}
+
 export interface PageResponse<T> {
   content: T[];
   totalElements: number;
@@ -141,4 +156,53 @@ export interface PageResponse<T> {
   size: number;
   first: boolean;
   last: boolean;
+}
+
+export interface SimulationRequest {
+  modelUuid: string;
+  scenario: string;
+  transactionCount: number;
+  fraudRatio: number;
+  periodHours?: number;
+  timeDistribution: string;
+  randomSeed?: number;
+}
+
+export interface SimulatedTransactionResult {
+  transactionId: string;
+  amount: number;
+  channel: string;
+  category: string;
+  region: string;
+  fraudScore: number;
+  riskLevel: string;
+  wasInjectedFraud: boolean;
+  wasDetected: boolean;
+  alertType: string;
+}
+
+export interface SimulationResponse {
+  simulationId: string;
+  modelUuid: string;
+  modelName: string;
+  modelType: string;
+  scenario: string;
+  totalTransactions: number;
+  totalFraudsInjected: number;
+  totalDetected: number;
+  truePositives: number;
+  falsePositives: number;
+  trueNegatives: number;
+  falseNegatives: number;
+  detectionRate: number;
+  precision: number;
+  f1Score: number;
+  falsePositiveRate: number;
+  riskDistribution: Record<string, number>;
+  avgFraudScore: number;
+  maxFraudScore: number;
+  minFraudScore: number;
+  topSuspiciousTransactions: SimulatedTransactionResult[];
+  durationSeconds: number;
+  simulatedAt: string;
 }

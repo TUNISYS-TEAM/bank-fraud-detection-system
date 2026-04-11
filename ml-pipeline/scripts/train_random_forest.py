@@ -1,6 +1,7 @@
 """
-Train a Random Forest model with fixed hyperparameters.
-FIXED: Removed duplicate categorical encoding from pipeline
+Train a Random Forest model with cost-sensitive learning and dynamic thresholding.
+
+Dynamic categorical encoding: only columns present in training data are encoded.
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ import pandas as pd
 import joblib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
+    accuracy_score, precision_score, recall_score, f1_score,
+    roc_auc_score, confusion_matrix, precision_recall_curve
 )
 from sklearn.pipeline import Pipeline
 import onnx
@@ -34,7 +36,7 @@ from ml_pipeline.inference.thresholding import (
 )
 from ml_pipeline.pipeline.data_split import temporal_split
 from ml_pipeline.transformers.behavioral.temporal_features import TemporalFeatureTransformer
-# REMOVED: from ml_pipeline.transformers.encoders.categorical_encoder import SafeOneHotEncoder
+from ml_pipeline.transformers.encoders.categorical_encoder import SafeOneHotEncoder
 from ml_pipeline.transformers.encoders.feature_selectors import TreeFeatureSelector
 from ml_pipeline.transformers.scalers.monetary_scaler import SafeScaler
 from ml_pipeline.utils.postal_codes import PostalCodeResolver
@@ -101,44 +103,40 @@ def process_postal_codes(df):
     return df_processed
 
 
-def encode_categorical_columns(df):
+def identify_categorical_columns(df: pd.DataFrame) -> list[str]:
     """
-    ✅ FIXED: Also encodes behavioral categorical features
-    (client_usual_region, client_usual_channel, client_usual_category)
+    Dynamically identify categorical columns present in the DataFrame.
+    Priority list of expected categorical columns; only those present are returned.
     """
-    df_encoded = df.copy()
-
-    exclude_columns = [
-        'TX_Time',
-        'Account_Id',
-        'Device_Id',
-        'Customer_Region',
-        'Merchant_Region'
+    expected_cats = [
+        'category', 'Channel',
+        'client_usual_region', 'client_usual_channel', 'client_usual_category'
     ]
-    # ✅ REMOVED: exclude_patterns = ['client_']
-    # We DO want to encode client_usual_* features
-
-    for col in df_encoded.columns:
-        if col in exclude_columns:
+    # Also include any object/category dtype columns not explicitly excluded
+    exclude = ['TX_Time', 'Account_Id', 'Device_Id', 'Customer_Region', 'Merchant_Region']
+    categorical_cols = []
+    for col in df.columns:
+        if col in exclude:
             continue
-
-        # Encode ALL object/category columns (including client_usual_*)
-        if df_encoded[col].dtype == 'object' or df_encoded[col].dtype.name == 'category':
-            logger.info("Converting categorical column to codes: %s", col)
-            df_encoded[col] = pd.Categorical(df_encoded[col]).codes.astype(np.float32)
-            df_encoded[col] = df_encoded[col].replace(-1, 0)
-
-    return df_encoded
+        if col in expected_cats:
+            categorical_cols.append(col)
+        elif df[col].dtype == 'object' or df[col].dtype.name == 'category':
+            categorical_cols.append(col)
+    return categorical_cols
 
 
-def create_preprocessing_pipeline():
+def create_preprocessing_pipeline(categorical_columns: list[str]) -> Pipeline:
     """
-    ✅ FIXED: Removed SafeOneHotEncoder to prevent double-encoding
-    Manual preprocessing already handles categorical encoding
+    Build a preprocessing pipeline using SafeOneHotEncoder, TemporalFeatureTransformer,
+    TreeFeatureSelector, and SafeScaler.
+    Only the provided categorical columns are encoded.
     """
     return Pipeline([
+        ('onehot', SafeOneHotEncoder(
+            categorical_cols=categorical_columns,
+            include_raw_cats=True
+        )),
         ('temporal', TemporalFeatureTransformer()),
-        # REMOVED: ('onehot', SafeOneHotEncoder()),  # ← This was causing double-encoding
         ('selector', TreeFeatureSelector()),
         ('scaler', SafeScaler(scaler_type='robust'))
     ])
@@ -157,13 +155,13 @@ def export_to_onnx_direct(model, output_path, input_dim):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Train Random Forest model and export to ONNX')
-    parser.add_argument('--dataset-path', required=True, help='Path to dataset with precomputed features (Parquet/CSV)')
+    parser = argparse.ArgumentParser(description='Train Random Forest with dynamic categorical encoding')
+    parser.add_argument('--dataset-path', required=True, help='Path to dataset (Parquet/CSV)')
     parser.add_argument('--dataset-id', required=True, help='Dataset UUID')
     parser.add_argument('--job-id', required=True, help='Job UUID')
-    parser.add_argument('--timestamp', required=True, help='Timestamp for consistent file naming') 
+    parser.add_argument('--timestamp', required=True, help='Timestamp for file naming')
     parser.add_argument('--hyperparameters', required=True, help='Path to hyperparameters JSON')
-    parser.add_argument('--test-size', type=float, default=0.2, help='Reserved for compatibility')
+    parser.add_argument('--test-size', type=float, default=0.2, help='Ignored; temporal split used')
     parser.add_argument('--random-seed', type=int, default=42, help='Random seed')
     args = parser.parse_args()
 
@@ -171,7 +169,6 @@ def main():
     overall_start = time.time()
 
     logger.info("Starting Random Forest training for dataset %s", args.dataset_id)
-    logger.info("✅ FIXED VERSION: Removed duplicate categorical encoding from pipeline")
 
     original_stdout = sys.stdout
     sys.stdout = sys.stderr
@@ -205,11 +202,10 @@ def main():
 
         logger.info("Loaded %d rows, columns: %s", len(df), list(df.columns))
 
-        # ✅ Manual preprocessing (applied to raw data)
+        # Manual preprocessing – NO categorical encoding here, only ID extraction and postal codes
         logger.info("Applying manual preprocessing...")
         df = process_id_columns(df)
         df = process_postal_codes(df)
-        df = encode_categorical_columns(df)
         logger.info("Manual preprocessing complete")
 
         if 'fraud' not in df.columns:
@@ -233,6 +229,9 @@ def main():
         df_processed = X.copy()
         df_processed['fraud'] = y
 
+        # -----------------------------------------------------------------
+        # CRITICAL: Temporal split BEFORE any categorical encoding
+        # -----------------------------------------------------------------
         logger.info("Performing temporal split...")
         df_train, df_val, df_test = temporal_split(
             df_processed,
@@ -252,8 +251,17 @@ def main():
         logger.info("Train: %d rows, Val: %d rows, Test: %d rows", len(X_train), len(X_val), len(X_test))
         logger.info("Fraud rate — train: %.4f, val: %.4f, test: %.4f", y_train.mean(), y_val.mean(), y_test.mean())
 
-        logger.info("Creating and fitting preprocessing pipeline (WITHOUT SafeOneHotEncoder)...")
-        preprocessor = create_preprocessing_pipeline()
+        # -----------------------------------------------------------------
+        # Dynamically identify categorical columns present in training data
+        # -----------------------------------------------------------------
+        categorical_columns = identify_categorical_columns(X_train)
+        logger.info("Categorical columns to encode: %s", categorical_columns)
+
+        # -----------------------------------------------------------------
+        # Build and fit preprocessing pipeline ON TRAINING DATA ONLY
+        # -----------------------------------------------------------------
+        logger.info("Creating and fitting preprocessing pipeline...")
+        preprocessor = create_preprocessing_pipeline(categorical_columns)
 
         X_train_processed = preprocessor.fit_transform(X_train)
         X_val_processed = preprocessor.transform(X_val)
@@ -266,15 +274,30 @@ def main():
 
         logger.info("Processed feature shape: %s", X_train_processed.shape)
 
+        # -----------------------------------------------------------------
+        # Cost‑sensitive configuration
+        # -----------------------------------------------------------------
+        fraud_weight = hp.get('fraud_weight')
+        if fraud_weight is None:
+            fraud_ratio = y_train.mean()
+            if fraud_ratio > 0:
+                fraud_weight = min(1.0 / fraud_ratio, 50.0)
+            else:
+                fraud_weight = 30.0
+        logger.info("Using fraud class weight: %.1f", fraud_weight)
+
+        class_weight = {0: 1, 1: fraud_weight}
+
         fixed_params = {
             'min_samples_split': 20,
             'min_samples_leaf': 10,
-            'class_weight': 'balanced',
+            'class_weight': class_weight,
             'random_state': args.random_seed,
             'n_jobs': -1,
             'verbose': 0,
             'max_features': 'sqrt',
             'bootstrap': True,
+            'max_samples': 0.8
         }
 
         user_params = {
@@ -292,21 +315,45 @@ def main():
 
         y_val_proba = rf_model.predict_proba(X_val_processed)[:, 1]
 
-        logger.info("Finding optimal thresholds on validation set:")
+        max_prob = y_val_proba.max()
+        logger.info("Maximum predicted fraud probability on validation set: %.4f", max_prob)
+        if max_prob < 0.3:
+            logger.warning("Model is under‑confident (max prob < 0.3). Consider increasing fraud weight or tuning hyperparameters.")
+
+        # -----------------------------------------------------------------
+        # Robust threshold from Precision-Recall curve (primary fallback)
+        # -----------------------------------------------------------------
+        logger.info("Computing optimal threshold from Precision-Recall curve...")
+        precision_vals, recall_vals, thresholds_pr = precision_recall_curve(y_val, y_val_proba)
+        f1_scores = 2 * precision_vals[:-1] * recall_vals[:-1] / (precision_vals[:-1] + recall_vals[:-1] + 1e-9)
+        best_idx = np.argmax(f1_scores)
+        pr_threshold = thresholds_pr[best_idx]
+        best_f1 = f1_scores[best_idx]
+        logger.info("  PR‑based threshold: %.4f (max F1=%.4f)", pr_threshold, best_f1)
+
+        # Also compute F-beta and cost for reference
         fbeta_threshold, fbeta_score_val = find_threshold_by_fbeta(y_val, y_val_proba, beta=2.0)
         logger.info("  F-beta (β=2.0): threshold=%.4f, score=%.4f", fbeta_threshold, fbeta_score_val)
 
         cost_threshold, min_cost = find_threshold_by_cost(y_val, y_val_proba, cost_fp=1.0, cost_fn=10.0)
         logger.info("  Cost-based: threshold=%.4f, min_cost=%.0f", cost_threshold, min_cost)
 
+        # User threshold from UI takes precedence; else use PR threshold
         user_threshold = hp.get('detection_threshold')
         if user_threshold is not None:
             final_threshold = float(user_threshold)
-            logger.info("Using user-supplied threshold: %.4f", final_threshold)
+            logger.info("Using user-supplied threshold from UI: %.4f", final_threshold)
+            if final_threshold > max_prob:
+                logger.warning(
+                    "User threshold %.4f is above maximum predicted probability %.4f. "
+                    "This will result in zero detections. Consider lowering the threshold.",
+                    final_threshold, max_prob
+                )
         else:
-            final_threshold = float(fbeta_threshold)
-            logger.info("No user threshold provided, using F-beta threshold: %.4f", final_threshold)
+            final_threshold = float(pr_threshold)
+            logger.info("No UI threshold provided, using PR‑based threshold: %.4f", final_threshold)
 
+        # Test set evaluation
         y_test_proba = rf_model.predict_proba(X_test_processed)[:, 1]
         y_test_pred = (y_test_proba > final_threshold).astype(int)
 
@@ -324,6 +371,7 @@ def main():
         logger.info("  F1: %.4f", f1)
         logger.info("  AUC-ROC: %.4f", auc_roc)
 
+        # Feature importance
         importances = rf_model.feature_importances_
         feature_importance_map = {}
         for name, importance in zip(feature_names, importances):
@@ -332,11 +380,9 @@ def main():
             sorted(feature_importance_map.items(), key=lambda item: item[1], reverse=True)
         )
 
-        full_pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('classifier', rf_model)
-        ])
-
+        # -----------------------------------------------------------------
+        # Save separate files (compatible with existing inference script)
+        # -----------------------------------------------------------------
         timestamp = args.timestamp
         output_models_dir = Path("/app/output/models")
         output_onnx_dir = Path("/app/output/onnx")
@@ -347,17 +393,21 @@ def main():
         output_pipelines_dir.mkdir(parents=True, exist_ok=True)
 
         base_filename = f"trained_model_{timestamp}"
-        
-        model_filename = f"{base_filename}.joblib"
-        model_path = output_models_dir / model_filename
-        joblib.dump(full_pipeline, model_path)
 
+        # 1. Save preprocessor (standalone)
         pipeline_filename = f"pipeline_{timestamp}.joblib"
         pipeline_path = output_pipelines_dir / pipeline_filename
         joblib.dump(preprocessor, pipeline_path)
+        logger.info("Preprocessor saved to %s", pipeline_path)
 
-        logger.info("Exporting model to ONNX format...")
+        # 2. Save classifier
+        model_filename = f"{base_filename}.joblib"
+        model_path = output_models_dir / model_filename
+        joblib.dump(rf_model, model_path)
+        logger.info("Classifier saved to %s", model_path)
 
+        # 3. Export ONNX (classifier only)
+        logger.info("Exporting classifier to ONNX...")
         onnx_filename = f"{base_filename}.onnx"
         onnx_file = output_onnx_dir / onnx_filename
         input_dim = X_train_processed.shape[1]
@@ -401,6 +451,8 @@ def main():
                 'true_positives': int(cm[1, 1]),
             },
             'thresholds': {
+                'pr_optimal': float(pr_threshold),
+                'pr_f1': float(best_f1),
                 'fbeta': float(fbeta_threshold),
                 'fbeta_score': float(fbeta_score_val),
                 'cost': float(cost_threshold),

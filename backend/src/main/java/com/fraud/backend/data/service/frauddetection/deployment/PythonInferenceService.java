@@ -13,17 +13,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Slf4j
 @Service
@@ -57,13 +56,13 @@ public class PythonInferenceService {
     private static final String CONTAINER_TMP_MODELS_DIR = "/tmp/fraud-inference/models";
     private static final String CONTAINER_TMP_DATA_DIR = "/tmp/fraud-inference/data";
 
-    @javax.annotation.PostConstruct
+    @PostConstruct
     public void init() {
         inferenceExecutor = Executors.newFixedThreadPool(maxConcurrent);
         log.info("PythonInferenceService initialized with {} concurrent threads", maxConcurrent);
     }
 
-    @javax.annotation.PreDestroy
+    @PreDestroy
     public void destroy() {
         if (inferenceExecutor != null) {
             inferenceExecutor.shutdown();
@@ -248,25 +247,26 @@ public class PythonInferenceService {
 
             double threshold = getModelThreshold(model);
             ProcessBuilder pb;
+            List<String> command = new ArrayList<>(Arrays.asList(
+                    "docker", "exec", containerName,
+                    "python", "/app/scripts/inference_service.py",
+                    "--pipeline-path", containerPipelinePath,
+                    "--input", containerInputPath,
+                    "--threshold", String.valueOf(threshold)
+            ));
+            
             if (useOnnx && containerOnnxPath != null) {
                 log.info("Using ONNX model for inference (2-3x faster)");
-                pb = new ProcessBuilder(
-                        "docker", "exec", containerName,
-                        "python", "/app/scripts/inference_service.py",
-                        "--model-path", containerOnnxPath,
-                        "--pipeline-path", containerPipelinePath,
-                        "--input", containerInputPath,
-                        "--threshold", String.valueOf(threshold));
+                command.add("--model-path");
+                command.add(containerOnnxPath);
             } else {
                 log.info("Using joblib model for inference");
-                pb = new ProcessBuilder(
-                        "docker", "exec", containerName,
-                        "python", "/app/scripts/inference_service.py",
-                        "--model-path", containerModelPath,
-                        "--pipeline-path", containerPipelinePath,
-                        "--input", containerInputPath,
-                        "--threshold", String.valueOf(threshold));
+                command.add("--model-path");
+                command.add(containerModelPath);
             }
+            
+            
+            pb = new ProcessBuilder(command);
 
             Process process = pb.start();
             String outputStr = executeProcess(process);
@@ -286,46 +286,64 @@ public class PythonInferenceService {
         }
     }
 
+    /**
+     * Executes a process while consuming stdout and stderr concurrently to avoid deadlocks.
+     */
     private String executeProcess(Process process) throws Exception {
-        StringBuilder stdoutOutput = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                stdoutOutput.append(line).append("\n");
-            }
-        }
+        StringBuilder stdout = new StringBuilder();
+        StringBuilder stderr = new StringBuilder();
 
-        StringBuilder stderrOutput = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getErrorStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                stderrOutput.append(line).append("\n");
+        // Create threads to read both streams
+        Thread stdoutThread = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    stdout.append(line).append("\n");
+                }
+            } catch (IOException e) {
+                log.error("Error reading stdout", e);
             }
-        }
+        });
+
+        Thread stderrThread = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    stderr.append(line).append("\n");
+                    log.debug("Python stderr: {}", line);
+                }
+            } catch (IOException e) {
+                log.error("Error reading stderr", e);
+            }
+        });
+
+        stdoutThread.start();
+        stderrThread.start();
 
         boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         if (!finished) {
             process.destroyForcibly();
+            stdoutThread.interrupt();
+            stderrThread.interrupt();
             throw new RuntimeException("Inference timed out after " + timeoutSeconds + " seconds");
         }
 
-        if (!stderrOutput.isEmpty()) {
-            log.debug("Inference stderr:\n{}", stderrOutput);
-        }
+        // Wait for reader threads to finish (with timeout)
+        stdoutThread.join(5000);
+        stderrThread.join(5000);
 
-        if (process.exitValue() != 0) {
+        int exitCode = process.exitValue();
+        if (exitCode != 0) {
             throw new RuntimeException(
-                    "Inference failed with exit code " + process.exitValue() + ". Error: " + stderrOutput);
+                    "Inference failed with exit code " + exitCode + ". Stderr:\n" + stderr);
         }
 
-        String outputStr = stdoutOutput.toString().trim();
-        if (outputStr.isBlank()) {
-            throw new RuntimeException("Inference script produced no stdout output");
+        String output = stdout.toString().trim();
+        if (output.isEmpty()) {
+            throw new RuntimeException("Inference script produced no stdout output. Stderr:\n" + stderr);
         }
 
-        return outputStr;
+        return output;
     }
 
     private Path getOrDownloadModel(String minioPath) throws Exception {

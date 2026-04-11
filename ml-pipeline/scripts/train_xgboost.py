@@ -1,9 +1,6 @@
 """
-Train an XGBoost model with configurable hyperparameters.
-ONNX is mandatory:
-- export the BASE XGBoost model to ONNX
-- keep calibration (sigmoid / Platt scaling) separately
-- save calibration coefficients for post-processing during inference
+Train an XGBoost model for bank fraud detection with:
+
 """
 
 from __future__ import annotations
@@ -23,7 +20,8 @@ import pandas as pd
 import joblib
 from xgboost import XGBClassifier
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
+    accuracy_score, precision_score, recall_score, f1_score,
+    roc_auc_score, confusion_matrix, precision_recall_curve, average_precision_score
 )
 from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV
@@ -51,7 +49,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ── Preprocessing helpers ────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# Preprocessing helpers
+# ──────────────────────────────────────────────────────────────────────────────
 
 def extract_numeric_from_id(value):
     if pd.isna(value):
@@ -124,9 +124,12 @@ def create_preprocessing_pipeline():
     ])
 
 
-# ── Calibration helpers ──────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# Calibration helpers
+# ──────────────────────────────────────────────────────────────────────────────
 
 def extract_sigmoid_params(calibrated_model):
+    """Extract Platt scaling parameters (a, b) from a CalibratedClassifierCV."""
     try:
         calibrated_classifiers = getattr(calibrated_model, 'calibrated_classifiers_', None)
         if not calibrated_classifiers:
@@ -166,17 +169,12 @@ def extract_sigmoid_params(calibrated_model):
         return None, None
 
 
-# ── ONNX export ──────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# ONNX export
+# ──────────────────────────────────────────────────────────────────────────────
 
 def export_xgboost_to_onnx(model, output_path, input_dim):
-    """
-    Export BASE XGBoost model to ONNX.
-    Important: model must be the raw XGBClassifier, not CalibratedClassifierCV.
-
-    Fix:
-    onnxmltools for XGBoost expects feature names like f0, f1, ...
-    so we temporarily rename booster.feature_names before export.
-    """
+    """Export BASE XGBoost model to ONNX."""
     try:
         # Strategy 1: skl2onnx
         try:
@@ -232,10 +230,12 @@ def export_xgboost_to_onnx(model, output_path, input_dim):
         return None
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description='Train XGBoost model and export to ONNX')
+    parser = argparse.ArgumentParser(description='Train XGBoost for bank fraud detection')
     parser.add_argument('--dataset-path', required=True)
     parser.add_argument('--dataset-id', required=True)
     parser.add_argument('--job-id', required=True)
@@ -282,6 +282,7 @@ def main():
         if 'TX_Time' not in df.columns:
             raise ValueError("Dataset must contain 'TX_Time' for temporal split")
 
+        # Manual preprocessing (ID extraction, postal codes, categorical encoding)
         df = process_id_columns(df)
         df = process_postal_codes(df)
         df = encode_categorical_columns(df)
@@ -300,6 +301,7 @@ def main():
         df_processed = X.copy()
         df_processed['fraud'] = y
 
+        # Temporal split – critical for fraud detection
         df_train, df_val, df_test = temporal_split(
             df_processed,
             train_ratio=0.7,
@@ -315,6 +317,11 @@ def main():
         y_val   = df_val['fraud'].values
         y_test  = df_test['fraud'].values
 
+        logger.info("Train: %d rows (fraud rate %.4f)", len(X_train), y_train.mean())
+        logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
+        logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
+
+        # Preprocessing pipeline (fitted on train only)
         preprocessor = create_preprocessing_pipeline()
         X_train_proc = preprocessor.fit_transform(X_train)
         X_val_proc   = preprocessor.transform(X_val)
@@ -325,13 +332,19 @@ def main():
         except Exception:
             feature_names = [f"feature_{i}" for i in range(X_train_proc.shape[1])]
 
-        n_neg = int((y_train == 0).sum())
-        n_pos = int((y_train == 1).sum())
+        logger.info("Processed feature shape: %s", X_train_proc.shape)
+
+        # ──────────────────────────────────────────────────────────────────────
+        # XGBoost with early stopping and proper evaluation metric
+        # ──────────────────────────────────────────────────────────────────────
+        n_neg = (y_train == 0).sum()
+        n_pos = (y_train == 1).sum()
         scale_pos_weight = n_neg / max(n_pos, 1)
+        logger.info("scale_pos_weight = %.2f (neg/pos = %d/%d)", scale_pos_weight, n_neg, n_pos)
 
         xgb_params = {
             'objective': 'binary:logistic',
-            'eval_metric': 'auc',
+            'eval_metric': 'aucpr',        # Precision-Recall AUC – better for imbalance
             'random_state': args.random_seed,
             'n_jobs': -1,
             'verbosity': 0,
@@ -341,6 +354,7 @@ def main():
             'learning_rate': hp.get('learning_rate', 0.1),
             'subsample': hp.get('subsample', 0.8),
             'colsample_bytree': hp.get('colsample_bytree', 0.8),
+            'early_stopping_rounds': 20,
         }
         logger.info("Training XGBoost with params: %s", xgb_params)
 
@@ -353,7 +367,11 @@ def main():
         )
         train_time = time.time() - train_start
         logger.info("Base training complete in %.1f seconds", train_time)
+        logger.info("Best iteration: %d", xgb_model.best_iteration)
 
+        # ──────────────────────────────────────────────────────────────────────
+        # Probability calibration (Platt scaling) on validation set
+        # ──────────────────────────────────────────────────────────────────────
         logger.info("Applying probability calibration (Platt Scaling) using validation set...")
         calibrated_model = CalibratedClassifierCV(xgb_model, cv='prefit', method='sigmoid')
         calibrated_model.fit(X_val_proc, y_val)
@@ -367,35 +385,52 @@ def main():
             logger.warning("Could not extract sigmoid calibration parameters")
 
         y_val_proba = final_model.predict_proba(X_val_proc)[:, 1]
+        max_prob = y_val_proba.max()
         logger.info(
             "Probability stats (VAL) - Mean: %.4f | Min: %.4f | Max: %.4f",
-            y_val_proba.mean(), y_val_proba.min(), y_val_proba.max()
+            y_val_proba.mean(), y_val_proba.min(), max_prob
         )
 
+        # ──────────────────────────────────────────────────────────────────────
+        # Threshold selection (multiple strategies)
+        # ──────────────────────────────────────────────────────────────────────
+        # 1. Precision-Recall curve max F1 (primary fallback)
+        precision_vals, recall_vals, thresholds_pr = precision_recall_curve(y_val, y_val_proba)
+        f1_scores = 2 * precision_vals[:-1] * recall_vals[:-1] / (precision_vals[:-1] + recall_vals[:-1] + 1e-9)
+        best_idx = np.argmax(f1_scores)
+        pr_threshold = thresholds_pr[best_idx]
+        best_f1 = f1_scores[best_idx]
+        logger.info("PR‑based threshold: %.4f (max F1=%.4f)", pr_threshold, best_f1)
+
+        # 2. F-beta (β=2.0)
         fbeta_threshold, fbeta_score_val = find_threshold_by_fbeta(y_val, y_val_proba, beta=2.0)
         logger.info("F-beta (β=2.0): threshold=%.4f, score=%.4f", fbeta_threshold, fbeta_score_val)
 
+        # 3. Cost-based
         cost_threshold, min_cost = find_threshold_by_cost(y_val, y_val_proba, cost_fp=1.0, cost_fn=10.0)
         logger.info("Cost-based: threshold=%.4f, min_cost=%.0f", cost_threshold, min_cost)
 
+        # 4. PR-AUC
+        pr_auc = average_precision_score(y_val, y_val_proba)
+        logger.info("PR-AUC (val): %.4f", pr_auc)
+
         user_threshold = hp.get('detection_threshold')
         if user_threshold is not None:
-            user_threshold_float = float(user_threshold)
-            logger.info("Initial user threshold: %.4f", user_threshold_float)
-
-            if user_threshold_float > y_val_proba.max():
+            final_threshold = float(user_threshold)
+            logger.info("Using user-supplied threshold from UI: %.4f", final_threshold)
+            if final_threshold > max_prob:
                 logger.warning(
-                    "User threshold (%.4f) is ABOVE max calibrated proba (%.4f). Scaling down...",
-                    user_threshold_float, y_val_proba.max()
+                    "User threshold %.4f is above maximum predicted probability %.4f. "
+                    "This will result in zero detections. Consider lowering the threshold.",
+                    final_threshold, max_prob
                 )
-                final_threshold = float(fbeta_threshold)
-            else:
-                final_threshold = user_threshold_float
         else:
-            final_threshold = float(fbeta_threshold)
+            final_threshold = float(pr_threshold)
+            logger.info("No UI threshold provided, using PR‑based threshold: %.4f", final_threshold)
 
-        logger.info("Final threshold selected: %.4f", final_threshold)
-
+        # ──────────────────────────────────────────────────────────────────────
+        # Test set evaluation
+        # ──────────────────────────────────────────────────────────────────────
         y_test_proba = final_model.predict_proba(X_test_proc)[:, 1]
         logger.info(
             "Probability stats (TEST) - Mean: %.4f | Min: %.4f | Max: %.4f",
@@ -410,8 +445,18 @@ def main():
         recall    = recall_score(y_test, y_test_pred, zero_division=0)
         f1        = f1_score(y_test, y_test_pred, zero_division=0)
         auc_roc   = roc_auc_score(y_test, y_test_proba)
+        pr_auc_test = average_precision_score(y_test, y_test_proba)
         cm        = confusion_matrix(y_test, y_test_pred)
 
+        logger.info("Test metrics:")
+        logger.info("  Accuracy:  %.4f", accuracy)
+        logger.info("  Precision: %.4f", precision)
+        logger.info("  Recall:    %.4f", recall)
+        logger.info("  F1:        %.4f", f1)
+        logger.info("  AUC-ROC:   %.4f", auc_roc)
+        logger.info("  PR-AUC:    %.4f", pr_auc_test)
+
+        # Feature importance
         importances = xgb_model.feature_importances_
         feature_importance_map = dict(
             sorted(
@@ -425,6 +470,9 @@ def main():
         if calib_a is not None and calib_b is not None:
             calibration_sigmoid = {"a": calib_a, "b": calib_b}
 
+        # ──────────────────────────────────────────────────────────────────────
+        # Save artifacts
+        # ──────────────────────────────────────────────────────────────────────
         full_pipeline = Pipeline([
             ('preprocessor', preprocessor),
             ('classifier', final_model)
@@ -481,6 +529,7 @@ def main():
                 'recall': float(recall),
                 'f1_score': float(f1),
                 'auc_roc': float(auc_roc),
+                'pr_auc': float(pr_auc_test),
                 'avg_fraud_score': float(y_test_proba.mean()),
             },
             'confusion_matrix': {
@@ -490,6 +539,8 @@ def main():
                 'true_positives': int(cm[1, 1]),
             },
             'thresholds': {
+                'pr_optimal': float(pr_threshold),
+                'pr_f1': float(best_f1),
                 'fbeta': float(fbeta_threshold),
                 'fbeta_score': float(fbeta_score_val),
                 'cost': float(cost_threshold),
@@ -502,6 +553,7 @@ def main():
                 'test_rows': int(len(X_test)),
                 'fraud_rate_test': float(y_test.mean()),
                 'train_time_seconds': float(train_time),
+                'best_iteration': int(xgb_model.best_iteration) if hasattr(xgb_model, 'best_iteration') else None,
             },
             'calibration_sigmoid': calibration_sigmoid,
             'start_time': started_at.isoformat(),
