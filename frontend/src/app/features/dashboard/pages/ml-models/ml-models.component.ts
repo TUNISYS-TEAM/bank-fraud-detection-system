@@ -157,6 +157,11 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     }
   }
 
+  getSliderBackground(value: number, min: number, max: number): string {
+    const percentage = ((value - min) / (max - min)) * 100;
+    return `linear-gradient(to right, #1e40af 0%, #1e40af ${percentage}%, #f1f5f9 ${percentage}%, #f1f5f9 100%)`;
+  }
+
   // Training state
   isTraining: boolean = false;
   isSavingTestResult = signal(false);
@@ -592,7 +597,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     const testConfig = { ...config };
     testConfig.hyperparameters = {
-      ...config.hyperparameters
+      ...config.hyperparameters,
     };
     this.startTrainingWithConfig(testConfig, true);
   }

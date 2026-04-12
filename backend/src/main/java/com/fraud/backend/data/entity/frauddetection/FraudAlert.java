@@ -64,6 +64,10 @@ public class FraudAlert {
     @JoinColumn(name = "reviewed_by")
     private AppUser reviewedBy;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_analyst_id")
+    private AppUser assignedAnalyst;
+
     @Column(name = "review_date")
     private LocalDateTime reviewDate;
 

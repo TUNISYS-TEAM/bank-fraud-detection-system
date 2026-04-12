@@ -179,7 +179,6 @@ public class ModelDeploymentController {
         log.info("Starting batch scoring for {} transactions", transactionUuids.size());
         UUID jobId = UUID.randomUUID();
         
-        // Manual async execution since we can't modify services
         scoringJobService.createJob(jobId, transactionUuids.size());
         
         CompletableFuture.runAsync(() -> {
@@ -269,5 +268,19 @@ public class ModelDeploymentController {
     public ResponseEntity<Map<String, Object>> checkDrift() {
         log.info("Triggering manual drift check");
         return ResponseEntity.ok(driftMonitoringService.checkModelDrift(getEffectiveManagerId()));
+    }
+
+    /**
+     * Predict future drift behavior for a specific model.
+     * Uses linear regression on stored drift history to forecast F1, score drift, and PSI.
+     * 
+     * @param modelUuid UUID of the model to analyze
+     * @return Prediction with current state, predicted state, confidence, and recommendations
+     */
+    @GetMapping("/drift/predict/{modelUuid}")
+    public ResponseEntity<Map<String, Object>> predictModelDrift(@PathVariable UUID modelUuid) {
+        log.info("Predicting drift behavior for model: {}", modelUuid);
+        Map<String, Object> prediction = driftMonitoringService.predictModelDrift(modelUuid);
+        return ResponseEntity.ok(prediction);
     }
 }

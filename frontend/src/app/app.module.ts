@@ -50,6 +50,7 @@ import {
   BellOff, Clipboard,
   Filter,
 } from 'angular-feather/icons';
+import { AnalystAlertDetailsModalComponent } from './shared/modals/fraud-alerts/analyst-alert-details-modal/analyst-alert-details-modal.component';
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
   ExternalLink, Settings, LogOut, Bell, X, Mail, Lock, Tag, Calendar, Target, Hash, HardDrive, List,
@@ -63,6 +64,7 @@ const icons = {
 @NgModule({
   declarations: [
     AppComponent,
+    AnalystAlertDetailsModalComponent,
   ],
   imports: [
     BrowserModule,

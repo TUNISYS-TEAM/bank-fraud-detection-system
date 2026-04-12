@@ -9,12 +9,13 @@ import { AuthStore } from '../../../../core/store/auth.store';
 import { OverviewService, OverviewStats } from '../../../../core/services/overview.service';
 import { FraudAlertService } from '../../../../core/services/fraud-alert.service';
 import { AuthService } from '../../../../core/services/auth.service';
-import { FraudAlertResponse } from '../../../../core/models/fraud-alert.model';
+import { FraudAlertResponse, FraudLocationResponse } from '../../../../core/models/fraud-alert.model';
 import { UserRole } from '../../../../core/models/auth.model';
 import { KpiCard } from '../../../../shared/cards/cards.component';
 import { SystemMetricsService, SystemMetrics } from '../../../../core/services/system-metrics.service';
 import { ToastrService } from 'ngx-toastr';
 import { DatasetService, Dataset, DatasetType } from '../../../../core/services/dataset.service';
+import { TunisiaMapService } from '../../../../core/services/tunisia-map.service';
 
 interface AlertStats {
   total: number;
@@ -52,6 +53,8 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   private systemMetricsService = inject(SystemMetricsService);
   private toastr = inject(ToastrService);
   private datasetService = inject(DatasetService);
+  // === FRAUD MAP ===
+  private mapService = inject(TunisiaMapService);
 
   userRole = signal<UserRole | null>(null);
   isLoading = signal(true);
@@ -60,9 +63,10 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
 
   @HostListener('window:resize')
   onResize(): void {
-    // Only resize charts that actually exist
     this.fraudEvolutionChart?.resize();
     this.riskDistributionChart?.resize();
+    // === FRAUD MAP ===
+    this.fraudMapChart?.resize();
     if (this.isAdmin() && this.adminChartsInitialized) {
       this.requestChart?.resize();
       this.responseTimeChart?.resize();
@@ -129,7 +133,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   stats = signal<OverviewStats | null>(null);
   isLoadingCharts = signal(true);
   latestAlerts = signal<FraudAlertResponse[]>([]);
-  
+
   // Datasets filtering
   availableDatasets = signal<Dataset[]>([]);
   selectedDatasetUuid = signal<string | null>(null);
@@ -137,7 +141,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     const uuid = this.selectedDatasetUuid();
     return this.availableDatasets().find((d) => d.datasetUuid === uuid) || null;
   });
-  
+
   prioritizedAlerts = computed(() => {
     return [...this.latestAlerts()].sort((a, b) => {
       const riskScores: Record<string, number> = { 'CRITICAL': 40, 'HIGH': 30, 'MEDIUM': 20, 'LOW': 10 };
@@ -145,11 +149,11 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
 
       const aScore = (statusScores[a.status] || 0) + (riskScores[a.riskLevel] || 0);
       const bScore = (statusScores[b.status] || 0) + (riskScores[b.riskLevel] || 0);
-      
+
       if (aScore !== bScore) {
         return bScore - aScore;
       }
-      
+
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   });
@@ -265,6 +269,11 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   adminPageSize = signal(5);
   adminTotalPages = computed(() => Math.ceil(this.adminTotalAlerts() / this.adminPageSize()));
 
+  // === FRAUD MAP ===
+  fraudLocations = signal<FraudLocationResponse[]>([]);
+  private fraudMapChart: echarts.ECharts | null = null;
+  private mapRegistered = false;
+
   systemMetrics = signal<SystemMetrics>({
     uptime: 0,
     requestsPerSecond: 0,
@@ -292,7 +301,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   private responseTimeChart: echarts.ECharts | null = null;
   private cpuMemoryChart: echarts.ECharts | null = null;
   private systemHealthChart: echarts.ECharts | null = null;
-  
+
   systemHealthScore = computed(() => {
     const metrics = this.systemMetrics();
     return Math.max(
@@ -366,8 +375,6 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   ngAfterViewInit(): void {
-    // Admin charts will be initialized after data loads, but we can also check here
-    // if admin and charts not yet initialized, try again after a short delay
     if (this.isAdmin() && !this.adminChartsInitialized) {
       setTimeout(() => {
         if (this.isAdmin() && !this.adminChartsInitialized) {
@@ -380,6 +387,9 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   ngOnDestroy(): void {
     this.disposeFraudCharts();
     this.disposeAdminCharts();
+    // === FRAUD MAP ===
+    this.fraudMapChart?.dispose();
+    this.fraudMapChart = null;
 
     this.refreshSubscription?.unsubscribe();
     this.metricsSubscription?.unsubscribe();
@@ -392,6 +402,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     this.loadStats();
     this.loadChartData();
     this.loadRecentAnomalies();
+    this.loadFraudLocations();
   }
 
   private loadAdminOverview(): void {
@@ -456,7 +467,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.fraudEvolutionChart) {
       this.fraudEvolutionChart.dispose();
     }
-    
+
     this.fraudEvolutionChart = echarts.init(chartDom, null, { renderer: 'svg' });
 
     const dates = data.map((item) => {
@@ -550,7 +561,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.riskDistributionChart) {
       this.riskDistributionChart.dispose();
     }
-    
+
     this.riskDistributionChart = echarts.init(chartDom, null, { renderer: 'svg' });
 
     const riskOrder = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -771,7 +782,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     this.selectedAlert.set(null);
   }
 
-  handleAlertAction(event: {uuid: string, type: string, comment: string}): void {
+  handleAlertAction(event: { uuid: string, type: string, comment: string }): void {
     let status = 'PENDING';
     let actionTaken = '';
 
@@ -801,7 +812,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
       next: () => {
         const alertId = this.selectedAlert()?.id;
         let message = '';
-        
+
         if (event.type === 'VALIDE_FRAUDE') {
           message = `L'alerte d'id #${alertId} a été validée comme fraude`;
         } else if (event.type === 'REJETTE_ALERTE') {
@@ -809,7 +820,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
         } else if (event.type === 'MARK_AS_REVIEWED') {
           message = `L'alerte d'id #${alertId} a été marquée comme en cours d'analyse`;
         }
-        
+
         this.toastr.success(message, 'Succès');
         this.isModalProcessing.set(false);
         this.closeDetails();
@@ -827,7 +838,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   // =========================================================
   // ADMIN OVERVIEW METHODS
   // =========================================================
-  viewAlert(alertUuid: string): void {}
+  viewAlert(alertUuid: string): void { }
 
   private startMetricsPolling(): void {
     this.loadSystemMetrics();
@@ -872,7 +883,6 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
         this.memoryHistory.set(history.memoryUsage || []);
 
         if (!this.adminChartsInitialized) {
-          // Wait a bit for the DOM to be ready, then initialize charts
           setTimeout(() => {
             this.initAllCharts();
           }, 200);
@@ -921,6 +931,10 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
       recent: this.http.get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`).pipe(
         timeout(10000),
         catchError(() => of([]))
+      ),
+      // === FRAUD MAP ===
+      fraudLocations: this.alertService.getFraudLocations(7).pipe(
+        catchError(() => of([]))
       )
     };
 
@@ -930,8 +944,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
         timeout(10000),
         catchError(() => of({ content: [], totalElements: 0 }))
       );
-      
-      // Also fetch datasets for the dropdown if not already loaded
+
       if (this.availableDatasets().length === 0) {
         requests.datasets = this.datasetService.list({ size: 100, type: DatasetType.TRANSACTIONS_VAL }).pipe(
           catchError(() => of({ content: [] }))
@@ -942,6 +955,8 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     forkJoin(requests).subscribe({
       next: (results: any) => {
         this.recentAlerts.set(results.recent || []);
+        // === FRAUD MAP ===
+        this.fraudLocations.set(results.fraudLocations || []);
         if (results.confirmed) {
           this.adminConfirmedAlerts.set(results.confirmed.content || []);
           this.adminTotalAlerts.set(results.confirmed.totalElements || 0);
@@ -950,6 +965,10 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
           this.availableDatasets.set(results.datasets.content || []);
         }
         this.isLoading.set(false);
+        // === FRAUD MAP ===
+        if (this.isAdmin()) {
+          setTimeout(() => this.initFraudMapChart(), 100);
+        }
       },
       error: (err) => {
         console.error('Error loading all data:', err);
@@ -963,7 +982,9 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     const apiBaseUrl = environment.apiUrl;
 
     const requests: any = {
-      recent: this.http.get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`).pipe(catchError(() => of([])))
+      recent: this.http.get<any[]>(`${apiBaseUrl}/fraud-alerts/recent?limit=10`).pipe(catchError(() => of([]))),
+      // === FRAUD MAP ===
+      fraudLocations: this.alertService.getFraudLocations(7).pipe(catchError(() => of([])))
     };
 
     if (this.isAdmin()) {
@@ -974,9 +995,15 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     forkJoin(requests).subscribe({
       next: (results: any) => {
         if (results.recent && results.recent.length > 0) this.recentAlerts.set(results.recent);
+        // === FRAUD MAP ===
+        this.fraudLocations.set(results.fraudLocations || []);
         if (results.confirmed) {
           this.adminConfirmedAlerts.set(results.confirmed.content || []);
           this.adminTotalAlerts.set(results.confirmed.totalElements || 0);
+        }
+        // === FRAUD MAP ===
+        if (this.isAdmin() && this.fraudMapChart) {
+          this.updateFraudMapChart();
         }
       },
       error: (err) => {
@@ -986,14 +1013,12 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   // =========================================================
-  // ADMIN CHART METHODS (guarded by isAdmin())
+  // ADMIN CHART METHODS
   // =========================================================
   private initAllCharts(): void {
     if (!this.isAdmin()) return;
-    // Avoid double initialization
     if (this.adminChartsInitialized) return;
 
-    // Check if the required DOM elements exist; if not, retry after a short delay
     const requestEl = document.getElementById('requestChart');
     const responseEl = document.getElementById('responseTimeChart');
     const cpuEl = document.getElementById('cpuMemoryChart');
@@ -1008,6 +1033,8 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     this.initResponseTimeChart();
     this.initCpuMemoryChart();
     this.initSystemHealthChart();
+    // === FRAUD MAP ===
+    this.initFraudMapChart();
     this.adminChartsInitialized = true;
   }
 
@@ -1035,12 +1062,12 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private initRequestChart(): void {
     const chartDom = document.getElementById('requestChart');
-    if (!chartDom) return; // silently skip, already checked in initAllCharts
+    if (!chartDom) return;
 
     if (this.requestChart) {
       this.requestChart.dispose();
     }
-    
+
     this.requestChart = echarts.init(chartDom);
     this.updateRequestChart();
 
@@ -1092,7 +1119,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.responseTimeChart) {
       this.responseTimeChart.dispose();
     }
-    
+
     this.responseTimeChart = echarts.init(chartDom);
     this.updateResponseTimeChart();
 
@@ -1144,7 +1171,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.cpuMemoryChart) {
       this.cpuMemoryChart.dispose();
     }
-    
+
     this.cpuMemoryChart = echarts.init(chartDom);
     this.updateCpuMemoryChart();
 
@@ -1158,7 +1185,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const cpuData = this.cpuHistory();
     const memoryData = this.memoryHistory();
-    
+
     if (cpuData.length === 0 && memoryData.length === 0) return;
 
     this.cpuMemoryChart.setOption(
@@ -1204,7 +1231,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.systemHealthChart) {
       this.systemHealthChart.dispose();
     }
-    
+
     this.systemHealthChart = echarts.init(chartDom);
     this.updateSystemHealthChart();
 
@@ -1239,9 +1266,9 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
             progress: {
               show: true,
               width: 22,
-              itemStyle: { 
+              itemStyle: {
                 color: this.getHealthColor(healthScore),
-                borderRadius: 10 
+                borderRadius: 10
               },
               roundCap: true
             },
@@ -1265,11 +1292,11 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
               formatter: '{value}%',
               color: '#1e293b'
             },
-            title: { 
-              show: true, 
-              offsetCenter: [0, -35], 
-              fontSize: 14, 
-              fontWeight: 'bold', 
+            title: {
+              show: true,
+              offsetCenter: [0, -35],
+              fontSize: 14,
+              fontWeight: 'bold',
               color: '#94a3b8'
             },
             data: [{ value: Number(healthScore.toFixed(1)), name: 'SCORE DE STABILITÉ' }],
@@ -1278,6 +1305,111 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
       },
       true
     );
+  }
+
+  // === FRAUD MAP ===
+  private initFraudMapChart(): void {
+    const chartDom = document.getElementById('fraudMapChart');
+    if (!chartDom) return;
+
+    if (this.fraudMapChart) {
+      this.fraudMapChart.dispose();
+    }
+
+    this.fraudMapChart = echarts.init(chartDom);
+
+    if (!this.mapRegistered) {
+      this.mapService.getGovernoratesGeoJson().subscribe(geoJson => {
+        echarts.registerMap('tunisia', geoJson);
+        this.mapRegistered = true;
+        this.updateFraudMapChart();
+      });
+    } else {
+      this.updateFraudMapChart();
+    }
+
+    window.addEventListener('resize', () => {
+      this.fraudMapChart?.resize();
+    });
+  }
+
+  private updateFraudMapChart(): void {
+    if (!this.fraudMapChart || !this.mapRegistered) return;
+
+    const locations = this.fraudLocations();
+    const scatterData = locations.map(loc => ({
+      name: loc.postalCode,
+      value: [loc.lon, loc.lat, loc.fraudCount]
+    }));
+
+    const option = {
+      title: {
+        text: 'Fraudes Confirmées par Code Postal',
+        subtext: 'Taille des points proportionnelle au nombre de fraudes',
+        left: 'center',
+        top: 5,
+        textStyle: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
+        subtextStyle: { fontSize: 12, color: '#64748b' }
+      },
+      tooltip: {
+        trigger: 'item',
+        formatter: (params: any) => {
+          if (params.seriesType === 'scatter') {
+            return `${params.name}<br/>Fraudes: ${params.value[2]}`;
+          }
+          return params.name;
+        }
+      },
+      geo: {
+        map: 'tunisia',
+        roam: true,
+        label: { show: false },
+        itemStyle: {
+          areaColor: '#e2e8f0',
+          borderColor: '#94a3b8',
+          borderWidth: 0.5
+        },
+        emphasis: {
+          label: { show: true, color: '#1e293b' },
+          itemStyle: { areaColor: '#cbd5e1' }
+        }
+      },
+      series: [{
+        name: 'Fraudes',
+        type: 'scatter',
+        coordinateSystem: 'geo',
+        data: scatterData,
+        symbolSize: (val: number[]) => {
+          const count = val[2];
+          const maxCount = Math.max(...locations.map(l => l.fraudCount), 1);
+          return 8 + (count / maxCount) * 30;
+        },
+        itemStyle: {
+          color: '#ef4444',
+          borderColor: '#b91c1c',
+          borderWidth: 1,
+          opacity: 0.8
+        },
+        label: { show: false },
+        emphasis: {
+          label: {
+            show: true,
+            formatter: (params: any) => `${params.name}: ${params.value[2]}`,
+            position: 'top',
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            padding: [4, 8],
+            borderRadius: 6,
+            borderColor: '#cbd5e1',
+            borderWidth: 1,
+            fontSize: 11,
+            fontWeight: 'bold',
+            color: '#1e293b'
+          }
+        }
+      }]
+    };
+
+    this.fraudMapChart.setOption(option, true);
   }
 
   private getHealthColor(score: number): string {
@@ -1315,7 +1447,23 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
 
   onDatasetFilterChange(uuid: string | null): void {
     this.selectedDatasetUuid.set(uuid === 'all' ? null : uuid);
-    this.adminPageIdx.set(0); // Reset to first page
+    this.adminPageIdx.set(0);
     this.refreshData();
+  }
+
+  private loadFraudLocations(): void {
+    console.log('[FraudMap] Fetching fraud locations for last 7 days...');
+    this.alertService.getFraudLocations(7).subscribe({
+      next: (locations) => {
+        console.log(`[FraudMap] Received ${locations.length} fraud locations:`, locations);
+        this.fraudLocations.set(locations);
+        if (!this.isAdmin()) {
+          setTimeout(() => this.initFraudMapChart(), 100);
+        }
+      },
+      error: (err) => {
+        console.error('[FraudMap] Error loading fraud locations', err);
+      }
+    });
   }
 }

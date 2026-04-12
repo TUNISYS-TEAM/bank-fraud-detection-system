@@ -1,107 +1,66 @@
-.animate-fadeIn {
-    animation: fadeIn 0.5s ease-out forwards;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Custom scrollbar for table overflow */
-.overflow-x-auto::-webkit-scrollbar {
-    height: 6px;
-}
-
-.overflow-x-auto::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.overflow-x-auto::-webkit-scrollbar-thumb {
-    background: #e5e7eb;
-    border-radius: 10px;
-}
-
-.overflow-x-auto::-webkit-scrollbar-thumb:hover {
-    background: #d1d5db;
-}
-
-/* Translucence effects */
-.bg-gray-50\/50 {
-    background-color: rgba(249, 250, 251, 0.5);
-}
-
-/* Table Row Hover */
-tr.group\/row:hover {
-    box-shadow: none;
-}
-
-/* Premium Button Transitions */
-button {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-button:active {
-    transform: scale(0.95);
-}
-
-/* Select resetting default browser styles */
-select {
-    background-image: none !important;
-}
-
-/* Premium Risk Badges */
+/* Risk Badges */
 .risk-badge-base {
-    padding: 0.35rem 0.65rem;
-    border-radius: 9999px;
-    font-size: 9px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    border-width: 1px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    white-space: nowrap;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.01);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
 }
-
-.risk-badge-base:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-}
-
 .risk-badge-critical {
-    background: linear-gradient(135deg, rgba(254, 226, 226, 0.8), rgba(254, 226, 226, 0.4));
-    color: #991b1b;
-    border-color: rgba(248, 113, 113, 0.3);
+  background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
 }
-
 .risk-badge-high {
-    background: linear-gradient(135deg, rgba(255, 237, 213, 0.8), rgba(255, 237, 213, 0.4));
-    color: #9a3412;
-    border-color: rgba(251, 146, 60, 0.3);
+  background-color: #fff7ed; color: #c2410c; border: 1px solid #fed7aa;
 }
-
 .risk-badge-medium {
-    background: linear-gradient(135deg, rgba(219, 234, 254, 0.8), rgba(219, 234, 254, 0.4));
-    color: #1e40af;
-    border-color: rgba(96, 165, 250, 0.3);
+  background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
 }
-
 .risk-badge-low {
-    background: linear-gradient(135deg, rgba(209, 250, 229, 0.8), rgba(209, 250, 229, 0.4));
-    color: #065f46;
-    border-color: rgba(52, 211, 153, 0.3);
+  background-color: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0;
+}
+.risk-badge-default {
+  background-color: #f9fafb; color: #4b5563; border: 1px solid #f3f4f6;
 }
 
-.risk-badge-default {
-    background: #f9fafb;
-    color: #4b5563;
-    border-color: #e5e7eb;
+/* Donut chart SVG text */
+.donut-total-text {
+  font-size: 20px;
+  font-weight: 800;
+  fill: #1f2937;
+}
+.donut-total-label {
+  font-size: 9px;
+  fill: #9ca3af;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.donut-segment {
+  transition: stroke-dasharray 0.6s ease, stroke-dashoffset 0.6s ease;
+}
+
+/* Drag and Drop Styles */
+.dragging-row {
+  opacity: 0.4;
+  border: 2px dashed #818cf8 !important;
+  cursor: grabbing !important;
+}
+
+.drop-target-active {
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+  border-color: #6366f1 !important;
+  transform: scale(1.02);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
+}
+
+.drag-handle {
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }

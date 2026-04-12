@@ -30,6 +30,7 @@ import { UpdateHistoryModalComponent } from '../../shared/modals/models-ml/histo
 import { DeleteHistoryModalComponent } from '../../shared/modals/models-ml/history-delete-modal/history-delete-modal.component';
 import { ModelDetailsModalComponent } from '../../shared/modals/models-ml/model-details-modal/model-details-modal.component';
 import { AlertDetailsModalComponent } from '../../shared/modals/fraud-alerts/alert-details-modal/alert-details-modal.component';
+import { AnalystAlertDetailsModalComponent } from '../../shared/modals/fraud-alerts/analyst-alert-details-modal/analyst-alert-details-modal.component';
 import { AnalyzedTransactionsComponent } from './pages/analyzed-transactions/analyzed-transactions.component';
 import { HistoryComponent } from './pages/history/history.component';
 
@@ -66,7 +67,8 @@ import { HistoryComponent } from './pages/history/history.component';
     UpdateHistoryModalComponent,
     DeleteHistoryModalComponent,
     ModelDetailsModalComponent,
-    AlertDetailsModalComponent
+    AlertDetailsModalComponent,
+    AnalystAlertDetailsModalComponent
   ]
 })
 export class DashboardModule { }

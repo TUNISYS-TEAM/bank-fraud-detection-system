@@ -43,4 +43,6 @@ public class FraudAlertResponse {
     private String accountNumber;
     private Object fraudReason;
     private String assignedManagerName;
+    private Long assignedAnalystId;
+    private String assignedAnalystName;
 }

@@ -2,6 +2,7 @@ import { Component, EventEmitter, Output, inject, signal, Input, OnInit } from '
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../../environments/environment';
+import { FraudAlertService } from '../../../../../core/services/fraud-alert.service';
 
 export interface DeleteUserData {
   id: number;
@@ -29,14 +30,47 @@ export class UserDeleteModalComponent implements OnInit {
   }
 
   private http = inject(HttpClient);
+  private fraudAlertService = inject(FraudAlertService);
 
   // Signals
   isVisible = signal(true);
   isLoading = signal(false);
   errorMessage = signal('');
   userDataInternal = signal<DeleteUserData | null>(null);
+  alertCount = signal<number>(0);
+  managerName = signal<string>('');
+  isCheckingAlerts = signal<boolean>(false);
 
   ngOnInit() {
+    const user = this.userDataInternal();
+    if (user) {
+        this.checkAlertsAndManager(user.id);
+    }
+  }
+
+  private checkAlertsAndManager(userId: number) {
+    this.isCheckingAlerts.set(true);
+    
+    // First get the user details to know the manager
+    this.http.get<any>(`${environment.apiUrl}/users/${userId}`).subscribe({
+        next: (user) => {
+            this.managerName.set(user.managerName || 'N/A');
+            
+            // Then check the alert count if they are an analyst
+            if (user.roleName === 'ANALYST') {
+                this.fraudAlertService.countAlertsByAnalyst(userId).subscribe({
+                    next: (count: number) => {
+                        this.alertCount.set(count);
+                        this.isCheckingAlerts.set(false);
+                    },
+                    error: () => this.isCheckingAlerts.set(false)
+                });
+            } else {
+                this.isCheckingAlerts.set(false);
+            }
+        },
+        error: () => this.isCheckingAlerts.set(false)
+    });
   }
 
   closeModal() {

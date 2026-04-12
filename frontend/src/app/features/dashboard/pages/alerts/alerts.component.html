@@ -2,7 +2,7 @@
     <!-- Header Section -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800 tracking-tight">Alertes & Transactions Suspectes</h1>
+            <h1 class="text-3xl font-bold text-gray-800 tracking-tight">Alertes &amp; Transactions Suspectes</h1>
             <p class="mt-1 text-lg text-gray-500 font-medium">
                 Examinez et traitez les alertes de fraude détectées
             </p>
@@ -17,12 +17,41 @@
         <app-cards [data]="criticalAlertsCard()"></app-cards>
     </div>
 
+    <!-- ========== MANAGER TABS ========== -->
+    @if (isManager()) {
+    <div class="flex gap-1 bg-gray-50 border border-gray-200 rounded-2xl p-1.5 w-fit">
+        <button id="tab-alerts"
+            class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-semibold transition-all" [class]="activeTab() === 'alerts'
+              ? 'bg-white text-indigo-600 shadow-sm shadow-indigo-100'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'" (click)="setActiveTab('alerts')">
+            <i-feather name="bell" style="width:15px;height:15px;"></i-feather>
+            Vue des Alertes
+            @if (totalElements() > 0) {
+            <span class="ml-1 font-bold text-gray-900 text-[11px]">({{ totalElements() }})</span>
+            }
+        </button>
+        <button id="tab-assignment"
+            class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-semibold transition-all" [class]="activeTab() === 'assignment'
+              ? 'bg-white text-indigo-600 shadow-sm shadow-indigo-100'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'" (click)="setActiveTab('assignment')">
+            <i-feather name="users" style="width:15px;height:15px;"></i-feather>
+            Centre d'Affectation
+            @if (unassignedCount() > 0) {
+            <span class="ml-1 font-bold text-gray-900 text-[11px]">({{ unassignedCount() }})</span>
+            }
+        </button>
+    </div>
+    }
+
+    <!-- ========================================================================== -->
+    <!-- TAB 1: ALERTS TABLE (inchangé) -->
+    <!-- ========================================================================== -->
+    @if (activeTab() === 'alerts') {
+
     <!-- Filters Section -->
     <div
         class="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm mb-6 transition-all hover:shadow-md animate-fadeIn">
         <div class="flex flex-col lg:flex-row lg:items-end gap-x-8 gap-y-6">
-
-            <!-- Search Input -->
             <div class="flex-1 min-w-[280px]">
                 <label
                     class="block text-[11px] font-bold text-gray-400 uppercase tracking-[0.1em] mb-2 px-1">Rechercher</label>
@@ -36,10 +65,7 @@
                         placeholder="Rechercher par ID, type, montant...">
                 </div>
             </div>
-
             <div class="hidden lg:block w-px h-8 bg-gray-100 self-end mb-2"></div>
-
-            <!-- Status Filter -->
             <div class="w-full lg:w-48">
                 <label
                     class="block text-[11px] font-bold text-gray-400 uppercase tracking-[0.1em] mb-2 px-1">Statut</label>
@@ -49,7 +75,7 @@
                         <option value="all">Tous les statuts</option>
                         <option value="PENDING">En Attente</option>
                         <option value="REVIEWED">En Cours</option>
-                        <option value="CONFIRMED">Alere Confirmée</option>
+                        <option value="CONFIRMED">Alerte Confirmée</option>
                         <option value="FALSE_POSITIVE">Faux Positif</option>
                     </select>
                     <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
@@ -58,10 +84,7 @@
                     </div>
                 </div>
             </div>
-
             <div class="hidden lg:block w-px h-8 bg-gray-100 self-end mb-2"></div>
-
-            <!-- Risk Level Filter -->
             <div class="w-full lg:w-48">
                 <label class="block text-[11px] font-bold text-gray-400 uppercase tracking-[0.1em] mb-2 px-1">Niveau de
                     Risque</label>
@@ -80,6 +103,21 @@
                 </div>
             </div>
 
+            <div class="hidden lg:block w-px h-8 bg-gray-100 self-end mb-2"></div>
+
+            <div class="w-12 h-12 flex items-end">
+                <button (click)="toggleScoreSort()"
+                    class="w-12 h-12 rounded-2xl flex items-center justify-center transition-all border group shadow-sm"
+                    [class]="scoreSortDirection() 
+                        ? 'bg-white border-gray-400 text-black shadow-md' 
+                        : 'bg-gray-50/80 border-gray-100 text-gray-500 hover:bg-white hover:border-gray-300'"
+                    [title]="scoreSortDirection() === 'DESC' ? 'Tri Score: Décroissant' : (scoreSortDirection() === 'ASC' ? 'Tri Score: Croissant' : 'Trier par Score')">
+                    <i-feather name="filter" style="width:18px;height:18px; stroke-width: 2.5px;"
+                        class="transition-transform duration-300"
+                        [class.text-black]="scoreSortDirection()"
+                        [style.transform]="scoreSortDirection() === 'ASC' ? 'rotate(180deg)' : 'none'"></i-feather>
+                </button>
+            </div>
             <div class="ml-auto flex gap-3 mb-2">
                 <button (click)="exportToCSV()"
                     class="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-all">
@@ -96,27 +134,32 @@
         <div class="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
             <h2 class="text-xl font-bold text-gray-800">Transactions Signalées ({{ totalElements() }})</h2>
         </div>
-
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto" [class.select-none]="isMarqueeSelecting()" (mousedown)="onMarqueeMouseDown($event)">
             <table class="w-full">
                 <thead>
                     <tr class="bg-gray-50/50 text-left border-b border-gray-100">
                         <th class="pl-20 pr-8 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">ID
                             Transaction</th>
-                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type / Alerte
-                        </th>
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type /
+                            Alerte</th>
                         <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Montant</th>
                         <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
                             Score Risque</th>
-                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">Statut</th>
-                        <th class="pl-10 pr-32 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                        <th class="px-10 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                            Statut</th>
+                        @if (isManager()) {
+                        <th class="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                            Assigné à</th>
+                        }
+                        <th
+                            class="pl-10 pr-32 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
                             Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
                     @if (isLoading()) {
                     <tr>
-                        <td colspan="6" class="px-8 py-20 text-center">
+                        <td [attr.colspan]="isManager() ? 7 : 6" class="px-8 py-20 text-center">
                             <div
                                 class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent">
                             </div>
@@ -125,7 +168,7 @@
                     </tr>
                     } @else if (alerts().length === 0) {
                     <tr>
-                        <td colspan="6" class="px-8 py-20 text-center">
+                        <td [attr.colspan]="isManager() ? 7 : 6" class="px-8 py-20 text-center">
                             <i-feather name="shield" class="w-16 h-16 text-gray-200 mx-auto mb-4"></i-feather>
                             <p class="text-gray-500 font-medium text-lg">Aucune alerte détectée</p>
                             <p class="text-sm text-gray-400 mt-2">Le système n'a identifié aucune activité frauduleuse
@@ -134,30 +177,37 @@
                     </tr>
                     } @else {
                     @for (alert of alerts(); track alert.alertUuid) {
-                    <tr class="hover:bg-gray-50 group/row cursor-pointer">
+                    <tr class="hover:bg-gray-50 group/row cursor-pointer alert-row" [attr.data-id]="alert.alertUuid">
                         <td class="pl-20 pr-8 py-5">
-                            <span class="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-[11px] font-bold tracking-tight">
-                                #TXN-{{ alert.transactionId }}
-                            </span>
+                            <span
+                                class="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-[11px] font-bold tracking-tight">#TXN-{{
+                                alert.transactionId }}</span>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex flex-col">
-                                <span class="text-sm font-bold text-gray-800">{{ translateAlertType(alert.alertType) }}</span>
-                                <span class="text-[11px] text-gray-400 font-medium">{{ alert.createdAt | date:'dd MMM yyyy, HH:mm' }}</span>
+                                <span class="text-sm font-bold text-gray-800">{{ translateAlertType(alert.alertType)
+                                    }}</span>
+                                <span class="text-[11px] text-gray-400 font-medium">{{ alert.createdAt | date:'dd MMM
+                                    yyyy, HH:mm' }}</span>
                             </div>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex flex-col">
-                                <span class="text-sm font-semibold text-slate-800">{{ alert.transactionAmount | currency:(alert.transactionCurrency || 'TND'):'symbol':'1.2-2' }}</span>
-                                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{{ alert.transactionChannel }}</span>
+                                <span class="text-sm font-semibold text-slate-800">{{ alert.transactionAmount |
+                                    currency:(alert.transactionCurrency || 'TND'):'symbol':'1.2-2' }}</span>
+                                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{{
+                                    alert.transactionChannel }}</span>
                             </div>
                         </td>
                         <td class="px-10 py-5">
                             <div class="flex justify-center">
                                 <div [ngClass]="getRiskBadgeClass(alert.riskLevel)" class="risk-badge-base">
-                                    <i-feather [name]="getRiskIcon(alert.riskLevel)" style="width: 13px; height: 13px; stroke-width: 2.5px;"></i-feather>
-                                    <span class="font-black text-[10px] tracking-tight">{{ translateRisk(alert.riskLevel) }}</span>
-                                    <span class="font-black text-[11px] ml-[2px]">({{ (alert.fraudScore * 100).toFixed(0) }}%)</span>
+                                    <i-feather [name]="getRiskIcon(alert.riskLevel)"
+                                        style="width: 13px; height: 13px; stroke-width: 2.5px;"></i-feather>
+                                    <span class="font-black text-[10px] tracking-tight">{{
+                                        translateRisk(alert.riskLevel) }}</span>
+                                    <span class="font-black text-[11px] ml-[2px]">({{ (alert.fraudScore *
+                                        100).toFixed(0) }}%)</span>
                                 </div>
                             </div>
                         </td>
@@ -167,6 +217,24 @@
                                 {{ translateStatus(alert.status) }}
                             </span>
                         </td>
+                        @if (isManager()) {
+                        <td class="px-6 py-5 text-center">
+                            @if (alert.assignedAnalystName) {
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border"
+                                [style.background]="getAnalystColor(alert.assignedAnalystId!).light"
+                                [style.color]="getAnalystColor(alert.assignedAnalystId!).text"
+                                [style.border-color]="getAnalystColor(alert.assignedAnalystId!).border">
+                                <span class="w-[7px] h-[7px] rounded-full inline-block"
+                                    [style.background]="getAnalystColor(alert.assignedAnalystId!).bg"></span>
+                                {{ alert.assignedAnalystName }}
+                            </span>
+                            } @else {
+                            <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Non
+                                assignée</span>
+                            }
+                        </td>
+                        }
                         <td class="pl-10 pr-32 py-5 text-center">
                             <div class="flex items-center justify-center opacity-0 group-hover/row:opacity-100">
                                 <button (click)="openDetails(alert)"
@@ -183,35 +251,445 @@
             </table>
         </div>
 
-        <!-- Pagination Segment -->
+        <!-- Pagination -->
         @if (!isLoading() && totalElements() > 0) {
-            <div class="px-8 py-8 border-t border-gray-100 bg-white flex items-center justify-between">
-                <div class="text-[11px] font-bold text-gray-400 uppercase tracking-widest pl-2">
-                    Affichage de {{ getAlertDisplayRange().start }}-{{ getAlertDisplayRange().end }} sur {{ totalElements() }} résultats
+        <div class="px-8 py-8 border-t border-gray-100 bg-white flex items-center justify-between">
+            <div class="text-[11px] font-bold text-gray-400 uppercase tracking-widest pl-2">
+                Affichage de {{ getAlertDisplayRange().start }}-{{ getAlertDisplayRange().end }} sur {{ totalElements()
+                }} résultats
+            </div>
+            <div class="flex gap-3">
+                <button (click)="onPageChange(currentPage() - 1)" [disabled]="currentPage() === 0"
+                    class="px-5 py-2.5 text-[13px] font-bold border border-gray-200 text-gray-600 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all flex items-center gap-2.5 shadow-sm active:scale-95">
+                    <i-feather name="chevron-left" class="w-4 h-4"></i-feather>
+                    Précédent
+                </button>
+                <button (click)="onPageChange(currentPage() + 1)" [disabled]="currentPage() >= totalPages() - 1"
+                    class="px-5 py-2.5 text-[13px] font-bold border border-gray-200 text-gray-600 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all flex items-center gap-2.5 shadow-sm active:scale-95">
+                    Suivant
+                    <i-feather name="chevron-right" class="w-4 h-4"></i-feather>
+                </button>
+            </div>
+        </div>
+        }
+    </div>
+    }
+
+    <!-- ========================================================================== -->
+    <!-- TAB 2: ASSIGNMENT CENTER                                                   -->
+    <!-- ========================================================================== -->
+    @if (activeTab() === 'assignment' && isManager()) {
+    <div class="space-y-5 animate-fadeIn">
+
+        <!-- ─── Gantt-style distribution bar ─── -->
+        <div class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="px-7 py-5 border-b border-gray-100 flex items-center gap-3 bg-gray-50/60">
+                <i-feather name="bar-chart-2" class="text-gray-500" style="width:17px;height:17px;"></i-feather>
+                <h3 class="text-[15px] font-bold text-gray-700 flex-1">Vue d'ensemble de la Distribution</h3>
+                <span class="text-[11px] font-bold text-gray-400">{{ allAlerts().length }} alertes totales</span>
+            </div>
+            <div class="px-7 py-6">
+                @if (allAlerts().length > 0) {
+                <div class="flex h-10 rounded-xl overflow-hidden bg-gray-100 shadow-inner">
+                    @for (analyst of analysts(); track analyst.id; let i = $index) {
+                    @if ((analystAlertCounts()[analyst.id] || 0) > 0) {
+                    <div class="h-full flex items-center justify-center text-white text-[10px] font-black tracking-wide transition-all duration-500 hover:brightness-110 cursor-default relative group"
+                        [style.width.%]="((analystAlertCounts()[analyst.id] || 0) / allAlerts().length) * 100"
+                        [style.background]="getAnalystColorByIndex(i).bg"
+                        [title]="analyst.name + ' — ' + (analystAlertCounts()[analyst.id] || 0) + ' alertes'">
+                        @if (((analystAlertCounts()[analyst.id] || 0) / allAlerts().length) * 100 > 8) {
+                        {{ analyst.name.split(' ')[0] }}
+                        }
+                        <div class="absolute -top-11 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 text-white"
+                            [style.background]="getAnalystColorByIndex(i).bg">
+                            {{ analyst.name }} · {{ analystAlertCounts()[analyst.id] || 0 }} alertes
+                            <span class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent"
+                                [style.border-top-color]="getAnalystColorByIndex(i).bg"></span>
+                        </div>
+                    </div>
+                    }
+                    }
+                    @if (unassignedCount() > 0) {
+                    <div class="h-full flex items-center justify-center bg-gray-200 text-gray-500 text-[10px] font-bold tracking-wide transition-all duration-500 group relative cursor-default"
+                        [style.width.%]="(unassignedCount() / allAlerts().length) * 100" title="Non assignées">
+                        @if ((unassignedCount() / allAlerts().length) * 100 > 10) {
+                        {{ unassignedCount() }} libre{{ unassignedCount() > 1 ? 's' : '' }}
+                        }
+                        <div
+                            class="absolute -top-11 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-gray-600 rounded-lg text-[11px] font-bold text-white whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10">
+                            {{ unassignedCount() }} non assignées
+                            <span
+                                class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-600"></span>
+                        </div>
+                    </div>
+                    }
                 </div>
+                <!-- Legend -->
+                <div class="flex flex-wrap gap-x-5 gap-y-2 mt-4">
+                    @for (analyst of analysts(); track analyst.id; let i = $index) {
+                    <div class="flex items-center gap-2 text-[12px] text-gray-600 font-semibold">
+                        <span class="w-3 h-3 rounded-full" [style.background]="getAnalystColorByIndex(i).bg"></span>
+                        {{ analyst.name }} <span class="text-gray-400 font-bold">({{ analystAlertCounts()[analyst.id] ||
+                            0 }})</span>
+                    </div>
+                    }
+                    @if (unassignedCount() > 0) {
+                    <div class="flex items-center gap-2 text-[12px] text-gray-500 font-semibold">
+                        <span class="w-3 h-3 rounded-full bg-gray-200 border border-dashed border-gray-400"></span>
+                        Non assignées <span class="text-gray-400 font-bold">({{ unassignedCount() }})</span>
+                    </div>
+                    }
+                </div>
+                } @else {
+                <div class="text-center py-8 text-gray-400">
+                    <i-feather name="inbox" class="w-10 h-10 mx-auto mb-2 text-gray-300"></i-feather>
+                    <p class="font-medium">Aucune alerte dans le périmètre</p>
+                </div>
+                }
+            </div>
+        </div>
+
+        <!-- ─── Analyst Cards Grid ─── -->
+        <div class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="px-7 py-5 border-b border-gray-100 flex items-center gap-3 bg-gray-50/60">
+                <i-feather name="users" class="text-gray-500" style="width:17px;height:17px;"></i-feather>
+                <h3 class="text-[15px] font-bold text-gray-700 flex-1">Équipe d'Analystes</h3>
+                <span class="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold">{{
+                    analysts().length }} membres</span>
+            </div>
+
+            @if (isLoadingAnalysts()) {
+            <div class="flex items-center justify-center py-16">
+                <div class="animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
+            </div>
+            } @else if (analysts().length === 0) {
+            <div class="text-center py-16 text-gray-400">
+                <i-feather name="user-x" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i-feather>
+                <p class="font-semibold text-lg text-gray-500">Aucun analyste dans votre équipe</p>
+                <p class="text-sm mt-1">Ajoutez des analystes avant d'affecter des alertes</p>
+            </div>
+            } @else {
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-6">
+                @for (analyst of analysts(); track analyst.id; let i = $index) {
+                <div class="relative rounded-2xl border-2 p-5 transition-all group/card cursor-pointer"
+                    [style.border-color]="activeDropAnalystId() === analyst.id ? '#6366f1' : getAnalystColorByIndex(i).border"
+                    [style.background]="activeDropAnalystId() === analyst.id ? '#f5f7ff' : getAnalystColorByIndex(i).light"
+                    [class.drop-target-active]="activeDropAnalystId() === analyst.id"
+                    [class.hover:shadow-lg]="!isDragging()" [class.hover:-translate-y-0.5]="!isDragging()"
+                    (dragover)="onDragOver($event, analyst.id)" (dragleave)="onDragLeave()"
+                    (drop)="onDrop($event, analyst.id)" (click)="openAnalystManagement(analyst)">
+                    <!-- Top color accent -->
+                    <div class="absolute top-0 left-5 right-5 h-1 rounded-b-full"
+                        [style.background]="getAnalystColorByIndex(i).bg"></div>
+
+                    <div class="flex items-center gap-4 mt-1">
+                        <!-- Avatar -->
+                        <div class="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-extrabold shadow-md flex-shrink-0"
+                            [style.background]="getAnalystColorByIndex(i).bg">
+                            {{ analyst.name.charAt(0).toUpperCase() }}
+                        </div>
+                        <!-- Info -->
+                        <div class="flex-1 min-w-0">
+                            <div class="text-[14px] font-bold truncate" [style.color]="getAnalystColorByIndex(i).text">
+                                {{ analyst.name }}</div>
+                            <div class="text-[11px] text-gray-400 font-medium truncate">{{ analyst.email }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Stats row -->
+                    <div class="flex items-center gap-3 mt-4">
+                        <div class="flex-1">
+                            <div class="flex items-baseline gap-1.5">
+                                <span class="text-2xl font-extrabold" [style.color]="getAnalystColorByIndex(i).text">
+                                    {{ analystAlertCounts()[analyst.id] || 0 }}
+                                </span>
+                                <span class="text-[11px] text-gray-400 font-semibold">alertes assignées</span>
+                            </div>
+                            <!-- Mini progress bar -->
+                            @if (allAlerts().length > 0) {
+                            <div class="mt-2 h-1.5 rounded-full bg-white/60 overflow-hidden">
+                                <div class="h-full rounded-full transition-all duration-700"
+                                    [style.background]="getAnalystColorByIndex(i).bg"
+                                    [style.width.%]="((analystAlertCounts()[analyst.id] || 0) / allAlerts().length) * 100">
+                                </div>
+                            </div>
+                            <div class="text-[9px] text-gray-400 font-bold mt-1">
+                                {{ (((analystAlertCounts()[analyst.id] || 0) / allAlerts().length) * 100).toFixed(0) }}%
+                                du total
+                            </div>
+                            }
+                        </div>
+                        <!-- Assign button -->
+                        <button
+                            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[11px] font-bold text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                            [style.background]="getAnalystColorByIndex(i).bg"
+                            [disabled]="selectedCount === 0 || isAssigning()"
+                            (click)="$event.stopPropagation(); assignSelectedTo(analyst.id)"
+                            [title]="selectedCount > 0 ? 'Affecter ' + selectedCount + ' alerte(s) à ' + analyst.name : 'Sélectionnez des alertes ci-dessous'">
+                            @if (isAssigning()) {
+                            <div
+                                class="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full">
+                            </div>
+                            } @else {
+                            <i-feather name="plus" style="width:13px;height:13px;"></i-feather>
+                            }
+                            Affecter ({{ selectedCount }})
+                        </button>
+                    </div>
+                </div>
+                }
+            </div>
+            }
+        </div>
+
+        <!-- ─── Unassigned Alerts Table ─── -->
+        <div class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden" 
+            [class.select-none]="isMarqueeSelecting()" (mousedown)="onMarqueeMouseDown($event)">
+            <div class="px-7 py-5 border-b border-gray-100 flex flex-wrap items-center gap-3 bg-gray-50/60">
+                <h3 class="text-[15px] font-bold text-gray-700 flex-1">Alertes Non Assignées</h3>
+
+                <div class="flex items-center gap-5">
+                    <div class="flex flex-col">
+                        <label
+                            class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Risque</label>
+                        <div class="relative group/risk">
+                            <select [value]="assignRiskFilter()"
+                                (change)="assignRiskFilter.set($any($event.target).value); assignPage.set(0)"
+                                class="appearance-none pl-4 pr-10 py-2 rounded-2xl text-[12px] bg-gray-50/50 border border-gray-100 hover:border-gray-200 hover:bg-white focus:bg-white focus:ring-4 focus:ring-amber-500/5 focus:border-amber-200 transition-all cursor-pointer outline-none min-w-[150px]">
+                                <option value="all">Tous les risques</option>
+                                <option value="LOW">Risque Faible</option>
+                                <option value="MEDIUM">Risque Moyen</option>
+                                <option value="HIGH">Risque Élevé</option>
+                                <option value="CRITICAL">Risque Critique</option>
+                            </select>
+                            <i-feather name="chevron-down"
+                                class="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover/risk:text-amber-500 transition-colors"
+                                style="width:13px;height:13px;"></i-feather>
+                        </div>
+                    </div>
+
+                    <div class="w-12 h-10 flex items-end">
+                        <button (click)="toggleScoreSort()"
+                            class="w-10 h-10 rounded-2xl flex items-center justify-center transition-all border group shadow-sm"
+                            [class]="scoreSortDirection() 
+                                ? 'bg-white border-gray-400 text-black shadow-md' 
+                                : 'bg-gray-50/80 border-gray-100 text-gray-500 hover:bg-white hover:border-gray-300'"
+                            [title]="scoreSortDirection() === 'DESC' ? 'Tri Score: Décroissant' : (scoreSortDirection() === 'ASC' ? 'Tri Score: Croissant' : 'Trier par Score')">
+                            <i-feather name="filter" style="width:16px;height:16px; stroke-width: 2.5px;"
+                                class="transition-transform duration-300"
+                                [class.text-black]="scoreSortDirection()"
+                                [style.transform]="scoreSortDirection() === 'ASC' ? 'rotate(180deg)' : 'none'"></i-feather>
+                        </button>
+                    </div>
+
+                    <div class="w-px h-10 bg-gray-100 self-end mb-1"></div>
+
+                    <div class="flex flex-col">
+                        <label
+                            class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Etat</label>
+                        <span
+                            class="px-3 py-2 rounded-2xl bg-amber-50 text-amber-600 text-[11px] font-bold border border-amber-100">{{
+                            unassignedCount() }} en attente</span>
+                    </div>
+
+                    <div class="w-px h-10 bg-gray-100 self-end mb-1"></div>
+
+                    <div class="flex self-end mb-0.5 gap-2">
+                        <button
+                            class="flex items-center gap-1.5 px-4 py-2 rounded-2xl text-[12px] font-bold bg-white text-gray-500 border border-gray-100 hover:bg-gray-50 hover:border-gray-200 transition-all disabled:opacity-40"
+                            (click)="selectAllUnassigned()" [disabled]="unassignedCount() === 0">
+                            <i-feather name="check-square" style="width:14px;height:14px;"></i-feather>
+                            Tout sélectionner
+                        </button>
+                        @if (selectedCount > 0) {
+                        <button
+                            class="flex items-center gap-1.5 px-4 py-2 rounded-2xl text-[12px] font-bold bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 transition-all"
+                            (click)="clearSelection()">
+                            <i-feather name="x" style="width:14px;height:14px;"></i-feather>
+                            Vider ({{ selectedCount }})
+                        </button>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Selection banner -->
+            @if (selectedCount > 0) {
+            <div
+                class="flex items-center gap-2.5 px-7 py-3 bg-indigo-50 border-b border-indigo-100 text-indigo-700 text-[13px] font-semibold">
+                <i-feather name="info" style="width:14px;height:14px;"></i-feather>
+                <strong>{{ selectedCount }}</strong> alerte(s) sélectionnée(s) — choisissez un analyste ci-dessus pour
+                les affecter
+            </div>
+            }
+
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-gray-50/50 text-left border-b border-gray-100">
+                            <th class="pl-6 pr-2 py-4 w-12 no-lasso">
+                                <input type="checkbox" class="w-4 h-4 cursor-pointer accent-indigo-500 rounded"
+                                    [checked]="selectedCount > 0 && selectedCount === unassignedCount()"
+                                    (change)="selectedCount > 0 ? clearSelection() : selectAllUnassigned()">
+                            </th>
+                            <th class="px-4 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                                Transaction</th>
+                            <th class="px-4 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type
+                                d'Alerte</th>
+                            <th class="px-4 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Montant
+                            </th>
+                            <th
+                                class="px-4 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                                Risque</th>
+                            <th
+                                class="px-4 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                                Score</th>
+                            <th
+                                class="px-4 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                                Affectation rapide</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
+                        @if (isLoading()) {
+                        <tr>
+                            <td colspan="7" class="px-8 py-16 text-center">
+                                <div
+                                    class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent">
+                                </div>
+                                <p class="mt-4 text-gray-500 font-medium">Chargement des alertes...</p>
+                            </td>
+                        </tr>
+                        } @else if (getUnassignedAlerts().length === 0) {
+                        <tr>
+                            <td colspan="7" class="px-8 py-16 text-center">
+                                <div
+                                    class="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-3">
+                                    <i-feather name="check-circle" class="w-7 h-7 text-emerald-500"></i-feather>
+                                </div>
+                                <p class="text-gray-600 font-bold text-lg">Toutes les alertes sont assignées</p>
+                                <p class="text-sm text-gray-400 mt-1">Aucune alerte en attente d'affectation</p>
+                            </td>
+                        </tr>
+                        } @else {
+                        @for (alert of getUnassignedAlerts(); track alert.alertUuid) {
+                        <tr class="cursor-grab transition-colors alert-row"
+                            [attr.data-id]="alert.alertUuid"
+                            [class]="isSelected(alert.alertUuid) ? 'bg-indigo-50/60 hover:bg-indigo-50' : 'hover:bg-gray-50'"
+                            [class.dragging-row]="draggedAlertUuid() === alert.alertUuid || (isDragging() && isSelected(alert.alertUuid))"
+                            draggable="true" (dragstart)="onDragStart($event, alert.alertUuid)" (dragend)="onDragEnd()"
+                            (click)="toggleAlertSelection(alert.alertUuid)">
+                            <td class="pl-6 pr-2 py-4 no-lasso" (click)="$event.stopPropagation()">
+                                <input type="checkbox" [checked]="isSelected(alert.alertUuid)"
+                                    (change)="toggleAlertSelection(alert.alertUuid)"
+                                    class="w-4 h-4 cursor-pointer accent-indigo-500 rounded no-lasso">
+                            </td>
+                            <td class="px-4 py-4">
+                                <span
+                                    class="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-lg text-[11px] font-bold">#TXN-{{
+                                    alert.transactionId }}</span>
+                            </td>
+                            <td class="px-4 py-4">
+                                <div class="flex flex-col">
+                                    <span class="text-[13px] font-bold text-gray-800">{{
+                                        translateAlertType(alert.alertType) }}</span>
+                                    <span class="text-[10px] text-gray-400 font-medium">{{ alert.createdAt | date:'dd
+                                        MMM yyyy, HH:mm' }}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-4">
+                                <span class="text-[13px] font-semibold text-slate-800">{{ alert.transactionAmount |
+                                    currency:(alert.transactionCurrency || 'TND'):'symbol':'1.2-2' }}</span>
+                            </td>
+                            <td class="px-4 py-4 text-center">
+                                <div [ngClass]="getRiskBadgeClass(alert.riskLevel)"
+                                    class="risk-badge-base justify-center">
+                                    <i-feather [name]="getRiskIcon(alert.riskLevel)"
+                                        style="width:12px;height:12px;stroke-width:2.5px;"></i-feather>
+                                    <span class="font-black text-[10px]">{{ translateRisk(alert.riskLevel) }}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-4 text-center relative">
+                                <span class="text-[13px] font-extrabold" [class]="
+                                     alert.riskLevel === 'CRITICAL' ? 'text-red-600' :
+                                     alert.riskLevel === 'HIGH' ? 'text-orange-500' :
+                                     alert.riskLevel === 'MEDIUM' ? 'text-blue-500' : 'text-green-600'
+                                 ">{{ (alert.fraudScore * 100).toFixed(0) }}%</span>
+
+                                <!-- Multi-drag ghost badge -->
+                                @if (isDragging() && draggedAlertUuid() === alert.alertUuid && selectedCount > 1 &&
+                                isSelected(alert.alertUuid)) {
+                                <div
+                                    class="absolute -top-2 -right-2 w-6 h-6 bg-indigo-600 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-xl ring-2 ring-white animate-bounce z-20">
+                                    +{{ selectedCount }}
+                                </div>
+                                }
+                            </td>
+                            <td class="px-4 py-4 text-center" (click)="$event.stopPropagation()">
+                                <div class="flex items-center justify-center gap-1.5">
+                                    @for (analyst of analysts(); track analyst.id; let i = $index) {
+                                    <button
+                                        class="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-extrabold transition-all hover:scale-125 hover:shadow-md active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+                                        [style.background]="getAnalystColorByIndex(i).bg"
+                                        [title]="'Affecter à ' + analyst.name" [disabled]="isAssigning()"
+                                        (click)="assignSingleAlert(alert.alertUuid, analyst.id)">
+                                        {{ analyst.name.charAt(0).toUpperCase() }}
+                                    </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                        }
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+
+            <!-- Pagination -->
+            @if (unassignedCount() > 0) {
+            <div class="px-7 py-5 border-t border-gray-100 flex items-center justify-between">
+                <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                    Affichage de {{ getAssignDisplayRange().start }}–{{ getAssignDisplayRange().end }} sur {{
+                    unassignedCount() }} alertes
+                </span>
                 <div class="flex gap-3">
-                    <button (click)="onPageChange(currentPage() - 1)" [disabled]="currentPage() === 0"
+                    <button (click)="onAssignPageChange(assignPage() - 1)" [disabled]="assignPage() === 0"
                         class="px-5 py-2.5 text-[13px] font-bold border border-gray-200 text-gray-600 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all flex items-center gap-2.5 shadow-sm active:scale-95">
                         <i-feather name="chevron-left" class="w-4 h-4"></i-feather>
                         Précédent
                     </button>
-                    <button (click)="onPageChange(currentPage() + 1)" [disabled]="currentPage() >= totalPages() - 1"
+                    <span class="flex items-center px-3 text-[12px] font-bold text-gray-500">
+                        {{ assignPage() + 1 }} / {{ assignTotalPages() }}
+                    </span>
+                    <button (click)="onAssignPageChange(assignPage() + 1)"
+                        [disabled]="assignPage() >= assignTotalPages() - 1"
                         class="px-5 py-2.5 text-[13px] font-bold border border-gray-200 text-gray-600 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 transition-all flex items-center gap-2.5 shadow-sm active:scale-95">
                         Suivant
                         <i-feather name="chevron-right" class="w-4 h-4"></i-feather>
                     </button>
                 </div>
             </div>
-        }
+            }
+        </div>
     </div>
+    }
 </div>
 
-<app-alert-details-modal 
-    [isOpen]="isDetailsOpen()" 
-    [alert]="selectedAlert()" 
-    [hideAiAnalysis]="userRole() === 'ADMIN'"
-    [hideActions]="false"
-    [isProcessing]="isModalProcessing()"
-    (close)="closeDetails()" 
+<app-alert-details-modal [isOpen]="isDetailsOpen()" [alert]="selectedAlert()" [hideAiAnalysis]="userRole() === 'ADMIN'"
+    [hideActions]="false" [isProcessing]="isModalProcessing()" (close)="closeDetails()"
     (action)="handleAlertAction($event)">
 </app-alert-details-modal>
+
+@if (isAnalystManagementVisible() && selectedAnalystForManagement()) {
+<app-analyst-alert-details-modal [analyst]="selectedAnalystForManagement()"
+    [alertsForAnalyst]="alertsForSelectedAnalyst()" [analysts]="analysts()"
+    [analystAlertCounts]="analystAlertCounts()" [openDropdownUuid]="isReassignDropdownOpen()"
+    (close)="closeAnalystManagement()" (toggleDropdown)="toggleReassignDropdown($event)"
+    (reassign)="reassignAlert($event.alertUuid, $event.newAnalystId)" 
+    (unassign)="unassignAlert($event)"
+    (unassignAll)="unassignAllFromAnalyst(selectedAnalystForManagement()!.id)">
+</app-analyst-alert-details-modal>
+}
+
+<!-- Lasso / Marquee Selection Overlay -->
+<div [ngStyle]="getMarqueeStyle()"></div>

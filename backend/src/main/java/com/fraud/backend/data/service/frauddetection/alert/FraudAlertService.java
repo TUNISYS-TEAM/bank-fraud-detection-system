@@ -1,12 +1,15 @@
 package com.fraud.backend.data.service.frauddetection.alert;
 
 import com.fraud.backend.api.dto.frauddetection.fraudalert.FraudAlertMapper;
+import com.fraud.backend.api.dto.frauddetection.fraudalert.request.AssignAlertsRequest;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.request.UpdateAlertStatusRequest;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.AlertStatsResponse;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.FraudAlertResponse;
+import com.fraud.backend.api.dto.frauddetection.fraudalert.response.FraudLocationResponse;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.TimeSeriesDataResponse;
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
 import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
+import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
@@ -31,6 +34,8 @@ public class FraudAlertService {
     private final FraudAlertRepository fraudAlertRepository;
     private final FraudAlertMapper fraudAlertMapper;
     private final KeycloakMappingRepository keycloakMappingRepository;
+    private final AppUserRepository appUserRepository;
+    private final PostalCodeCoordinatesResolver coordinatesResolver;
 
     private AppUser getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -146,6 +151,10 @@ public class FraudAlertService {
                 .total(0L).critical(0L).high(0L).medium(0L).low(0L)
                 .pending(0L).reviewed(0L).resolved(0L).falsePositive(0L)
                 .build();
+    }
+
+    public Long countAlertsByAnalystId(Long analystId) {
+        return fraudAlertRepository.countByAssignedAnalystId(analystId);
     }
 
     public List<TimeSeriesDataResponse> getTimeSeriesData(LocalDateTime startDate, LocalDateTime endDate) {
@@ -275,12 +284,33 @@ public class FraudAlertService {
             Pageable pageable) {
 
         AppUser currentUser = getCurrentUser();
+        String role = currentUser.getRole().getName().toUpperCase();
+
+        // ANALYST: only sees alerts assigned to them
+        if ("ANALYST".equals(role)) {
+            Page<FraudAlert> alerts = fraudAlertRepository.findAll((root, query, cb) -> {
+                List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+                predicates.add(cb.equal(root.get("assignedAnalyst").get("id"), currentUser.getId()));
+                if (riskLevel != null && !riskLevel.isEmpty() && !"all".equalsIgnoreCase(riskLevel)) {
+                    predicates.add(cb.equal(root.get("riskLevel"), riskLevel));
+                }
+                if (status != null && !status.isEmpty() && !"all".equalsIgnoreCase(status)) {
+                    predicates.add(cb.equal(root.get("status"), status));
+                }
+                if (alertType != null && !alertType.isEmpty() && !"all".equalsIgnoreCase(alertType)) {
+                    predicates.add(cb.equal(root.get("alertType"), alertType));
+                }
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+            return alerts.map(fraudAlertMapper::toResponse);
+        }
+
+        // MANAGER / ADMIN: sees all alerts filtered by team context
         Long managerId = getEffectiveManagerId(currentUser);
 
         Page<FraudAlert> alerts = fraudAlertRepository.findAll((root, query, cb) -> {
             List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
 
-            // Team Context Filtering
             if (managerId != null) {
                 predicates.add(cb.equal(
                         root.get("transaction").get("dataset").get("assignedManager").get("id"),
@@ -312,5 +342,89 @@ public class FraudAlertService {
         }, pageable);
 
         return alerts.map(fraudAlertMapper::toResponse);
+    }
+
+    /**
+     * Assign a list of alerts to a specific analyst.
+     * Only the manager owning those alerts can perform this action.
+     */
+    @Transactional
+    public void assignAlerts(AssignAlertsRequest request) {
+        AppUser currentUser = getCurrentUser();
+        String role = currentUser.getRole().getName().toUpperCase();
+
+        if (!"MANAGER".equals(role) && !"ADMIN".equals(role)) {
+            throw new IllegalStateException("Seul un manager peut affecter des alertes");
+        }
+
+        AppUser analyst = appUserRepository.findById(request.getAnalystId())
+                .orElseThrow(() -> new RuntimeException("Analyste non trouvé: " + request.getAnalystId()));
+
+        // Verify analyst belongs to this manager's team
+        if ("MANAGER".equals(role)
+                && (analyst.getManager() == null || !analyst.getManager().getId().equals(currentUser.getId()))) {
+            throw new IllegalStateException("Cet analyste n'appartient pas à votre équipe");
+        }
+
+        int updated = fraudAlertRepository.bulkAssignAlerts(request.getAlertUuids(), analyst);
+        log.info("Manager {} assigned {} alerts to analyst {}", currentUser.getId(), updated, analyst.getId());
+    }
+
+    @Transactional
+    public void unassignAlerts(List<UUID> alertUuids) {
+        AppUser currentUser = getCurrentUser();
+        String role = currentUser.getRole().getName().toUpperCase();
+
+        if (!"MANAGER".equals(role) && !"ADMIN".equals(role)) {
+            throw new IllegalStateException("Seul un manager peut désaffecter des alertes");
+        }
+
+        int updated = fraudAlertRepository.bulkUnassignAlerts(alertUuids);
+        log.info("Manager {} unassigned {} alerts", currentUser.getId(), updated);
+    }
+
+    /**
+     * Returns the analysts that belong to the currently connected manager.
+     */
+    public List<Map<String, Object>> getMyAnalysts() {
+        AppUser currentUser = getCurrentUser();
+        String role = currentUser.getRole().getName().toUpperCase();
+
+        if (!"MANAGER".equals(role) && !"ADMIN".equals(role)) {
+            throw new IllegalStateException("Accès réservé aux managers");
+        }
+
+        List<AppUser> analysts = appUserRepository.findByManagerId(currentUser.getId());
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (AppUser analyst : analysts) {
+            Map<String, Object> info = new HashMap<>();
+            info.put("id", analyst.getId());
+            info.put("name", analyst.getFirstName() + " " + analyst.getLastName());
+            info.put("email", analyst.getEmail());
+            info.put("assignedCount", fraudAlertRepository.countByAssignedAnalystId(analyst.getId()));
+            result.add(info);
+        }
+        return result;
+    }
+
+    public List<FraudLocationResponse> getFraudLocations(int days) {
+        AppUser currentUser = getCurrentUser();
+        Long managerId = getEffectiveManagerId(currentUser);
+
+        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime startDate = endDate.minusDays(days);
+
+        List<Object[]> results = fraudAlertRepository.getFraudLocationsByPostalCode(
+                startDate, endDate, managerId);
+
+        return results.stream()
+                .map(row -> {
+                    String postalCode = (String) row[0];
+                    long count = ((Number) row[1]).longValue();
+                    double[] coords = coordinatesResolver.getCoordinates(postalCode);
+                    return new FraudLocationResponse(postalCode, count, coords[0], coords[1]);
+                })
+                .toList();
     }
 }

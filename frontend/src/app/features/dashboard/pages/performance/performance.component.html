@@ -761,6 +761,115 @@
           </div>
 
           <!-- ═══════════════════════════════════════════════ -->
+          <!-- Predictive Drift Panel (NEW)                    -->
+          <!-- ═══════════════════════════════════════════════ -->
+          <div *ngIf="driftPrediction() && driftPrediction().status !== 'INSUFFICIENT_DATA'" 
+               class="mt-6 bg-gradient-to-br from-indigo-50/30 to-white rounded-2xl border border-indigo-100 p-5 shadow-sm animate-fadeIn">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="p-2 bg-indigo-100 rounded-xl">
+                <i-feather name="trending-up" class="w-4 h-4 text-indigo-600"></i-feather>
+              </div>
+              <div>
+                <h4 class="text-base font-black text-indigo-900 uppercase tracking-wider">Prévision de Dérive</h4>
+                <p class="text-xs text-indigo-500 font-medium mt-0.5">
+                  Projection sur {{ driftPrediction().predicted_in_checks || 3 }} prochaines analyses
+                  <span *ngIf="driftPrediction().confidence" 
+                        class="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                        [ngClass]="{
+                          'bg-green-100 text-green-700': driftPrediction().confidence === 'HIGH',
+                          'bg-yellow-100 text-yellow-700': driftPrediction().confidence === 'MEDIUM',
+                          'bg-gray-100 text-gray-600': driftPrediction().confidence === 'LOW'
+                        }">
+                    Confiance: {{ driftPrediction().confidence }}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <!-- Current vs Predicted State -->
+              <div class="bg-white/60 rounded-xl p-3 border border-indigo-50">
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">État Actuel → Prévu</p>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-1 rounded-lg text-xs font-black"
+                        [ngClass]="{
+                          'bg-green-100 text-green-700': driftPrediction().current_state === 'STABLE',
+                          'bg-yellow-100 text-yellow-700': driftPrediction().current_state === 'DRIFTING' || driftPrediction().current_state === 'DISTRIBUTION_SHIFT',
+                          'bg-red-100 text-red-700': driftPrediction().current_state === 'CRITICAL_DRIFT' || driftPrediction().current_state === 'OVERFITTING',
+                          'bg-gray-100 text-gray-600': driftPrediction().current_state === 'UNDERFITTING'
+                        }">
+                    {{ driftPrediction().current_state }}
+                  </span>
+                  <i-feather name="arrow-right" class="w-3 h-3 text-gray-400"></i-feather>
+                  <span class="px-2 py-1 rounded-lg text-xs font-black"
+                        [ngClass]="{
+                          'bg-green-100 text-green-700': driftPrediction().predicted_state === 'STABLE',
+                          'bg-yellow-100 text-yellow-700': driftPrediction().predicted_state === 'DRIFTING' || driftPrediction().predicted_state === 'DISTRIBUTION_SHIFT',
+                          'bg-red-100 text-red-700': driftPrediction().predicted_state === 'CRITICAL_DRIFT' || driftPrediction().predicted_state === 'OVERFITTING',
+                          'bg-gray-100 text-gray-600': driftPrediction().predicted_state === 'UNDERFITTING'
+                        }">
+                    {{ driftPrediction().predicted_state }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Predicted Metrics -->
+              <div class="bg-white/60 rounded-xl p-3 border border-indigo-50">
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Métriques Prévues</p>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-600">F1 Score</span>
+                  <span class="text-sm font-black text-gray-800">{{ driftPrediction().predicted?.f1_score?.toFixed(1) }}%</span>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-xs text-gray-600">Drift Score</span>
+                  <span class="text-sm font-black"
+                        [ngClass]="{
+                          'text-red-600': driftPrediction().predicted?.score_drift_pct >= 8,
+                          'text-amber-500': driftPrediction().predicted?.score_drift_pct >= 5,
+                          'text-emerald-600': driftPrediction().predicted?.score_drift_pct < 5
+                        }">
+                    {{ driftPrediction().predicted?.score_drift_pct?.toFixed(1) }}%
+                  </span>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-xs text-gray-600">PSI</span>
+                  <span class="text-sm font-black"
+                        [ngClass]="{
+                          'text-red-600': driftPrediction().predicted?.psi >= 0.25,
+                          'text-amber-500': driftPrediction().predicted?.psi >= 0.1,
+                          'text-emerald-600': driftPrediction().predicted?.psi < 0.1
+                        }">
+                    {{ driftPrediction().predicted?.psi?.toFixed(3) }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Recommendation -->
+              <div class="bg-white/60 rounded-xl p-3 border border-indigo-50">
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Recommandation</p>
+                <p class="text-xs text-gray-700 leading-relaxed">{{ driftPrediction().recommendation }}</p>
+              </div>
+            </div>
+
+            <!-- Trend Details -->
+            <div *ngIf="driftPrediction().trend" class="mt-3 text-[10px] text-gray-500 border-t border-indigo-100 pt-3 flex gap-4">
+              <span><i-feather name="trending-up" class="w-3 h-3 inline mr-1"></i-feather>Pente F1: {{ driftPrediction().trend.f1_drift_slope?.toFixed(3) }}</span>
+              <span><i-feather name="bar-chart-2" class="w-3 h-3 inline mr-1"></i-feather>Pente Score: {{ driftPrediction().trend.score_drift_slope?.toFixed(3) }}</span>
+              <span><i-feather name="layers" class="w-3 h-3 inline mr-1"></i-feather>Pente PSI: {{ driftPrediction().trend.psi_slope?.toFixed(3) }}</span>
+            </div>
+          </div>
+
+          <!-- Insufficient Data Message for Prediction -->
+          <div *ngIf="driftPrediction()?.status === 'INSUFFICIENT_DATA'" 
+               class="mt-6 bg-gray-50 rounded-2xl p-5 border border-dashed border-gray-200 text-center">
+            <div class="p-3 bg-gray-100 rounded-full inline-flex mb-3">
+              <i-feather name="database" class="w-5 h-5 text-gray-400"></i-feather>
+            </div>
+            <p class="text-sm font-bold text-gray-700 mb-1">Pas assez d'historique pour une prévision</p>
+            <p class="text-xs text-gray-400">{{ driftPrediction().message || 'Au moins 3 points d’analyse sont nécessaires.' }}</p>
+          </div>
+
+          <!-- ═══════════════════════════════════════════════ -->
           <!-- Global Summary KPI Row                          -->
           <!-- ═══════════════════════════════════════════════ -->
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">

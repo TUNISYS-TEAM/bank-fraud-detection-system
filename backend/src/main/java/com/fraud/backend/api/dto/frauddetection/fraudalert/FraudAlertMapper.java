@@ -68,7 +68,12 @@ public class FraudAlertMapper {
             builder.reviewedBy(alert.getReviewedBy().getId());
             builder.reviewedByName(alert.getReviewedBy().getFirstName() + " " + alert.getReviewedBy().getLastName());
         }
-        
+
+        if (alert.getAssignedAnalyst() != null) {
+            builder.assignedAnalystId(alert.getAssignedAnalyst().getId());
+            builder.assignedAnalystName(alert.getAssignedAnalyst().getFirstName() + " " + alert.getAssignedAnalyst().getLastName());
+        }
+
         return builder.build();
     }
     

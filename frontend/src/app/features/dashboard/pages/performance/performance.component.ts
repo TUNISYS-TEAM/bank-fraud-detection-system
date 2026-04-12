@@ -326,9 +326,9 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     effect(() => {
       const deployedModel = this.activeDeployedModel();
       if (this.isManager() && deployedModel) {
-        // Use setTimeout to avoid signal writes during effect
         setTimeout(() => {
           this.loadModelDriftData();
+          this.loadDriftPrediction(deployedModel.modelUuid);
         }, 0);
       }
     });
@@ -405,7 +405,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         next: (response: any) => {
           this.activeDeployedModel.set(response);
         },
-        error: () => { 
+        error: () => {
           this.activeDeployedModel.set(null);
         }
       });
@@ -472,7 +472,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       this.toastr.warning('Seuls les managers peuvent retirer des modèles', 'Accès restreint');
       return;
     }
- 
+
     const currentModel = this.activeDeployedModel();
     if (!currentModel) {
       this.toastr.info('Aucun modèle n\'est actuellement déployé', 'Information');
@@ -1103,7 +1103,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingDrift.set(true);
-    
+
     this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/drift/status`).subscribe({
       next: (response: any) => {
         if (response.status === 'NO_DRIFT_DATA' || response.status === 'NO_ACTIVE_MODEL') {
@@ -1126,12 +1126,15 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   triggerManualDriftCheck(): void {
     if (!this.isManager()) return;
-    
+
     this.isLoadingDrift.set(true);
     this.http.post(`${environment.apiUrl}/v1/fraud-detection/deployment/drift/check`, {}).subscribe({
       next: () => {
         this.loadModelDriftData();
-        // Show a brief success notification if you have a toast system, or just reload
+        const model = this.activeDeployedModel();
+        if (model) {
+          this.loadDriftPrediction(model.modelUuid);   // <-- add this
+        }
       },
       error: (error) => {
         console.error('Error triggering drift check:', error);
@@ -1157,7 +1160,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const baselineF1 = lastPoint?.baseline_f1 || 0;
     const currentF1 = lastPoint?.current_f1 || 0;
     const currentPerf = (baselineF1 > 0) ? ((currentF1 / baselineF1) - 1) * 100 : 0;
-    const overallDrift = lastPoint?.overall_drift_percentage || currentDist; 
+    const overallDrift = lastPoint?.overall_drift_percentage || currentDist;
 
     return {
       periods: periods,
@@ -1165,9 +1168,9 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       distributionDriftValues: distributionDriftValues,
       performanceDriftValues: performanceDriftValues,
       threshold: this.driftThreshold,
-      currentDrift: Math.abs(currentDist), 
+      currentDrift: Math.abs(currentDist),
       currentDistributionDrift: Math.abs(currentDist),
-      currentPerformanceDrift: currentPerf, 
+      currentPerformanceDrift: currentPerf,
       baselineF1: baselineF1,
       currentF1: currentF1,
       performanceStatus: lastPoint?.performance_status === 'INSUFFICIENT_DATA' ? 'INSUFFICIENT_DATA' : this.getAlertLevel(currentPerf, 'performance').toUpperCase(),
@@ -1258,7 +1261,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   private getAlertLevel(value: number, type: 'distribution' | 'performance'): 'critical' | 'warning' | 'success' {
     const absValue = Math.abs(value);
-    
+
     if (type === 'distribution') {
       if (absValue >= this.driftCriticalThreshold) return 'critical';
       if (absValue >= this.driftWarningThreshold) return 'warning';
@@ -1281,26 +1284,26 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
     const distDrift = driftData.currentDistributionDrift;
     const perfDrift = driftData.currentPerformanceDrift;
-    
+
     // Performance level is only considered if data is sufficient
-    const perfLevel = driftData.performanceStatus === 'INSUFFICIENT_DATA' 
-      ? 'success' 
+    const perfLevel = driftData.performanceStatus === 'INSUFFICIENT_DATA'
+      ? 'success'
       : this.getAlertLevel(perfDrift, 'performance');
-      
+
     const distLevel = this.getAlertLevel(distDrift, 'distribution');
 
     if (distLevel === 'critical' || perfLevel === 'critical') {
-      const message = distLevel === 'critical' 
+      const message = distLevel === 'critical'
         ? `ALERTE CRITIQUE : Dérive de Distribution à ${distDrift.toFixed(1)}% - Seuil de danger (> ${this.driftCriticalThreshold}%) dépassé.`
         : `ALERTE CRITIQUE : Performance (F1) trop basse. Dégradation de ${Math.abs(perfDrift).toFixed(1)}% par rapport à l'entraînement initiale (Seuil de perte > ${this.driftCriticalThreshold}%).`;
-        
+
       this.driftAlert.set({
         show: true,
         message: message + " Mise en production à risque.",
         driftPercentage: (distLevel === 'critical') ? distDrift : Math.abs(perfDrift),
         level: 'critical'
       });
-    } 
+    }
     else if (distLevel === 'warning' || perfLevel === 'warning') {
       this.driftAlert.set({
         show: true,
@@ -1308,7 +1311,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         driftPercentage: Math.max(distDrift, perfLevel === 'success' ? 0 : Math.abs(perfDrift)),
         level: 'warning'
       });
-    } 
+    }
     else {
       // Success case (could be improvement or small stable change)
       this.driftAlert.set({ show: false, message: '', driftPercentage: 0, level: 'success' });
@@ -1526,5 +1529,28 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   onPageChange(page: number): void {
     this.currentPage.set(page);
     this.loadModels();
+  }
+
+  // ============================================
+  // PREDICTIVE DRIFT 
+  // ============================================
+  driftPrediction = signal<any>(null);
+  isLoadingPrediction = signal(false);
+
+  loadDriftPrediction(modelUuid: string): void {
+    if (!modelUuid) return;
+    this.isLoadingPrediction.set(true);
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/drift/predict/${modelUuid}`)
+      .subscribe({
+        next: (response: any) => {
+          this.driftPrediction.set(response);
+          this.isLoadingPrediction.set(false);
+        },
+        error: (error) => {
+          console.error('Error loading drift prediction:', error);
+          this.driftPrediction.set(null);
+          this.isLoadingPrediction.set(false);
+        }
+      });
   }
 }

@@ -26,6 +26,8 @@ export interface FraudAlertResponse {
   accountNumber?: string;
   fraudReason?: any; 
   assignedManagerName?: string;
+  assignedAnalystId?: number;
+  assignedAnalystName?: string;
 }
 
 export interface FraudContribution {
@@ -43,6 +45,13 @@ export interface StructuredFraudReason {
   total_risk_points: number;
   threshold_critical: number;
   primary_factor_display: string;
+}
+
+export interface FraudLocationResponse {
+  postalCode: string;
+  fraudCount: number;
+  lat: number;
+  lon: number;
 }
 
 export interface AlertStatsResponse {

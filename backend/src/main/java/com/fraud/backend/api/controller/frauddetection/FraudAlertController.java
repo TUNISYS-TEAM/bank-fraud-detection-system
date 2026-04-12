@@ -1,8 +1,10 @@
 package com.fraud.backend.api.controller.frauddetection;
 
+import com.fraud.backend.api.dto.frauddetection.fraudalert.request.AssignAlertsRequest;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.request.UpdateAlertStatusRequest;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.AlertStatsResponse;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.FraudAlertResponse;
+import com.fraud.backend.api.dto.frauddetection.fraudalert.response.FraudLocationResponse;
 import com.fraud.backend.api.dto.frauddetection.fraudalert.response.TimeSeriesDataResponse;
 import com.fraud.backend.data.service.frauddetection.alert.FraudAlertService;
 
@@ -40,6 +42,11 @@ public class FraudAlertController {
     @GetMapping("/stats")
     public ResponseEntity<AlertStatsResponse> getAlertStats() {
         return ResponseEntity.ok(fraudAlertService.getAlertStats());
+    }
+
+    @GetMapping("/count/analyst/{analystId}")
+    public ResponseEntity<Long> getAnalystAlertCount(@PathVariable Long analystId) {
+        return ResponseEntity.ok(fraudAlertService.countAlertsByAnalystId(analystId));
     }
 
     @GetMapping("/time-series")
@@ -90,6 +97,30 @@ public class FraudAlertController {
         Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
         return ResponseEntity
-                .ok(fraudAlertService.getAlerts(riskLevel, status, alertType, search, datasetUuid, startDate, endDate, pageable));
+                .ok(fraudAlertService.getAlerts(riskLevel, status, alertType, search, datasetUuid, startDate, endDate,
+                        pageable));
+    }
+
+    @PostMapping("/assign")
+    public ResponseEntity<Void> assignAlerts(@RequestBody AssignAlertsRequest request) {
+        fraudAlertService.assignAlerts(request);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/my-analysts")
+    public ResponseEntity<List<Map<String, Object>>> getMyAnalysts() {
+        return ResponseEntity.ok(fraudAlertService.getMyAnalysts());
+    }
+
+    @PostMapping("/unassign")
+    public ResponseEntity<Void> unassignAlerts(@RequestBody List<UUID> alertUuids) {
+        fraudAlertService.unassignAlerts(alertUuids);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/locations")
+    public ResponseEntity<List<FraudLocationResponse>> getFraudLocations(
+            @RequestParam(defaultValue = "7") int days) {
+        return ResponseEntity.ok(fraudAlertService.getFraudLocations(days));
     }
 }

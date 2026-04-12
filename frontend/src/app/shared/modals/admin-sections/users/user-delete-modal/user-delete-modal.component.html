@@ -1,12 +1,13 @@
 <!-- Backdrop avec flou -->
 <div class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300"
-    [class.opacity-0]="!isVisible()" [class.opacity-100]="isVisible()" (click)="closeModal()">
-
+     [class.opacity-0]="!isVisible()" [class.opacity-100]="isVisible()" (click)="closeModal()">
+    
     <!-- Modal -->
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transition-all duration-300 transform border border-gray-100"
-        [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()" (click)="$event.stopPropagation()">
-
-        <!-- Header - Version danger -->
+         [class.scale-95]="!isVisible()" [class.scale-100]="isVisible()"
+         (click)="$event.stopPropagation()">
+        
+        <!-- Modal Header -->
         <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-red-50 to-orange-50">
             <div class="flex items-center space-x-3">
                 <div class="p-2 bg-red-100 rounded-full">
@@ -59,6 +60,26 @@
                     <p class="text-xs text-red-600 mt-4">
                         Cette action supprimera définitivement l'utilisateur et toutes ses données associées.
                     </p>
+
+                    <!-- Analyst Alerts Warning -->
+                    @if (isCheckingAlerts()) {
+                        <div class="mt-4 animate-pulse flex justify-center">
+                            <div class="h-4 bg-gray-200 rounded w-48"></div>
+                        </div>
+                    } @else if (alertCount() > 0) {
+                        <div class="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col items-center">
+                            <div class="flex items-center space-x-2 text-amber-700 mb-2">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                                <span class="font-bold text-sm">Action bloquée</span>
+                            </div>
+                            <p class="text-[13px] text-amber-800 leading-relaxed italic">
+                                Cet analyste possède <strong>{{ alertCount() }} alertes</strong>, veuillez contacter son manager 
+                                <span class="font-bold underline">"{{ managerName() }}"</span> afin de les réaffecter.
+                            </p>
+                        </div>
+                    }
                 </div>
             } @else {
                 <div class="text-center py-8">
@@ -86,7 +107,7 @@
                 Annuler
             </button>
             <button (click)="confirmDelete()"
-                    [disabled]="isLoading() || !userDataInternal()"
+                    [disabled]="isLoading() || !userDataInternal() || alertCount() > 0 || isCheckingAlerts()"
                     class="px-5 py-2.5 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-xl transition-all font-medium text-sm shadow-lg shadow-red-600/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center space-x-2">
                 @if (isLoading()) {
                     <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">

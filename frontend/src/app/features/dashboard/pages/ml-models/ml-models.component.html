@@ -109,38 +109,23 @@
                     <h3 class="text-xl font-bold text-gray-800">Paramètres du Modèle</h3>
 
                     <!-- Risk Threshold -->
-                    <div class="space-y-6 pt-2 pb-6 border-b border-gray-200">
-                        <div class="flex justify-between items-center mb-4">
-                            <h4 class="text-[14px] font-bold text-gray-800">Seuil d'Alerte (Score de Risque)</h4>
-                            <div class="flex items-center gap-3 pr-14">
-                                <div class="relative group -translate-y-4">
-                                    <input type="number" [(ngModel)]="thresholdPercent" step="0.1" min="1" max="99"
-                                        class="w-24 px-4 py-2 text-[13px] font-black text-blue-700 bg-blue-50/50 border border-blue-100 rounded-xl text-center focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-300 transition-all cursor-pointer hover:bg-white shadow-sm"
-                                        placeholder="50.0">
-                                    <div
-                                        class="absolute -right-7 top-1/2 -translate-y-1/2 text-[12px] font-bold text-blue-400">
-                                        %</div>
-                                </div>
+                    <div class="space-y-4 pt-2 pb-6 border-b border-gray-200">
+                        <div class="flex justify-between items-center">
+                            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Seuil d'Alerte — Score de Risque</label>
+                            <div class="relative mr-6 -translate-y-1">
+                                <input type="number" [(ngModel)]="thresholdPercent" step="0.1" min="1" max="99"
+                                    class="w-24 px-4 py-2 text-[13px] font-black text-blue-700 bg-blue-50/50 border border-blue-100 rounded-xl text-center focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-300 transition-all cursor-pointer hover:bg-white shadow-sm"
+                                    placeholder="50.0">
+                                <div class="absolute -right-5 top-1/2 -translate-y-1/2 text-[12px] font-bold text-blue-400">%</div>
                             </div>
                         </div>
-                        <div class="relative flex items-center h-2.5 rounded-full bg-gray-200 overflow-visible mt-2">
-                            <div class="absolute inset-y-0 left-0 bg-blue-700 rounded-full transition-all duration-300"
-                                [style.width.%]="detectionThreshold * 100"></div>
-                            <input type="range" [(ngModel)]="detectionThreshold"
-                                class="absolute inset-x-0 -top-2 h-6 w-full opacity-0 cursor-pointer z-10" min="0.01"
-                                max="0.99" step="0.001">
-                            <div class="absolute w-5 h-5 bg-white border-2 border-blue-700 rounded-full shadow-lg z-20 pointer-events-none -translate-x-1/2"
-                                [style.left.%]="detectionThreshold * 100"></div>
-                        </div>
-                        <div class="flex justify-between items-center mt-2">
-                            <p class="text-[11px] text-gray-500 font-medium italic">
-                                Transactions avec un score {{ '≥' }} {{ detectionThreshold * 100 | number:'1.1-1' }}%
-                                seront signalées comme frauduleuses
-                            </p>
-                            <span class="font-bold text-gray-800 text-sm">
-                                {{ detectionThreshold * 100 | number:'1.1-1' }}%
-                            </span>
-                        </div>
+                        <input type="range" min="0.01" max="0.99" step="0.001"
+                            [(ngModel)]="detectionThreshold"
+                            [style.background]="getSliderBackground(detectionThreshold, 0.01, 0.99)"
+                            class="simulation-slider w-full h-2 rounded-2xl appearance-none cursor-pointer">
+                        <p class="text-xs text-slate-400">
+                            Transactions avec un score ≥ {{ detectionThreshold * 100 | number:'1.1-1' }}% seront signalées comme frauduleuses
+                        </p>
                     </div>
 
                     <!-- Hyperparameters Grid -->
