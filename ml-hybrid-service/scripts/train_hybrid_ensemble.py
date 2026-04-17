@@ -32,11 +32,11 @@ from pyod.models.copod import COPOD
 
 sys.path.insert(0, '/app/src')
 
-from ml_pipeline.inference.thresholding import (
+from shared_ml.inference.thresholding import (
     find_threshold_by_fbeta,
     find_threshold_by_cost,
 )
-from ml_pipeline.utils.postal_codes import PostalCodeResolver
+from shared_ml.utils.postal_codes import PostalCodeResolver
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +44,6 @@ logging.basicConfig(
     stream=sys.stderr
 )
 logger = logging.getLogger(__name__)
-
 # ------------------------------------------------------------------------------
 # Global resolver – loaded once
 # ------------------------------------------------------------------------------

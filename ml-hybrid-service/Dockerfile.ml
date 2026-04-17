@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# --- ADD SHARED-ML ---
+COPY ../shared-ml /app/shared-ml
+RUN pip install -e /app/shared-ml[hybrid]
+
 COPY . .
 
 # Configuration de l'environnement

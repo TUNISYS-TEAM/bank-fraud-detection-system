@@ -35,7 +35,7 @@ from shared_ml.utils.postal_codes import (  # helper functions for training scri
     process_merchant_postal_transform,
 )
 from shared_ml.evaluation.data_split import temporal_split, save_split_report
-from shared_ml.inference.thresholding import (
+from shared_ml.evaluation.thresholding import (
     find_threshold_by_cost,
     find_threshold_by_fbeta,
     find_threshold_for_recall,

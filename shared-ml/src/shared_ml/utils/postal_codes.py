@@ -8,7 +8,7 @@ Remplace l'ancienne carte de préfixes à 2 chiffres codée en dur par des reche
 
 Usage
 -----
-    from ml_pipeline.utils.postal_codes import PostalCodeResolver
+    from shared_ml.utils.postal_codes import PostalCodeResolver
 
     resolver = PostalCodeResolver()                  # charge le JSON inclus
     resolver.get_gov("2036")                         # → "Ariana"
@@ -37,6 +37,7 @@ import logging
 from pathlib import Path
 from functools import lru_cache
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)

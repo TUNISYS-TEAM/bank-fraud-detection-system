@@ -7,7 +7,7 @@ this configuration automatically.
 
 Usage
 -----
-    from ml_pipeline.utils.logging_config import setup_logging
+    from shared_ml.utils.logging_config import setup_logging
     setup_logging(level="INFO", log_file="logs/pipeline.log")
 """
 
