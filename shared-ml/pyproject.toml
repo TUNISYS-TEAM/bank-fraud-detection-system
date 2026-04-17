@@ -12,8 +12,19 @@ dependencies = [
     "scikit-learn>=1.0",
     "joblib>=1.1",
     "pydantic>=2.0",
+    "dask>=2023.0.0",
 ]
 
 [project.optional-dependencies]
-pipeline = ["lightgbm>=3.3", "xgboost>=1.6", "onnxruntime>=1.14", "skl2onnx>=1.15"]
-hybrid = ["tensorflow>=2.10", "pyod>=1.0", "fastapi>=0.100", "uvicorn>=0.23"]
+pipeline = [
+    "lightgbm>=3.3",
+    "xgboost>=1.6",
+    "onnxruntime>=1.14",
+    "skl2onnx>=1.15",
+]
+hybrid = [
+    "tensorflow>=2.10",
+    "pyod>=1.0",
+    "fastapi>=0.100",
+    "uvicorn>=0.23",
+]

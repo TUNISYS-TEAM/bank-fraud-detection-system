@@ -4,7 +4,7 @@ import json
 import logging
 from pathlib import Path
 
-from ml_pipeline.config.config_schema import FullModelConfig
+from shared_ml.schemas.config_schema import FullModelConfig
 
 logger = logging.getLogger(__name__)
 

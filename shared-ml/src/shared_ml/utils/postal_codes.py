@@ -243,3 +243,28 @@ def get_resolver(json_path: str | Path | None = None) -> PostalCodeResolver:
     if _resolver is None:
         _resolver = PostalCodeResolver(json_path)
     return _resolver
+
+
+def process_customer_postal_fit(df_train):
+    resolver = get_resolver()
+    df_enriched = resolver.enrich_dataframe(df_train, 'Customer_Postal_Code', add_gov=False, add_deleg=False, add_region=True)
+    return df_enriched['region'].astype('category').cat.categories
+
+def process_customer_postal_transform(df, region_categories):
+    resolver = get_resolver()
+    df_enriched = resolver.enrich_dataframe(df, 'Customer_Postal_Code', add_gov=False, add_deleg=False, add_region=True)
+    cat_region = pd.Categorical(df_enriched['region'], categories=region_categories)
+    df_enriched['Customer_Region'] = cat_region.codes.astype(np.float32)
+    return df_enriched.drop(['Customer_Postal_Code', 'region'], axis=1)
+
+def process_merchant_postal_fit(df_train):
+    resolver = get_resolver()
+    df_enriched = resolver.enrich_dataframe(df_train, 'Merchant_Postal_Code', add_gov=False, add_deleg=False, add_region=True)
+    return df_enriched['region'].astype('category').cat.categories
+
+def process_merchant_postal_transform(df, merchant_region_categories):
+    resolver = get_resolver()
+    df_enriched = resolver.enrich_dataframe(df, 'Merchant_Postal_Code', add_gov=False, add_deleg=False, add_region=True)
+    cat_region = pd.Categorical(df_enriched['region'], categories=merchant_region_categories)
+    df_enriched['Merchant_Region'] = cat_region.codes.astype(np.float32)
+    return df_enriched.drop(['Merchant_Postal_Code', 'region'], axis=1)

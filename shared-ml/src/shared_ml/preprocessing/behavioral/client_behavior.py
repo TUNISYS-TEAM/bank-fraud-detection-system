@@ -12,7 +12,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 import dask
 
-from ml_pipeline.utils.postal_codes import get_resolver
+from shared_ml.utils.postal_codes import get_resolver
 
 logger = logging.getLogger(__name__)
 
