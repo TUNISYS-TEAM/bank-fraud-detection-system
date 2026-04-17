@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from ml_pipeline.utils.postal_codes import PostalCodeResolver, get_resolver, GOV_TO_REGION
+from shared_ml.utils.postal_codes import PostalCodeResolver, get_resolver, GOV_TO_REGION
 
 
 class TestPostalCodeResolver:

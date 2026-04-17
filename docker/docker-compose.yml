@@ -1,6 +1,6 @@
 services:
   postgres-app:
-    image: postgres:16-alpine
+    image: postgres:15-alpine
     container_name: fraud-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_APP_DB}
@@ -30,15 +30,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.3
     container_name: fraud-keycloak
     command: start-dev
     environment:
-      # Database
       KC_DB: postgres
-      KC_DB_URL: ${KEYCLOAK_DB_URL}          # Should be: jdbc:postgresql://postgres-keycloak:5432/${POSTGRES_KEYCLOAK_DB}
+      KC_DB_URL: ${KEYCLOAK_DB_URL}
       KC_DB_USERNAME: ${POSTGRES_KEYCLOAK_USER}
       KC_DB_PASSWORD: ${POSTGRES_KEYCLOAK_PASSWORD}
 
@@ -46,32 +44,22 @@ services:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
 
-      # === Critical fixes for Admin Console loading issue ===
-      KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_STRICT_HTTPS: "false"
-      KC_HTTP_ENABLED: "true"
-      KC_PROXY: "edge"                    # Recommended for Docker + direct access
-      KC_PROXY_HEADERS: "forwarded"       # Modern replacement (helps with new admin console)
-
-      # Optional but useful for debugging
-      # KC_HOSTNAME_DEBUG: "true"         # Uncomment to see hostname config on /realms/master/hostname-debug
     ports:
       - "8180:8080"
     depends_on:
       postgres-keycloak:
         condition: service_healthy
-    restart: unless-stopped
 
   minio:
     image: minio/minio:latest
     container_name: fraud-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Console UI
     volumes:
       - minio_data:/data
     healthcheck:
@@ -88,20 +76,23 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123} &&
       mc mb -p local/fraud-datalake || true &&
       mc anonymous set none local/fraud-datalake || true
       "
 
-  ml-pipeline:
+  # Service d'inférence ONNX (Supervisé)
+  ml-onnx-service:
     build:
-      context: ../ml-pipeline
+      context: ../ml-onnx-service
       dockerfile: Dockerfile.ml
-    container_name: fraud-ml-pipeline
+      additional_contexts:
+        shared-ml: ../shared-ml
+    container_name: fraud-ml-onnx
     ports:
       - "8888:8888"
     volumes:
-      - ../ml-pipeline:/app
+      - ../ml-onnx-service:/app
     environment:
       - PYTHONUNBUFFERED=${PYTHONUNBUFFERED}
       - PYTHONPATH=${PYTHONPATH}
@@ -120,20 +111,19 @@ services:
         condition: service_healthy
     command: >
       sh -c "
-      echo 'ML Pipeline Container Started' &&
+      echo 'ML ONNX Service Container Started' &&
       echo 'Testing imports...' &&
-      python scripts/quick_test.py &&
-      echo 'Imports OK' &&
+      python -c 'import ml_onnx_service; print(\"Package ml_onnx_service loaded OK\")' &&
       echo '' &&
       echo 'Available commands:' &&
-      echo '  docker exec -it fraud-ml-pipeline python scripts/generate_sample_data.py' &&
-      echo '  docker exec -it fraud-ml-pipeline python -m ml_pipeline.cli.main' &&
-      echo '  docker exec -it fraud-ml-pipeline python -m ml_pipeline.training.train_models --export-onnx' &&
+      echo '  docker exec -it fraud-ml-onnx python scripts/generate_sample_data.py' &&
+      echo '  docker exec -it fraud-ml-onnx python -m ml_onnx_service.cli.main' &&
+      echo '  docker exec -it fraud-ml-onnx python scripts/inference_service.py --help' &&
       echo '' &&
       tail -f /dev/null
       "
     healthcheck:
-      test: ["CMD", "python", "-c", "import lightgbm, onnxruntime; print('OK')"]
+      test: ["CMD", "python", "-c", "import ml_onnx_service, shared_ml; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -143,6 +133,8 @@ services:
     build:
       context: ../ml-hybrid-service
       dockerfile: Dockerfile.ml
+      additional_contexts:
+        shared-ml: ../shared-ml
     container_name: fraud-ml-hybrid
     ports:
       - "${ML_HYBRID_SERVICE_PORT:-8001}:8000"
@@ -184,11 +176,8 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
 
-
-
 volumes:
   postgres_app_data:
   postgres_keycloak_data:
   minio_data:
   kafka_data:
-

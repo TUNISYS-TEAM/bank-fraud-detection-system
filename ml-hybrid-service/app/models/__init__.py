@@ -1,19 +1,4 @@
-from app.models.bundles import (
-    HybridEnsembleBundle,
-    AnomalyAutoencoder,
-    ECODFraudModel,
-    COPODFraudModel,
-    RankNormalizer,
-)
-from app.models.model_loader import ModelLoader
-from app.models.model_registry import registry
-
-__all__ = [
-    "HybridEnsembleBundle",
-    "AnomalyAutoencoder",
-    "ECODFraudModel",
-    "COPODFraudModel",
-    "RankNormalizer",
-    "ModelLoader",
-    "registry",
-]
+from .model_loader import ModelLoader
+from .model_registry import ModelRegistry, registry
+from .bundles import HybridEnsembleBundle
+from .unsupervised.anomaly_models import RankNormalizer

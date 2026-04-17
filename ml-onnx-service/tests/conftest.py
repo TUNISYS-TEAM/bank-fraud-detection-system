@@ -1,4 +1,3 @@
-# tests/conftest.py
 import json
 import tempfile
 from pathlib import Path
@@ -7,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml_pipeline.utils.postal_codes import get_resolver
+from shared_ml.utils.postal_codes import get_resolver
 
 
 @pytest.fixture(scope="session")

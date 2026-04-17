@@ -1,5 +1,5 @@
 """
-Vérification rapide de l'environnement pour le pipeline ML de détection de fraude.
+Vérification rapide de l'environnement pour le pipeline ML de détection de fraude (utilisant shared_ml).
 """
 
 from __future__ import annotations
@@ -9,45 +9,33 @@ import sys
 
 
 def test_imports() -> None:
-    """Tente d'importer les principaux modules du projet."""
+    """Tente d'importer les principaux modules de shared_ml."""
     modules = [
-        "ml_pipeline.config.model_config",
-        "ml_pipeline.config.settings",
-        "ml_pipeline.config.config_schema",
-        "ml_pipeline.models.base_model",
-        "ml_pipeline.utils.logging_config",
-        "ml_pipeline.utils.onnx_utils",
-        "ml_pipeline.utils.postal_codes",
+        "shared_ml.config.model_config",
+        "shared_ml.schemas.config_schema",
+        "shared_ml.models.base_model",
+        "shared_ml.utils.logging_config",
+        "shared_ml.utils.postal_codes",
+        "shared_ml.evaluation.data_split",
+        "shared_ml.evaluation.thresholding",
+        "shared_ml.pipeline.fraud_pipeline",
+        "shared_ml.inference.inference_pipeline",
+        "shared_ml.explanation.xai_engine",
     ]
 
-    optional_modules = [
-        "ml_pipeline.pipeline.data_split",
-        "ml_pipeline.pipeline.fraud_pipeline",
-        "ml_pipeline.training.train_models",
-        "ml_pipeline.cli.main",
-        "ml_pipeline.inference.contract",
-        "ml_pipeline.inference.feature_schema",
-        "ml_pipeline.inference.thresholding",
-    ]
-
-    print("Test des imports de base...")
+    print("Test des imports shared_ml...")
     for mod_name in modules:
-        importlib.import_module(mod_name)
-        print(f"OK  {mod_name}")
-
-    print("\nTest des imports optionnels ou spécifiques au projet...")
-    for mod_name in optional_modules:
         try:
             importlib.import_module(mod_name)
             print(f"OK  {mod_name}")
         except Exception as exc:
-            print(f"WARN {mod_name}: {exc}")
+            print(f"FAIL {mod_name}: {exc}")
 
 
 def test_postal_resolver() -> None:
-    """Test rapide du résolveur de codes postaux, si disponible."""
+    """Test rapide du résolveur de codes postaux."""
     try:
-        from ml_pipeline.utils.postal_codes import get_resolver
+        from shared_ml.utils.postal_codes import get_resolver
 
         resolver = get_resolver()
         test_zips = ["1000", "2036", "3000", "9999"]
@@ -57,12 +45,12 @@ def test_postal_resolver() -> None:
             region = resolver.get_region(postal_code)
             print(f"Zip {postal_code}: gov={gov}, region={region}")
     except Exception as exc:
-        print(f"Le test du résolveur de codes postaux a été sauté ou a échoué : {exc}")
+        print(f"Le test du résolveur de codes postaux a échoué : {exc}")
 
 
 def test_logging() -> None:
     """Teste la configuration de la journalisation (logging)."""
-    from ml_pipeline.utils.logging_config import setup_logging
+    from shared_ml.utils.logging_config import setup_logging
 
     logger = setup_logging(level="DEBUG")
     logger.debug("Le message de debug fonctionne")
@@ -72,7 +60,7 @@ def test_logging() -> None:
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Test rapide du pipeline ML de détection de fraude")
+    print("Test rapide du pipeline ML (shared_ml)")
     print("=" * 60)
 
     try:

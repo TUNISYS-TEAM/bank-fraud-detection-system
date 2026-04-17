@@ -30,7 +30,7 @@ import onnx
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
-sys.path.insert(0, '/app/src')
+sys.path.insert(0, '/app')
 
 from shared_ml.evaluation.thresholding import (
     find_threshold_by_fbeta,

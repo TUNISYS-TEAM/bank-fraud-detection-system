@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 
-from ml_pipeline.transformers.behavioral.client_behavior import ClientBehaviorTransformer
+from shared_ml.preprocessing.behavioral.client_behavior import ClientBehaviorTransformer
 
 
 @pytest.fixture

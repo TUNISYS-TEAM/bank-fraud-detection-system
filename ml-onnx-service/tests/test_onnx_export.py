@@ -5,9 +5,9 @@ pytest.importorskip("onnx")
 pytest.importorskip("onnxruntime")
 pytest.importorskip("skl2onnx")
 
-from ml_pipeline.models.supervised.lightgbm_model import LightGBMFraudModel
-from ml_pipeline.pipeline.onnx_exporter import ONNXExporter
-from ml_pipeline.utils.onnx_utils import verify_onnx_equivalence
+from app.models.supervised.lightgbm_model import LightGBMFraudModel
+from app.pipeline.onnx_exporter import ONNXExporter
+from app.utils.onnx_utils import verify_onnx_equivalence
 
 
 @pytest.fixture

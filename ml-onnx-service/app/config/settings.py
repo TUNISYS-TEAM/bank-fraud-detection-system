@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     # -------------------- Project root --------------------
-    project_root: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[3])
+    project_root: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[2])
 
     # -------------------- Relative paths --------------------
     data_raw: Path = Field(default=Path("data/raw"))
@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     artifacts_logs: Path = Field(default=Path("artifacts/logs"))
 
     # -------------------- Config paths --------------------
-    model_config_json: Path = Field(default=Path("src/ml_pipeline/config/model_config.json"))
+    model_config_json: Path = Field(default=Path("app/config/model_config.json"))
 
     # -------------------- Global runtime --------------------
     random_seed: int = Field(default=42)

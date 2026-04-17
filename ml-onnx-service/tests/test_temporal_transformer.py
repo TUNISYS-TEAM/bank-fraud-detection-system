@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml_pipeline.transformers.behavioral.temporal_features import TemporalFeatureTransformer
+from shared_ml.preprocessing.behavioral.temporal_features import TemporalFeatureTransformer
 
 
 @pytest.fixture

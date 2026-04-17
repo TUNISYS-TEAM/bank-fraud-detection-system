@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ml-pipeline"
+name = "ml-onnx-service"
 version = "1.0.0"
-description = "Pipeline de détection de fraude"
+description = "Service d'inférence ONNX pour la détection de fraude"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -32,13 +32,13 @@ dependencies = [
 ]
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"ml_onnx_service" = "app"}
 
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["ml_pipeline*"]
+where = ["."]
+include = ["ml_onnx_service*"]
 exclude = ["tests*", "scripts*"]
 
 [tool.setuptools.package-data]
-"ml_pipeline.utils.resources" = ["*.json"]
-"ml_pipeline.config" = ["*.json"]
+"ml_onnx_service.utils.resources" = ["*.json"]
+"ml_onnx_service.config" = ["*.json"]

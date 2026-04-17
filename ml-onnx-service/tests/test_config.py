@@ -1,9 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ml_pipeline.config.model_config import ModelConfig
-from ml_pipeline.config.settings import settings
-from ml_pipeline.config.config_schema import (
+from shared_ml.config.model_config import ModelConfig
+from shared_ml.schemas.config_schema import (
     GlobalConfig,
     LightGBMConfig,
     XGBoostConfig,

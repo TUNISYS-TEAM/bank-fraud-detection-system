@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml_pipeline.pipeline.data_split import temporal_split
+from shared_ml.evaluation.data_split import temporal_split
 from shared_ml.pipeline.fraud_pipeline import (
     FraudFeaturePipeline,
     create_tree_pipeline,

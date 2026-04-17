@@ -32,7 +32,7 @@ import onnx
 import onnxmltools
 from onnxmltools.convert.common.data_types import FloatTensorType
 
-sys.path.insert(0, '/app/src')
+sys.path.insert(0, '/app')
 
 from shared_ml.evaluation.thresholding import (
     find_threshold_by_fbeta,

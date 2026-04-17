@@ -1,0 +1,29 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+.dist/
+.build/
+*.egg-info/
+
+# Data and Artifacts
+data/
+artifacts/
+logs/
+output/
+.onnx/
+model_checkpoints/
+
+# System
+.DS_Store
+.git/
+.gitignore
+.dockerignore

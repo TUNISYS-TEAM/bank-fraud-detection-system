@@ -34,6 +34,20 @@ class HybridEngine:
             raise
 
     @staticmethod
+    def _compute_risk_level(score: float, threshold: float) -> str:
+        """
+        Taxonomie de risque unifiée pour toutes les branches d'inférence.
+        Alignée avec les niveaux attendus par le backend Java.
+        """
+        if score >= 0.9:
+            return "CRITICAL"
+        if score >= threshold:
+            return "HIGH"
+        if score >= threshold / 2:
+            return "MEDIUM"
+        return "LOW"
+
+    @staticmethod
     def _predict_hybrid(bundle: HybridEnsembleBundle, features_raw: pd.DataFrame) -> Dict[str, Any]:
         # A. Preprocessing (interne au bundle)
         X_trans = bundle.preprocessor.transform(features_raw)
@@ -61,7 +75,7 @@ class HybridEngine:
         # D. Construction de la réponse (Alignement Java)
         return {
             "fraud_score": score,
-            "risk_level": "HIGH" if score >= threshold else ("MEDIUM" if score > threshold/2 else "LOW"),
+            "risk_level": HybridEngine._compute_risk_level(score, threshold),
             "alert_type": "HYBRID_ENSEMBLE",
             "supervised_score": float((rf_score[0] + xgb_score[0]) / 2),
             "anomaly_score": float(copod_score[0]),
@@ -85,12 +99,14 @@ class HybridEngine:
             X_proc = preprocessor.transform(features_raw)
             if hasattr(X_proc, 'toarray'): X_proc = X_proc.toarray()
             
-        score = float(model.predict_proba(X_proc)[0])
+        # predict_proba retourne un ndarray (N,) — on extrait le premier score (inférence unitaire)
+        scores = model.predict_proba(X_proc)
+        score = float(scores[0]) if len(scores) > 0 else 0.0
         threshold = getattr(model, 'threshold_', 0.5)
         
         return {
             "fraud_score": score,
-            "risk_level": "CRITICAL" if score > 0.9 else ("HIGH" if score >= threshold else "LOW"),
+            "risk_level": HybridEngine._compute_risk_level(score, threshold),
             "alert_type": getattr(model, 'name', 'ANOMALY').upper(),
             "supervised_score": 0.0,
             "anomaly_score": score,

@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 from app.models.model_registry import registry
 from app.inference.hybrid_engine import HybridEngine
-from app.inference.preprocessing import FeatureEngineer # Nouvel Import
+from app.inference.preprocessing import FeatureEngineer 
 from shared_ml.contracts.prediction import (
     PredictRequest, BatchPredictRequest, PredictResponse, BatchPredictResponse
 )

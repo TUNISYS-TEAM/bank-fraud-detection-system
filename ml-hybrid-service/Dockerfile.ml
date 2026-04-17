@@ -9,11 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# --- ADD SHARED-ML ---
-COPY ../shared-ml /app/shared-ml
-RUN pip install -e /app/shared-ml[hybrid]
+# Installer shared-ml (package commun aux deux services ML)
+COPY shared-ml /shared-ml
+RUN pip install --no-cache-dir /shared-ml
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -17,15 +17,20 @@ RUN useradd --create-home --shell /bin/bash appuser
 COPY requirements-ml.txt .
 COPY pyproject.toml .
 
+# Installer shared-ml (via contexte additionnel BuildKit)
+COPY --from=shared-ml . /shared-ml
+RUN pip install --no-cache-dir /shared-ml
+
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements-ml.txt
 
 # Copy project source
 COPY . .
 
-# Install package
+# Install package (ml-onnx-service mapped to app folder)
 RUN pip install --no-cache-dir -e .
 
+# Create runtime directories
 RUN mkdir -p \
     /app/artifacts/exported_models \
     /app/artifacts/exported_onnx \
@@ -44,10 +49,7 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Set Python path
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
 
-# Expose le port de l'API
-EXPOSE 8888
-
-# Keep container alive and ready for inference commands
+# Keep container alive
 CMD ["tail", "-f", "/dev/null"]

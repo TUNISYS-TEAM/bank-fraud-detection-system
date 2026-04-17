@@ -183,44 +183,7 @@ def temporal_split_by_time(df, time_col, train_ratio=0.7, val_ratio=0.15):
     return train_df, val_df, test_df
 
 
-# ------------------------------------------------------------------------------
-# Hybrid ensemble wrapper (for inference)
-# ------------------------------------------------------------------------------
-
-class HybridEnsembleBundle:
-    """Wrapper to hold all components of the hybrid model for easy deployment."""
-    def __init__(self, rf_model, xgb_model, copod_model, meta_learner, preprocessor, feature_names, threshold):
-        self.rf_model = rf_model
-        self.xgb_model = xgb_model
-        self.copod_model = copod_model
-        self.meta_learner = meta_learner
-        self.preprocessor = preprocessor
-        self.feature_names = feature_names
-        self.threshold = threshold
-        self.copod_min = None
-        self.copod_max = None
-
-    def set_copod_normalization(self, min_val, max_val):
-        self.copod_min = min_val
-        self.copod_max = max_val
-
-    def predict_proba(self, X):
-        X_trans = self.preprocessor.transform(X)
-        if hasattr(X_trans, 'toarray'):
-            X_trans = X_trans.toarray()
-
-        rf_score = self.rf_model.predict_proba(X_trans)[:, 1]
-        xgb_score = self.xgb_model.predict_proba(X_trans)[:, 1]
-
-        copod_raw = self.copod_model.decision_function(X_trans)
-        if self.copod_min is not None and self.copod_max is not None:
-            copod_score = (copod_raw - self.copod_min) / (self.copod_max - self.copod_min + 1e-6)
-            copod_score = np.clip(copod_score, 0, 1)
-        else:
-            copod_score = copod_raw
-
-        stacked = np.column_stack([rf_score, xgb_score, copod_score])
-        return self.meta_learner.predict_proba(stacked)[:, 1]
+from app.models.bundles import HybridEnsembleBundle
 
 
 # ------------------------------------------------------------------------------

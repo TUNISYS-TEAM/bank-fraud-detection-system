@@ -13,7 +13,7 @@ import hashlib
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, '/app/src')
+sys.path.insert(0, '/app')
 
 from shared_ml.inference import FraudInferenceEngine
 from shared_ml.explanation import FraudExplainabilityEngine

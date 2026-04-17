@@ -11,12 +11,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from ml_pipeline.inference.feature_schema import FeatureSchema
+from shared_ml.schemas.feature_schema import FeatureSchema
 from shared_ml.pipeline.fraud_pipeline import FraudFeaturePipeline
-from ml_pipeline.utils.logging_config import setup_logging
+from shared_ml.utils.logging_config import setup_logging
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]  
 DEFAULT_RAW_DATA = PROJECT_ROOT / "data" / "samples" / "transactions.parquet"
 
 

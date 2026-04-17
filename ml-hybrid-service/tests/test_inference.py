@@ -68,6 +68,8 @@ def test_predict_batch_success(mock_predict, mock_get_model, mock_hybrid_bundle)
 
     payload = {
         "model_uuid": "test-uuid-batch",
+        "storage_path": "path/to/batch_model",
+        "pipeline_path": "path/to/batch_pipeline",
         "batch": [
             {"transaction": {"TX_Amount": 10.0}},
             {"transaction": {"TX_Amount": 20.0}}

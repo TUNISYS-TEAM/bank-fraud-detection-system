@@ -9,14 +9,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from ml_pipeline.pipeline.data_split import temporal_split, save_split_report
+from shared_ml.evaluation.data_split import temporal_split, save_split_report
 from shared_ml.pipeline.fraud_pipeline import (
     FraudFeaturePipeline,
     create_catboost_pipeline,
     create_dl_pipeline,
     create_tree_pipeline,
 )
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = PROJECT_ROOT / "data" / "samples" / "transactions.parquet"
 DEFAULT_PARQUET_DIR = PROJECT_ROOT / "artifacts" / "exported_parquet"
