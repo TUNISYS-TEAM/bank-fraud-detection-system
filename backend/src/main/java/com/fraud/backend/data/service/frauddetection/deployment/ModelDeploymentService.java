@@ -9,9 +9,6 @@ import com.fraud.backend.data.repository.frauddetection.ModelDeploymentHistoryRe
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
 import com.fraud.backend.data.service.accessmanagement.UserService;
 import com.fraud.backend.data.service.frauddetection.training.ModelProvider;
-import com.fraud.backend.data.repository.corebanking.ClientBehaviorRepository;
-import com.fraud.backend.data.repository.corebanking.TransactionRepository;
-import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
 import com.fraud.backend.data.event.ModelDeploymentEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,9 +30,6 @@ public class ModelDeploymentService implements ModelProvider {
 
     private final ModelMLRepository modelMLRepository;
     private final ModelDeploymentHistoryRepository deploymentHistoryRepository;
-    private final TransactionRepository transactionRepository;
-    private final FraudAlertRepository fraudAlertRepository;
-    private final ClientBehaviorRepository clientBehaviorRepository;
     private final UserService userService;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -47,6 +41,9 @@ public class ModelDeploymentService implements ModelProvider {
     private final Map<Long, ModelML> perManagerCache = new ConcurrentHashMap<>();
     private final Map<Long, LocalDateTime> cacheTimestamps = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 300_000;
+
+    // Number of bins for score histogram (used for PSI calculation)
+    private static final int PSI_HISTOGRAM_BINS = 10;
 
     private Long getEffectiveManagerId() {
         try {
@@ -214,11 +211,6 @@ public class ModelDeploymentService implements ModelProvider {
         }
     }
 
-    private void cleanupManagerMlData(UUID modelUuid, Long managerId) {
-        // Intentionally left empty – we never delete scoring data
-        log.debug("Preserving scoring data for model {} (no cleanup)", modelUuid);
-    }
-
     private void deactivateCurrentDeploymentIfExists(Long managerId) {
         if (managerId == null) return;
 
@@ -262,6 +254,7 @@ public class ModelDeploymentService implements ModelProvider {
         snapshot.put("f1Score", model.getF1Score());
 
         double avgScore = 0.5;
+        List<Double> validationScores = null;
         if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingResults")) {
             Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters().get("_trainingResults");
             if (trainingResults.containsKey("metrics")) {
@@ -270,12 +263,55 @@ public class ModelDeploymentService implements ModelProvider {
                     avgScore = ((Number) metrics.get("avg_fraud_score")).doubleValue();
                 }
             }
+            // Try to retrieve validation scores for histogram
+            if (trainingResults.containsKey("validation_scores")) {
+                validationScores = (List<Double>) trainingResults.get("validation_scores");
+            }
         }
         snapshot.put("avg_fraud_score", avgScore);
         snapshot.put("version", model.getVersion());
         snapshot.put("modelName", model.getModelName());
         snapshot.put("modelType", model.getModelType());
+
+        // Build histogram for PSI calculation (10 bins)
+        List<Double> histogram = buildScoreHistogram(validationScores, avgScore);
+        snapshot.put("score_histogram", histogram);
+
         return snapshot;
+    }
+
+    /**
+     * Build a normalized histogram (10 bins) from validation scores.
+     * If no scores are available, fallback to a uniform distribution.
+     */
+    private List<Double> buildScoreHistogram(List<Double> scores, double defaultMean) {
+        List<Double> histogram = new ArrayList<>(PSI_HISTOGRAM_BINS);
+        for (int i = 0; i < PSI_HISTOGRAM_BINS; i++) {
+            histogram.add(0.0);
+        }
+
+        if (scores == null || scores.isEmpty()) {
+            // Fallback: uniform distribution
+            double uniform = 1.0 / PSI_HISTOGRAM_BINS;
+            for (int i = 0; i < PSI_HISTOGRAM_BINS; i++) {
+                histogram.set(i, uniform);
+            }
+            return histogram;
+        }
+
+        int total = scores.size();
+        for (double score : scores) {
+            int bin = (int) Math.floor(score * PSI_HISTOGRAM_BINS);
+            if (bin >= PSI_HISTOGRAM_BINS) bin = PSI_HISTOGRAM_BINS - 1;
+            if (bin < 0) bin = 0;
+            histogram.set(bin, histogram.get(bin) + 1.0);
+        }
+
+        // Normalize
+        for (int i = 0; i < PSI_HISTOGRAM_BINS; i++) {
+            histogram.set(i, histogram.get(i) / total);
+        }
+        return histogram;
     }
 
     private ModelSummaryResponse toModelSummaryResponse(ModelML model) {

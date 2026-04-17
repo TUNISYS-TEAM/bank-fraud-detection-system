@@ -33,13 +33,21 @@ export interface ModelConfig {
   modelName: string;
   modelType: string;
   hyperparameters: {
-    n_estimators: number;
-    max_depth: number;
+    n_estimators?: number;
+    max_depth?: number;
     learning_rate?: number;
     subsample?: number;
     num_leaves?: number;
     min_child_samples?: number;
     colsample_bytree?: number;
+    // New model parameters (explicit for Angular template compiler)
+    strategy?: string;
+    and_high_conf_threshold?: number;
+    n_weight_restarts?: number;
+    encoding_dim?: number;
+    epochs?: number;
+    batch_size?: number;
+    contamination?: number;
     [key: string]: any;
   };
   testSize: number;

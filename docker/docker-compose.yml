@@ -138,6 +138,30 @@ services:
       timeout: 10s
       retries: 3
 
+  # Service d'inférence Hybride (FastAPI)
+  ml-hybrid-service:
+    build:
+      context: ../ml-hybrid-service
+      dockerfile: Dockerfile.ml
+    container_name: fraud-ml-hybrid
+    ports:
+      - "${ML_HYBRID_SERVICE_PORT:-8001}:8000"
+    environment:
+      - MINIO_ENDPOINT=${ML_HYBRID_MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${ML_HYBRID_MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${ML_HYBRID_MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${ML_HYBRID_MINIO_BUCKET}
+      - LOG_LEVEL=INFO
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
   kafka:
     image: apache/kafka:3.7.0
     container_name: fraud-kafka
@@ -159,6 +183,8 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+
+
 
 volumes:
   postgres_app_data:

@@ -52,51 +52,53 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     @for (model of availableModels; track model.type) {
                     <button (click)="model.status === 'active' ? selectedModelType = model.type : null"
-                        class="relative p-6 border-2 rounded-2xl text-left transition-all group" [ngClass]="{
-                                        'border-blue-500 bg-blue-50/30 ring-1 ring-blue-500': selectedModelType === model.type,
-                                        'border-gray-200 bg-white hover:shadow-md': selectedModelType !== model.type,
-                                        'opacity-80 cursor-not-allowed': model.status === 'soon'
-                                    }">
-                        <!-- Icon and Badge -->
-                        <div class="flex justify-between items-start mb-6">
-                            <div class="w-12 h-12 rounded-xl flex items-center justify-center transition-colors shadow-sm"
-                                [ngClass]="{
-                                                 'bg-green-100 text-green-600': model.type === 'RANDOM_FOREST',
-                                                 'bg-orange-100 text-orange-600': model.type === 'XGBOOST',
-                                                'bg-blue-100 text-blue-600': model.type === 'LIGHTGBM',
-                                                'bg-emerald-100 text-emerald-600': model.type === 'BALANCED_RANDOM_FOREST'
+                        class="relative pt-6 pb-4 px-6 border border-slate-200 rounded-3xl text-left transition-all duration-300 group flex flex-col h-full bg-white shadow-sm"
+                        [ngClass]="{
+                                         'border-blue-600 ring-1 ring-blue-600 shadow-[0_8px_30px_rgb(0,0,0,0.04)]': selectedModelType === model.type,
+                                         'hover:border-slate-300 hover:shadow-md hover:-translate-y-[2px]': selectedModelType !== model.type,
+                                         'opacity-60 cursor-not-allowed': model.status === 'soon'
+                                     }" [disabled]="model.status === 'soon'">
+
+                        <!-- Icon Container -->
+                        <div class="w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-105 border mb-4"
+                            [ngClass]="{
+                                                 'bg-emerald-50 border-emerald-100 text-emerald-600': model.type === 'RANDOM_FOREST' || model.type === 'BALANCED_RANDOM_FOREST',
+                                                 'bg-orange-50 border-orange-100 text-orange-600': model.type === 'XGBOOST',
+                                                'bg-blue-50 border-blue-100 text-blue-600': model.type === 'LIGHTGBM',
+                                                'bg-indigo-50 border-indigo-100 text-indigo-600': model.type === 'HYBRID_ENSEMBLE',
+                                                'bg-purple-50 border-purple-100 text-purple-600': model.type === 'AUTOENCODER',
+                                                'bg-teal-50 border-teal-100 text-teal-600': model.type === 'ECOD' || model.type === 'COPOD'
                                             }">
-
-                                <i-feather
-                                    [name]="model.type === 'RANDOM_FOREST' ? 'git-merge' : model.type === 'XGBOOST' ? 'trending-up' : model.type === 'LIGHTGBM' ? 'zap' : 'shield'"
-                                    class="w-6 h-6">
-
-                                </i-feather>
+                                <i-feather [name]="model.icon" class="w-7 h-7 stroke-[1.5]"></i-feather>
                             </div>
 
                             @if (selectedModelType === model.type && model.status === 'active') {
-                            <div
-                                class="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
+                            <div class="absolute top-5 right-5 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center border-2 border-white shadow-lg animate-fadeIn">
                                 <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
-                                        d="M5 13l4 4L19 7" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7" />
                                 </svg>
                             </div>
                             }
+
+                        <!-- Content Area -->
+                        <div class="mb-1">
+                            <h3 class="text-lg font-black text-slate-900 mb-0.5 leading-tight tracking-tight">{{
+                                model.name }}</h3>
+                            <div class="min-h-[36px]">
+                                <p class="text-[11px] text-slate-500 font-semibold leading-relaxed line-clamp-2">{{
+                                    model.description }}</p>
+                            </div>
                         </div>
 
-                        <!-- Info -->
-                        <h3 class="font-bold text-gray-900 mb-1">{{ model.name }}</h3>
-                        <p class="text-xs text-gray-500 mb-4 font-medium leading-relaxed">{{ model.description }}</p>
-
-                        <div class="flex items-center gap-3">
+                        <!-- Bottom Badges Area (Ensures same height for all 8 cards) -->
+                        <div class="mt-auto flex items-center gap-2 pt-1 min-h-[28px]">
                             @if (model.recommended) {
-                            <span class="text-[10px] bg-green-100 text-green-700 px-3 py-1 rounded-lg font-bold">
+                            <span class="text-[9px] bg-emerald-100/80 text-emerald-700 px-3 py-1 rounded-lg font-black uppercase tracking-wider border border-emerald-200">
                                 Recommandé
                             </span>
                             }
                             @if (model.status === 'soon') {
-                            <span class="text-[10px] bg-gray-100 text-gray-500 px-3 py-1 rounded-lg font-bold">
+                            <span class="text-[10px] bg-slate-100 text-slate-400 px-3 py-1 rounded-lg font-black uppercase tracking-wider">
                                 Bientôt
                             </span>
                             }
@@ -111,20 +113,23 @@
                     <!-- Risk Threshold -->
                     <div class="space-y-4 pt-2 pb-6 border-b border-gray-200">
                         <div class="flex justify-between items-center">
-                            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Seuil d'Alerte — Score de Risque</label>
+                            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Seuil d'Alerte —
+                                Score de Risque</label>
                             <div class="relative mr-6 -translate-y-1">
                                 <input type="number" [(ngModel)]="thresholdPercent" step="0.1" min="1" max="99"
                                     class="w-24 px-4 py-2 text-[13px] font-black text-blue-700 bg-blue-50/50 border border-blue-100 rounded-xl text-center focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-300 transition-all cursor-pointer hover:bg-white shadow-sm"
                                     placeholder="50.0">
-                                <div class="absolute -right-5 top-1/2 -translate-y-1/2 text-[12px] font-bold text-blue-400">%</div>
+                                <div
+                                    class="absolute -right-5 top-1/2 -translate-y-1/2 text-[12px] font-bold text-blue-400">
+                                    %</div>
                             </div>
                         </div>
-                        <input type="range" min="0.01" max="0.99" step="0.001"
-                            [(ngModel)]="detectionThreshold"
+                        <input type="range" min="0.01" max="0.99" step="0.001" [(ngModel)]="detectionThreshold"
                             [style.background]="getSliderBackground(detectionThreshold, 0.01, 0.99)"
                             class="simulation-slider w-full h-2 rounded-2xl appearance-none cursor-pointer">
                         <p class="text-xs text-slate-400">
-                            Transactions avec un score ≥ {{ detectionThreshold * 100 | number:'1.1-1' }}% seront signalées comme frauduleuses
+                            Transactions avec un score ≥ {{ detectionThreshold * 100 | number:'1.1-1' }}% seront
+                            signalées comme frauduleuses
                         </p>
                     </div>
 
@@ -350,15 +355,18 @@
                                 </svg>
                             </div>
                         </div>
+                        }
 
+                        @if (selectedModelType === 'HYBRID_ENSEMBLE') {
+                        <!-- Hybrid Ensemble Parameters -->
                         <div class="space-y-3">
-                            <label class="block text-sm font-bold text-gray-600">Min Samples Split</label>
+                            <label class="block text-sm font-bold text-gray-600">Stratégie d'Ensemble</label>
                             <div class="relative group">
-                                <select [(ngModel)]="brfConfig.hyperparameters['min_samples_split']"
-                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all text-sm font-medium appearance-none cursor-pointer">
-                                    <option [ngValue]="2">2 (Défaut)</option>
-                                    <option [ngValue]="10">10 échantillons</option>
-                                    <option [ngValue]="20">20 échantillons (Suggéré)</option>
+                                <select [(ngModel)]="hybridConfig.hyperparameters.strategy"
+                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm font-medium appearance-none cursor-pointer">
+                                    <option value="weighted">Pondéré (Weighted)</option>
+                                    <option value="and">Intersection (AND)</option>
+                                    <option value="or_boost">Union Boostée (OR)</option>
                                 </select>
                                 <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -367,15 +375,106 @@
                                 </svg>
                             </div>
                         </div>
-
                         <div class="space-y-3">
-                            <label class="block text-sm font-bold text-gray-600">Min Samples Leaf</label>
+                            <label class="block text-sm font-bold text-gray-600">Seuil Haute Confiance (AND)</label>
                             <div class="relative group">
-                                <select [(ngModel)]="brfConfig.hyperparameters['min_samples_leaf']"
-                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all text-sm font-medium appearance-none cursor-pointer">
-                                    <option [ngValue]="1">1 (Défaut)</option>
-                                    <option [ngValue]="5">5 échantillons</option>
-                                    <option [ngValue]="10">10 échantillons (Suggéré)</option>
+                                <select [(ngModel)]="hybridConfig.hyperparameters.and_high_conf_threshold"
+                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm font-medium appearance-none cursor-pointer">
+                                    <option [ngValue]="0.75">0.75 (Sensible)</option>
+                                    <option [ngValue]="0.85">0.85 (Standard)</option>
+                                    <option [ngValue]="0.95">0.95 (Stricte)</option>
+                                </select>
+                                <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
+                        </div>
+                        }
+
+                        @if (selectedModelType === 'AUTOENCODER') {
+                        <!-- Autoencoder Parameters -->
+                        <div class="space-y-3">
+                            <label class="block text-sm font-bold text-gray-600">Dimension d'Encodage</label>
+                            <div class="relative group">
+                                <select [(ngModel)]="aeConfig.hyperparameters.encoding_dim"
+                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all text-sm font-medium appearance-none cursor-pointer">
+                                    <option [ngValue]="16">16 (Compact)</option>
+                                    <option [ngValue]="32">32 (Standard)</option>
+                                    <option [ngValue]="64">64 (Large)</option>
+                                </select>
+                                <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            <label class="block text-sm font-bold text-gray-600">Époques d'Entraînement</label>
+                            <div class="relative group">
+                                <select [(ngModel)]="aeConfig.hyperparameters.epochs"
+                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all text-sm font-medium appearance-none cursor-pointer">
+                                    <option [ngValue]="10">10 époques (Rapide)</option>
+                                    <option [ngValue]="20">20 époques (Standard)</option>
+                                    <option [ngValue]="50">50 époques (Approfondi)</option>
+                                </select>
+                                <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            <label class="block text-sm font-bold text-gray-600">Taille de Batch</label>
+                            <div class="relative group">
+                                <select [(ngModel)]="aeConfig.hyperparameters.batch_size"
+                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all text-sm font-medium appearance-none cursor-pointer">
+                                    <option [ngValue]="256">256 (Petit)</option>
+                                    <option [ngValue]="1024">1024 (Standard)</option>
+                                    <option [ngValue]="2048">2048 (Grand)</option>
+                                </select>
+                                <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
+                        </div>
+                        }
+
+                        @if (selectedModelType === 'ECOD') {
+                        <!-- ECOD Parameters -->
+                        <div class="space-y-3">
+                            <label class="block text-sm font-bold text-gray-600">Taux de Contamination</label>
+                            <div class="relative group">
+                                <select [(ngModel)]="ecodConfig.hyperparameters.contamination"
+                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all text-sm font-medium appearance-none cursor-pointer">
+                                    <option [ngValue]="0.01">0.01 (Très conservateur)</option>
+                                    <option [ngValue]="0.05">0.05 (Standard — Recommandé)</option>
+                                    <option [ngValue]="0.1">0.10 (Agressif)</option>
+                                </select>
+                                <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
+                        </div>
+                        }
+
+                        @if (selectedModelType === 'COPOD') {
+                        <!-- COPOD Parameters -->
+                        <div class="space-y-3">
+                            <label class="block text-sm font-bold text-gray-600">Taux de Contamination</label>
+                            <div class="relative group">
+                                <select [(ngModel)]="copodConfig.hyperparameters.contamination"
+                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all text-sm font-medium appearance-none cursor-pointer">
+                                    <option [ngValue]="0.01">0.01 (Très conservateur)</option>
+                                    <option [ngValue]="0.05">0.05 (Standard — Recommandé)</option>
+                                    <option [ngValue]="0.1">0.10 (Agressif)</option>
                                 </select>
                                 <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -517,7 +616,11 @@
                             <h3 class="text-lg font-bold text-gray-800">
                                 {{ selectedModelType === 'RANDOM_FOREST' ? 'Random Forest' :
                                 selectedModelType === 'XGBOOST' ? 'XGBoost' :
-                                selectedModelType === 'BALANCED_RANDOM_FOREST' ? 'Balanced Random Forest' : 'LightGBM'
+                                selectedModelType === 'BALANCED_RANDOM_FOREST' ? 'Balanced Random Forest' :
+                                selectedModelType === 'HYBRID_ENSEMBLE' ? 'Hybride Ensemble' :
+                                selectedModelType === 'AUTOENCODER' ? 'Autoencoder' :
+                                selectedModelType === 'ECOD' ? 'ECOD' :
+                                selectedModelType === 'COPOD' ? 'COPOD' : 'LightGBM'
                                 }}
                             </h3>
                             <p class="text-xs text-gray-500 font-medium">Entraînement du modèle en cours...</p>
@@ -600,6 +703,14 @@
                                 class="w-full h-full">
                                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                             </svg>
+                            } @else if (selectedModelType === 'HYBRID_ENSEMBLE') {
+                            <i-feather name="layers" class="w-full h-full"></i-feather>
+                            } @else if (selectedModelType === 'AUTOENCODER') {
+                            <i-feather name="brain" class="w-full h-full"></i-feather>
+                            } @else if (selectedModelType === 'ECOD') {
+                            <i-feather name="compass" class="w-full h-full"></i-feather>
+                            } @else if (selectedModelType === 'COPOD') {
+                            <i-feather name="activity" class="w-full h-full"></i-feather>
                             } @else {
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
@@ -614,12 +725,15 @@
                                 dernier entraînement" }}
                             </h3>
                             <p class="text-[10px] text-emerald-600 font-black uppercase tracking-widest">
-                                {{ wasLastJobTest() ? 'TEST RÉUSSI' : 'ENTRAÎNEMENT RÉUSSI' }} • {{ selectedModelType
-                                === 'RANDOM_FOREST' ? 'Random Forest' :
+                                {{ wasLastJobTest() ? 'TEST RÉUSSI' : 'ENTRAÎNEMENT RÉUSSI' }} • {{
+                                selectedModelType === 'RANDOM_FOREST' ? 'Random Forest' :
                                 selectedModelType === 'XGBOOST' ? 'XGBoost' :
-                                selectedModelType === 'BALANCED_RANDOM_FOREST' ? 'Balanced Random Forest' : 'LightGBM'
+                                selectedModelType === 'BALANCED_RANDOM_FOREST' ? 'Balanced Random Forest' :
+                                selectedModelType === 'HYBRID_ENSEMBLE' ? 'Hybride Ensemble' :
+                                selectedModelType === 'AUTOENCODER' ? 'Autoencoder' :
+                                selectedModelType === 'ECOD' ? 'ECOD' :
+                                selectedModelType === 'COPOD' ? 'COPOD' : 'LightGBM'
                                 }}
-
                             </p>
                         </div>
                     </div>
@@ -986,8 +1100,8 @@
                             <div
                                 class="w-6 h-6 rounded bg-gray-100/80 flex items-center justify-center shadow-sm transition-all">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                                    class="w-3.5 h-3.5 text-gray-500">
+                                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                    stroke-linejoin="round" class="w-3.5 h-3.5 text-gray-500">
                                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                                 </svg>
                             </div>
@@ -1166,6 +1280,6 @@
 <app-model-details-modal [modelResult]="selectedModelForDetails"
     (close)="showModelDetailsModal = false; selectedModelForDetails = null">
 </app-model-details-modal>
+}}
 }
-}
-}
+</div>

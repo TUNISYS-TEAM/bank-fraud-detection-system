@@ -76,6 +76,58 @@ public class ModelTrainingController {
         }
     }
 
+    @PostMapping("/hybrid-ensemble")
+    public ResponseEntity<TrainingJobResponse> trainHybridEnsemble(
+            @Valid @RequestBody TrainingJobRequest request) {
+        log.info("Training Hybrid Ensemble request received for dataset: {}", request.getDatasetUuid());
+        try {
+            TrainingJobResponse response = trainingService.trainHybridEnsemble(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error training Hybrid Ensemble: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to train Hybrid Ensemble model: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/autoencoder")
+    public ResponseEntity<TrainingJobResponse> trainAutoencoder(
+            @Valid @RequestBody TrainingJobRequest request) {
+        log.info("Training Autoencoder request received for dataset: {}", request.getDatasetUuid());
+        try {
+            TrainingJobResponse response = trainingService.trainAutoencoder(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error training Autoencoder: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to train Autoencoder model: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/ecod")
+    public ResponseEntity<TrainingJobResponse> trainECOD(
+            @Valid @RequestBody TrainingJobRequest request) {
+        log.info("Training ECOD request received for dataset: {}", request.getDatasetUuid());
+        try {
+            TrainingJobResponse response = trainingService.trainECOD(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error training ECOD: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to train ECOD model: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/copod")
+    public ResponseEntity<TrainingJobResponse> trainCOPOD(
+            @Valid @RequestBody TrainingJobRequest request) {
+        log.info("Training COPOD request received for dataset: {}", request.getDatasetUuid());
+        try {
+            TrainingJobResponse response = trainingService.trainCOPOD(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error training COPOD: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to train COPOD model: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/{modelUuid}/metrics")
     public ResponseEntity<ModelMetricsResponse> getModelMetrics(@PathVariable UUID modelUuid) {
         log.info("Getting metrics for model: {}", modelUuid);

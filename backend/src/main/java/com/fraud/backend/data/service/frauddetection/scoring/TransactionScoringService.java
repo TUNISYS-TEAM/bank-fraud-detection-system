@@ -2,6 +2,7 @@ package com.fraud.backend.data.service.frauddetection.scoring;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fraud.backend.api.dto.frauddetection.model.response.ScoringResult;
 import com.fraud.backend.data.entity.corebanking.Account;
 import com.fraud.backend.data.entity.corebanking.ClientBehavior;
 import com.fraud.backend.data.entity.corebanking.Transaction;
@@ -11,7 +12,7 @@ import com.fraud.backend.data.repository.corebanking.ClientBehaviorRepository;
 import com.fraud.backend.data.repository.corebanking.TransactionRepository;
 import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
-import com.fraud.backend.data.service.frauddetection.deployment.PythonInferenceService;
+import com.fraud.backend.data.service.frauddetection.deployment.InferenceService;
 import com.fraud.backend.data.service.frauddetection.monitoring.ModelDriftMonitoringService;
 import com.fraud.backend.data.service.frauddetection.training.ModelProvider;
 
@@ -38,18 +39,16 @@ public class TransactionScoringService {
     private final ModelMLRepository modelMLRepository;
     private final FraudAlertRepository fraudAlertRepository;
     private final ClientBehaviorRepository clientBehaviorRepository;
-    private final PythonInferenceService pythonInferenceService;
+    private final InferenceService inferenceService;
     private final ModelProvider modelProvider;
     private final ModelDriftMonitoringService modelDriftMonitoringService;
     private final ObjectMapper objectMapper;
-
 
     @Value("${fraud.scoring.batch-size:200}")
     private int batchSize;
 
     private final AtomicInteger transactionsSinceLastDriftCheck = new AtomicInteger(0);
     private static final int DRIFT_CHECK_INTERVAL = 500;
-
 
     private final ExecutorService driftExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "drift-check-thread");
@@ -68,7 +67,7 @@ public class TransactionScoringService {
             ModelMLRepository modelMLRepository,
             FraudAlertRepository fraudAlertRepository,
             ClientBehaviorRepository clientBehaviorRepository,
-            PythonInferenceService pythonInferenceService,
+            InferenceService inferenceService,
             ModelProvider modelProvider,
             ModelDriftMonitoringService modelDriftMonitoringService,
             ObjectMapper objectMapper) {
@@ -76,7 +75,7 @@ public class TransactionScoringService {
         this.modelMLRepository = modelMLRepository;
         this.fraudAlertRepository = fraudAlertRepository;
         this.clientBehaviorRepository = clientBehaviorRepository;
-        this.pythonInferenceService = pythonInferenceService;
+        this.inferenceService = inferenceService;
         this.modelProvider = modelProvider;
         this.modelDriftMonitoringService = modelDriftMonitoringService;
         this.objectMapper = objectMapper;
@@ -88,8 +87,10 @@ public class TransactionScoringService {
         driftExecutor.shutdown();
         inferenceExecutor.shutdown();
         try {
-            if (!driftExecutor.awaitTermination(5, TimeUnit.SECONDS)) driftExecutor.shutdownNow();
-            if (!inferenceExecutor.awaitTermination(60, TimeUnit.SECONDS)) inferenceExecutor.shutdownNow();
+            if (!driftExecutor.awaitTermination(5, TimeUnit.SECONDS))
+                driftExecutor.shutdownNow();
+            if (!inferenceExecutor.awaitTermination(60, TimeUnit.SECONDS))
+                inferenceExecutor.shutdownNow();
         } catch (InterruptedException e) {
             driftExecutor.shutdownNow();
             inferenceExecutor.shutdownNow();
@@ -106,8 +107,13 @@ public class TransactionScoringService {
             this.alert = alert;
         }
 
-        public UUID getTransactionUuid() { return transactionUuid; }
-        public FraudAlert getAlert() { return alert; }
+        public UUID getTransactionUuid() {
+            return transactionUuid;
+        }
+
+        public FraudAlert getAlert() {
+            return alert;
+        }
     }
 
     @Transactional
@@ -137,7 +143,7 @@ public class TransactionScoringService {
         try {
             log.debug("Scoring transaction {} with model {}", transaction.getTransactionUuid(), model.getModelName());
 
-            Map<String, Object> prediction = pythonInferenceService.predict(
+            Map<String, Object> prediction = inferenceService.predict(
                     model.getModelUuid(),
                     transaction.getAccount().getId(),
                     transaction.getTransactionUuid());
@@ -172,8 +178,10 @@ public class TransactionScoringService {
         // Sort by account + time for correct velocity calculation
         transactions.sort((t1, t2) -> {
             int acc = Long.compare(t1.getAccount().getId(), t2.getAccount().getId());
-            if (acc != 0) return acc;
-            if (t1.getTransactionDate() == null || t2.getTransactionDate() == null) return 0;
+            if (acc != 0)
+                return acc;
+            if (t1.getTransactionDate() == null || t2.getTransactionDate() == null)
+                return 0;
             return t1.getTransactionDate().compareTo(t2.getTransactionDate());
         });
 
@@ -205,14 +213,15 @@ public class TransactionScoringService {
             long secondsSinceLastTx = -1;
             if (prevDate != null && tx.getTransactionDate() != null) {
                 secondsSinceLastTx = Duration.between(prevDate, tx.getTransactionDate()).getSeconds();
-                if (secondsSinceLastTx < 0) secondsSinceLastTx = 0;
+                if (secondsSinceLastTx < 0)
+                    secondsSinceLastTx = 0;
             }
 
             Map<String, Object> item = new HashMap<>();
-            item.put("transaction", pythonInferenceService.transactionToMap(tx));
+            item.put("transaction", inferenceService.transactionToMap(tx));
 
             if (behavior != null) {
-                Map<String, Object> behaviorForPython = pythonInferenceService.behaviorToMap(behavior);
+                Map<String, Object> behaviorForPython = inferenceService.behaviorToMap(behavior);
                 behaviorForPython.put("client_time_since_last_tx", secondsSinceLastTx);
                 item.put("existing_behavior", behaviorForPython);
             } else {
@@ -233,9 +242,8 @@ public class TransactionScoringService {
         try {
             log.info("Calling Python batch inference for {} transactions", batchItems.size());
             predictions = CompletableFuture.supplyAsync(
-                    () -> pythonInferenceService.predictBatch(model.getModelUuid(), batchItems),
-                    inferenceExecutor
-            ).orTimeout(90, TimeUnit.SECONDS).join();
+                    () -> inferenceService.predictBatch(model.getModelUuid(), batchItems),
+                    inferenceExecutor).orTimeout(90, TimeUnit.SECONDS).join();
 
             log.info("Python batch prediction completed successfully for {} transactions", predictions.size());
         } catch (Exception e) {
@@ -272,9 +280,9 @@ public class TransactionScoringService {
             JsonNode fraudReasonJson = (fraudReasonObj != null)
                     ? objectMapper.valueToTree(fraudReasonObj)
                     : objectMapper.createObjectNode()
-                    .put("risk_level", riskLevel)
-                    .put("fraud_score", fraudScore)
-                    .put("summary", "Transaction with score " + fraudScore);
+                            .put("risk_level", riskLevel)
+                            .put("fraud_score", fraudScore)
+                            .put("summary", "Transaction with score " + fraudScore);
 
             @SuppressWarnings("unchecked")
             Map<String, Object> signals = (Map<String, Object>) pred.getOrDefault("behavioral_signals", Map.of());
@@ -289,11 +297,12 @@ public class TransactionScoringService {
             updateClientBehavior(behavior, tx, fraudScore, signals);
             behavior.setLastCalculatedAt(tx.getTransactionDate());
 
-            if (isNew) behaviorMap.put(accountId, behavior);
+            if (isNew)
+                behaviorMap.put(accountId, behavior);
             behaviorsToUpdate.add(behavior);
 
             tx.setFraudScore(BigDecimal.valueOf(fraudScore));
-            tx.setIsFraud(fraudScore >= pythonInferenceService.getModelThreshold(model));
+            tx.setIsFraud(fraudScore >= inferenceService.getModelThreshold(model));
             tx.setModel(model);
             tx.setUpdatedAt(LocalDateTime.now());
             tx.setFraudReason(fraudReasonJson);
@@ -329,11 +338,12 @@ public class TransactionScoringService {
     }
 
     private void updateClientBehavior(ClientBehavior behavior, Transaction transaction,
-                                      Double fraudScore, Map<String, Object> signals) {
+            Double fraudScore, Map<String, Object> signals) {
         int currentTotal = behavior.getClientTotalTransactions() != null ? behavior.getClientTotalTransactions() : 0;
         int newTotal = currentTotal + 1;
 
-        BigDecimal currentAvg = behavior.getClientAvgTxAmount() != null ? behavior.getClientAvgTxAmount() : BigDecimal.ZERO;
+        BigDecimal currentAvg = behavior.getClientAvgTxAmount() != null ? behavior.getClientAvgTxAmount()
+                : BigDecimal.ZERO;
         BigDecimal newAvg = currentAvg.multiply(BigDecimal.valueOf(currentTotal))
                 .add(transaction.getAmount())
                 .divide(BigDecimal.valueOf(newTotal), 2, RoundingMode.HALF_UP);
@@ -350,7 +360,8 @@ public class TransactionScoringService {
         }
         behavior.setClientTimeSinceLastTx(secondsSince);
 
-        BigDecimal currentRisk = behavior.getClientRiskScore() != null ? behavior.getClientRiskScore() : BigDecimal.ZERO;
+        BigDecimal currentRisk = behavior.getClientRiskScore() != null ? behavior.getClientRiskScore()
+                : BigDecimal.ZERO;
         BigDecimal newRisk = currentRisk.multiply(BigDecimal.valueOf(0.7))
                 .add(BigDecimal.valueOf(fraudScore * 0.3));
         behavior.setClientRiskScore(newRisk);
@@ -360,7 +371,8 @@ public class TransactionScoringService {
             behavior.setClientUsualRegion((String) signals.get("client_usual_region"));
         }
         if (signals.containsKey("client_region_freq")) {
-            behavior.setClientRegionFreq(BigDecimal.valueOf(((Number) signals.get("client_region_freq")).doubleValue()));
+            behavior.setClientRegionFreq(
+                    BigDecimal.valueOf(((Number) signals.get("client_region_freq")).doubleValue()));
         }
         if (signals.containsKey("client_is_unusual_region")) {
             behavior.setClientIsUnusualRegion(Boolean.TRUE.equals(signals.get("client_is_unusual_region")));
@@ -370,7 +382,8 @@ public class TransactionScoringService {
             behavior.setClientUsualChannel((String) signals.get("client_usual_channel"));
         }
         if (signals.containsKey("client_channel_freq")) {
-            behavior.setClientChannelFreq(BigDecimal.valueOf(((Number) signals.get("client_channel_freq")).doubleValue()));
+            behavior.setClientChannelFreq(
+                    BigDecimal.valueOf(((Number) signals.get("client_channel_freq")).doubleValue()));
         }
         if (signals.containsKey("client_is_unusual_channel")) {
             behavior.setClientIsUnusualChannel(Boolean.TRUE.equals(signals.get("client_is_unusual_channel")));
@@ -380,7 +393,8 @@ public class TransactionScoringService {
             behavior.setClientUsualCategory((String) signals.get("client_usual_category"));
         }
         if (signals.containsKey("client_category_freq")) {
-            behavior.setClientCategoryFreq(BigDecimal.valueOf(((Number) signals.get("client_category_freq")).doubleValue()));
+            behavior.setClientCategoryFreq(
+                    BigDecimal.valueOf(((Number) signals.get("client_category_freq")).doubleValue()));
         }
         if (signals.containsKey("client_is_unusual_category")) {
             behavior.setClientIsUnusualCategory(Boolean.TRUE.equals(signals.get("client_is_unusual_category")));
@@ -388,7 +402,8 @@ public class TransactionScoringService {
     }
 
     private List<ScoreResult> fallbackToSingleScoring(List<Transaction> transactions, ModelML model) {
-        log.warn("Falling back to single-transaction scoring for {} transactions (batch failed or timed out)", transactions.size());
+        log.warn("Falling back to single-transaction scoring for {} transactions (batch failed or timed out)",
+                transactions.size());
         List<ScoreResult> results = new ArrayList<>();
         for (Transaction tx : transactions) {
             try {
@@ -415,18 +430,19 @@ public class TransactionScoringService {
         Object fraudReasonObj = prediction.get("fraud_reason");
         JsonNode fraudReasonJson = (fraudReasonObj != null) ? objectMapper.valueToTree(fraudReasonObj)
                 : objectMapper.createObjectNode()
-                .put("risk_level", riskLevel)
-                .put("fraud_score", fraudScore)
-                .put("summary", "Transaction with score " + fraudScore);
+                        .put("risk_level", riskLevel)
+                        .put("fraud_score", fraudScore)
+                        .put("summary", "Transaction with score " + fraudScore);
 
         transaction.setFraudScore(BigDecimal.valueOf(fraudScore));
-        transaction.setIsFraud(fraudScore >= pythonInferenceService.getModelThreshold(model));
+        transaction.setIsFraud(fraudScore >= inferenceService.getModelThreshold(model));
         transaction.setModel(model);
         transaction.setUpdatedAt(LocalDateTime.now());
         transaction.setFraudReason(fraudReasonJson);
         transactionRepository.save(transaction);
 
-        ClientBehavior behavior = clientBehaviorRepository.findByAccountId(transaction.getAccount().getId()).orElse(null);
+        ClientBehavior behavior = clientBehaviorRepository.findByAccountId(transaction.getAccount().getId())
+                .orElse(null);
         @SuppressWarnings("unchecked")
         Map<String, Object> signals = (Map<String, Object>) prediction.getOrDefault("behavioral_signals", Map.of());
 
@@ -505,10 +521,22 @@ public class TransactionScoringService {
                 .clientUsualChannel(transaction.getChannel() != null ? transaction.getChannel().name() : "Unknown")
                 .clientIsUnusualChannel(false)
                 .clientChannelFreq(BigDecimal.ONE)
-                .clientUsualCategory(transaction.getMerchantCategory() != null ? transaction.getMerchantCategory() : "Unknown")
+                .clientUsualCategory(
+                        transaction.getMerchantCategory() != null ? transaction.getMerchantCategory() : "Unknown")
                 .clientIsUnusualCategory(false)
                 .clientCategoryFreq(BigDecimal.ONE)
                 .lastCalculatedAt(transaction.getTransactionDate())
                 .build();
+    }
+
+   
+    public ScoringResult scoreSingleTransaction(UUID transactionUuid, UUID modelUuid) {
+        try {
+            FraudAlert alert = scoreTransaction(transactionUuid, modelUuid);
+            return ScoringResult.success(transactionUuid, alert);
+        } catch (Exception e) {
+            log.error("Failed to score single transaction {}", transactionUuid, e);
+            return ScoringResult.failure(transactionUuid, e.getMessage());
+        }
     }
 }

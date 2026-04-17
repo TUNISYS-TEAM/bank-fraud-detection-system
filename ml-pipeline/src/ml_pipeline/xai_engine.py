@@ -1,10 +1,8 @@
 """
-Hyper-intelligent Explainability Engine v5.1
-- Auto-detects model type and selects optimal explainer
-- Uses Integrated Gradients for neural networks (via Captum)
-- Falls back to KernelExplainer for any other model type
-- Overrides alert_type to "NO_HISTORY" for first-time transactions
-- Graceful degradation – never crashes
+Moteur d'explicabilité hyper-intelligent v5.1
+
+Ce module fournit un moteur d'explication avancé pour la détection de fraude,
+combinant SHAP, l'apprentissage profond et l'analyse statistique.
 """
 
 import re
@@ -17,7 +15,7 @@ from datetime import datetime
 
 import shap
 
-# Deep learning imports (optional but recommended)
+# Importations pour l'apprentissage profond (optionnelles mais recommandées)
 try:
     import torch
     import torch.nn as nn
@@ -31,28 +29,28 @@ __all__ = ['FraudExplainabilityEngine']
 
 class DeepLearningExplainer:
     """
-    Advanced deep learning explainer using Captum.
-    Supports Integrated Gradients, DeepLIFT, and GradientSHAP.
+    Expliqueur avancé pour l'apprentissage profond utilisant Captum.
+    Supporte les gradients intégrés, DeepLIFT et GradientSHAP.
     """
 
     def __init__(self, model_path: str, input_dim: int, device: str = "cpu", method: str = "integrated_gradients"):
         if not TORCH_AVAILABLE:
-            raise ImportError("PyTorch and Captum are required for deep learning explainability")
+            raise ImportError("PyTorch et Captum sont requis pour l'explicabilité par apprentissage profond")
         
         self.device = torch.device(device)
         self.input_dim = input_dim
         self.method = method
         
-        # Load model
+        # Chargement du modèle
         try:
             self.model = torch.jit.load(model_path, map_location=self.device)
         except:
-            # Try loading as state dict
+            # Tentative de chargement en tant que state dict
             self.model = self._load_state_dict_model(model_path, input_dim)
         
         self.model.eval()
         
-        # Initialize attribution method
+        # Initialisation de la méthode d'attribution
         if method == "integrated_gradients":
             self.attributor = IntegratedGradients(self.model)
         elif method == "deep_lift":
@@ -63,8 +61,8 @@ class DeepLearningExplainer:
             self.attributor = IntegratedGradients(self.model)
     
     def _load_state_dict_model(self, model_path: str, input_dim: int) -> nn.Module:
-        """Load a PyTorch model from state dict."""
-        # Simple MLP as default architecture
+        """Charge un modèle PyTorch à partir d'un dictionnaire d'états."""
+        # MLP simple comme architecture par défaut
         class SimpleMLP(nn.Module):
             def __init__(self, input_dim):
                 super().__init__()
@@ -88,7 +86,7 @@ class DeepLearningExplainer:
         return model
     
     def predict_anomaly_score(self, features: np.ndarray) -> float:
-        """Forward pass: returns anomaly probability."""
+        """Passage avant : retourne la probabilité d'anomalie."""
         tensor = torch.from_numpy(features).float().to(self.device).unsqueeze(0)
         with torch.no_grad():
             output = self.model(tensor)
@@ -100,12 +98,12 @@ class DeepLearningExplainer:
         return float(output)
     
     def get_feature_attributions(self, features: np.ndarray) -> np.ndarray:
-        """Get feature attributions using Captum."""
+        """Obtient les attributions des caractéristiques en utilisant Captum."""
         tensor = torch.from_numpy(features).float().to(self.device).unsqueeze(0)
         baselines = torch.zeros_like(tensor)
         
         if self.method == "gradient_shap":
-            # GradientSHAP needs multiple baselines
+            # GradientSHAP a besoin de plusieurs références
             baselines = torch.randn(10, *tensor.shape[1:]).to(self.device)
             attributions = self.attributor.attribute(tensor, baselines, target=0)
         else:
@@ -116,11 +114,11 @@ class DeepLearningExplainer:
 
 class FraudExplainabilityEngine:
     """
-    Universal explainer that automatically selects the best method for any model.
-    - Tree-based models: SHAP TreeExplainer
-    - Neural networks: Captum Integrated Gradients / DeepLIFT
-    - Other models: SHAP KernelExplainer
-    - Always falls back to statistical analysis if all else fails
+    Expliqueur universel qui sélectionne automatiquement la meilleure méthode pour tout modèle.
+    - Modèles basés sur arbres : SHAP TreeExplainer
+    - Réseaux de neurones : Captum Integrated Gradients / DeepLIFT
+    - Autres modèles : SHAP KernelExplainer
+    - Se rabat toujours sur l'analyse statistique si tout échoue
     """
 
     def __init__(self, model, feature_names: List[str],
@@ -136,42 +134,42 @@ class FraudExplainabilityEngine:
         self.explainer_type = None
         self.dl_explainer = None
         
-        # Detect model type and initialize appropriate explainer
+        # Détection du type de modèle et initialisation de l'expliqueur approprié
         model_type = self._detect_model_type(model)
-        print(f"Detected model type: {model_type}", file=sys.stderr)
+        print(f"Type de modèle détecté : {model_type}", file=sys.stderr)
         
-        # Initialize SHAP explainer for non-DL models
+        # Initialisation de l'expliqueur SHAP pour les modèles non-DL
         if model_type in ['tree', 'linear', 'unknown']:
             self._init_shap_explainer(model, background_data)
         
-        # Initialize deep learning explainer (if provided)
+        # Initialisation de l'expliqueur d'apprentissage profond (si fourni)
         if TORCH_AVAILABLE and dl_model_path and dl_input_dim:
             try:
                 self.dl_explainer = DeepLearningExplainer(
                     dl_model_path, dl_input_dim, device="cpu", method=dl_method
                 )
-                print(f"Deep learning explainer initialized (method: {dl_method})", file=sys.stderr)
+                print(f"Expliqueur d'apprentissage profond initialisé (méthode : {dl_method})", file=sys.stderr)
             except Exception as e:
-                print(f"DL explainer initialization failed: {e}", file=sys.stderr)
+                print(f"Échec de l'initialisation de l'expliqueur DL : {e}", file=sys.stderr)
 
     def _detect_model_type(self, model) -> str:
-        """Detect model type with high accuracy."""
+        """Détecte le type de modèle avec une grande précision."""
         model_str = str(type(model)).lower()
         
-        # Tree-based models
+        # Modèles basés sur arbres
         if any(x in model_str for x in ['lightgbm', 'lgbm', 'xgboost', 'xgb', 'catboost', 
                                          'randomforest', 'random_forest', 'gradientboosting']):
             return 'tree'
         
-        # Linear models
+        # Modèles linéaires
         if any(x in model_str for x in ['linear', 'logistic', 'ridge', 'lasso', 'svc', 'svm']):
             return 'linear'
         
-        # Neural networks (scikit-learn MLP)
+        # Réseaux de neurones (scikit-learn MLP)
         if 'mlp' in model_str or 'neural' in model_str:
             return 'neural'
         
-        # Try to detect by methods
+        # Tentative de détection par méthodes
         if hasattr(model, 'get_booster'):
             return 'tree'
         if hasattr(model, 'trees_'):
@@ -180,35 +178,35 @@ class FraudExplainabilityEngine:
         return 'unknown'
 
     def _init_shap_explainer(self, model, background_data: np.ndarray):
-        """Initialize SHAP explainer with intelligent fallback chain."""
+        """Initialise l'expliqueur SHAP avec une chaîne de repli intelligente."""
         
-        # Strategy 1: TreeExplainer with interventional (works with small backgrounds)
+        # Stratégie 1 : TreeExplainer avec intervention (fonctionne avec de petits backgrounds)
         if background_data is not None and len(background_data) > 0:
             try:
                 self.explainer = shap.TreeExplainer(
                     model, background_data, feature_perturbation="interventional"
                 )
-                self.explainer_type = "TreeExplainer(interventional)"
-                print(f"SHAP {self.explainer_type} initialized", file=sys.stderr)
+                self.explainer_type = "TreeExplainer(interventionnel)"
+                print(f"SHAP {self.explainer_type} initialisé", file=sys.stderr)
                 return
             except Exception as e:
-                print(f"TreeExplainer(interventional) failed: {e}", file=sys.stderr)
+                print(f"Échec de TreeExplainer(interventionnel) : {e}", file=sys.stderr)
         
-        # Strategy 2: TreeExplainer without background (always works)
+        # Stratégie 2 : TreeExplainer sans background (fonctionne toujours)
         try:
             self.explainer = shap.TreeExplainer(model)
-            self.explainer_type = "TreeExplainer(no_background)"
-            print(f"SHAP {self.explainer_type} initialized", file=sys.stderr)
+            self.explainer_type = "TreeExplainer(sans_background)"
+            print(f"SHAP {self.explainer_type} initialisé", file=sys.stderr)
             return
         except Exception as e:
-            print(f"TreeExplainer(no_background) failed: {e}", file=sys.stderr)
+            print(f"Échec de TreeExplainer(sans_background) : {e}", file=sys.stderr)
         
-        # Strategy 3: KernelExplainer (works with any model, slower but universal)
+        # Stratégie 3 : KernelExplainer (fonctionne avec tout modèle, plus lent mais universel)
         if background_data is not None and len(background_data) >= 10:
             try:
                 bg_sample = background_data[:min(100, len(background_data))]
                 
-                # Define prediction function
+                # Définition de la fonction de prédiction
                 if hasattr(model, 'predict_proba'):
                     def predict_fn(x):
                         return model.predict_proba(x)
@@ -222,22 +220,22 @@ class FraudExplainabilityEngine:
                             pred = np.column_stack([1 - pred, pred])
                         return pred
                 else:
-                    raise ValueError("Model has no prediction method")
+                    raise ValueError("Le modèle n'a pas de méthode de prédiction")
                 
                 self.explainer = shap.KernelExplainer(predict_fn, bg_sample)
                 self.explainer_type = "KernelExplainer"
-                print(f"SHAP {self.explainer_type} initialized", file=sys.stderr)
+                print(f"SHAP {self.explainer_type} initialisé", file=sys.stderr)
                 return
             except Exception as e:
-                print(f"KernelExplainer failed: {e}", file=sys.stderr)
+                print(f"Échec de KernelExplainer : {e}", file=sys.stderr)
         
-        print("WARNING: No SHAP explainer could be initialized. Using statistical analysis only.", file=sys.stderr)
+        print("ATTENTION : Aucun explainer SHAP n'a pu être initialisé. Utilisation de l'analyse statistique uniquement.", file=sys.stderr)
 
     def _load_config(self, config_path: Optional[str]) -> Dict:
         default_config = {
             "factor_display": {
                 "amount": "Montant",
-                "velocity": "Frequence",
+                "velocity": "Fréquence",
                 "location": "Localisation",
                 "pattern": "Pattern",
                 "history": "Historique",
@@ -269,64 +267,64 @@ class FraudExplainabilityEngine:
                     user_config = json.load(f)
                 default_config.update(user_config)
             except Exception as e:
-                print(f"Warning: Could not load config: {e}", file=sys.stderr)
+                print(f"Attention : Impossible de charger la configuration : {e}", file=sys.stderr)
         return default_config
 
     def explain_fraud(self, features: np.ndarray, fraud_score: float,
                       transaction_data: Dict, behavior_data: Dict) -> Dict:
-        """Generate intelligent explanation using the best available method."""
+        """Génère une explication intelligente en utilisant la meilleure méthode disponible."""
         contributions = []
 
-        # 1. SHAP contributions (if available)
+        # 1. Contributions SHAP (si disponibles)
         if self.explainer:
             shap_contribs = self._get_shap_explanations(features)
             if shap_contribs:
                 contributions.extend(self._build_contributions_from_shap(shap_contribs, fraud_score))
 
-        # 2. Deep learning contributions (if available)
+        # 2. Contributions de l'apprentissage profond (si disponibles)
         if self.dl_explainer:
             dl_contribs = self._get_dl_contributions(features, fraud_score)
             if dl_contribs:
                 contributions.extend(dl_contribs)
 
-        # 3. Statistical rule‑based contributions (always computed as fallback)
+        # 3. Contributions basées sur des règles statistiques (toujours calculées comme repli)
         stat_contribs = self._intelligent_behavior_analysis(behavior_data, transaction_data, fraud_score)
         contributions.extend(stat_contribs)
 
-        # Merge and sort
+        # Fusion et tri
         contributions = self._merge_contributions(contributions)
         contributions.sort(key=lambda x: x["impact_points"], reverse=True)
 
-        # Determine source for response
+        # Détermination de la source pour la réponse
         if self.dl_explainer and self.explainer:
-            source = "hybrid(shap+dl+statistical)"
+            source = "hybride(shap+dl+statistique)"
         elif self.dl_explainer:
-            source = "deep_learning+statistical"
+            source = "apprentissage_profond+statistique"
         elif self.explainer:
-            source = f"shap({self.explainer_type})+statistical"
+            source = f"shap({self.explainer_type})+statistique"
         else:
-            source = "statistical_only"
+            source = "statistique_seule"
 
         return self._build_response(contributions, fraud_score, transaction_data, behavior_data, source=source)
 
     def _get_shap_explanations(self, features: np.ndarray) -> Dict[str, float]:
-        """Extract SHAP values with error handling."""
+        """Extrait les valeurs SHAP avec gestion des erreurs."""
         if not self.explainer:
             return {}
         
         try:
             shap_values = self.explainer.shap_values(features.reshape(1, -1))
             
-            # Handle different output formats
+            # Gestion des différents formats de sortie
             if isinstance(shap_values, list):
-                # Binary classification: take positive class
+                # Classification binaire : prendre la classe positive
                 shap_values = shap_values[1] if len(shap_values) > 1 else shap_values[0]
             if isinstance(shap_values, np.ndarray) and len(shap_values.shape) > 1:
                 shap_vals = shap_values[0] if shap_values.shape[0] == 1 else shap_values
             else:
                 shap_vals = shap_values
             
-            # Ensure 1D array
+            # Assurer un tableau 1D
             if isinstance(shap_vals, np.ndarray) and shap_vals.ndim > 1:
                 shap_vals = shap_vals.flatten()
             
@@ -349,11 +347,11 @@ class FraudExplainabilityEngine:
             return contributions
             
         except Exception as e:
-            print(f"SHAP extraction failed: {e}", file=sys.stderr)
+            print(f"Échec de l'extraction SHAP : {e}", file=sys.stderr)
             return {}
 
     def _get_dl_contributions(self, features: np.ndarray, fraud_score: float) -> List[Dict]:
-        """Get deep learning contributions using Captum."""
+        """Obtient les contributions de l'apprentissage profond en utilisant Captum."""
         if not self.dl_explainer:
             return []
         
@@ -364,13 +362,13 @@ class FraudExplainabilityEngine:
             contributions = [{
                 "factor": "DL_ANOMALY",
                 "impact_points": int(dl_anomaly * 60),
-                "description": "Deep learning anomaly detection",
-                "detail": f"Neural network detected anomalous pattern (confidence: {dl_anomaly:.1%})",
+                "description": "Détection d'anomalie par apprentissage profond",
+                "detail": f"Le réseau neuronal a détecté un motif anormal (confiance : {dl_anomaly:.1%})",
                 "type": "deep_learning",
                 "severity": "high" if dl_anomaly > 0.7 else "medium"
             }]
             
-            # Add top contributing features
+            # Ajout des caractéristiques les plus contributives
             attr_threshold = self.config["dl_contribution_threshold"]
             for idx, attr_val in enumerate(attributions):
                 if abs(attr_val) > attr_threshold and idx < len(self.feature_names):
@@ -381,8 +379,8 @@ class FraudExplainabilityEngine:
                         contributions.append({
                             "factor": factor,
                             "impact_points": points_attr,
-                            "description": f"Neural network: {clean_name}",
-                            "detail": f"Deep learning model flagged {clean_name} (importance: {abs(attr_val):.3f})",
+                            "description": f"Réseau neuronal : {clean_name}",
+                            "detail": f"Le modèle d'apprentissage profond a signalé {clean_name} (importance : {abs(attr_val):.3f})",
                             "type": "deep_learning",
                             "severity": "medium"
                         })
@@ -390,14 +388,14 @@ class FraudExplainabilityEngine:
             return contributions
             
         except Exception as e:
-            print(f"DL attribution failed: {e}", file=sys.stderr)
+            print(f"Échec de l'attribution DL : {e}", file=sys.stderr)
             return []
 
     # ----------------------------------------------------------------------
-    # Statistical rule‑based analysis
+    # Analyse statistique basée sur des règles
     # ----------------------------------------------------------------------
     def _intelligent_behavior_analysis(self, behavior: Dict, transaction: Dict, fraud_score: float) -> List[Dict]:
-        """Advanced analysis using ALL available behavior signals."""
+        """Analyse avancée utilisant TOUS les signaux comportementaux disponibles."""
         contributions = []
         thresholds = self.config["statistical_thresholds"]
 
@@ -415,19 +413,19 @@ class FraudExplainabilityEngine:
         region_freq = self._safe_float(behavior.get('client_region_freq', 1.0))
         channel_freq = self._safe_float(behavior.get('client_channel_freq', 1.0))
         category_freq = self._safe_float(behavior.get('client_category_freq', 1.0))
-        usual_region = behavior.get('client_usual_region', 'Unknown')
-        usual_channel = behavior.get('client_usual_channel', 'Unknown')
-        usual_category = behavior.get('client_usual_category', 'Unknown')
+        usual_region = behavior.get('client_usual_region', 'Inconnue')
+        usual_channel = behavior.get('client_usual_channel', 'Inconnu')
+        usual_category = behavior.get('client_usual_category', 'Inconnue')
         total_days = self._safe_float(behavior.get('client_total_days_since_first', 0))
         is_new_max = bool(behavior.get('client_is_new_max', False))
 
-        # History analysis
+        # Analyse de l'historique
         if total_tx == 0:
             contributions.append({
                 "factor": "NO_HISTORY",
                 "impact_points": int(25 + fraud_score * 25),
-                "description": "First transaction - No history",
-                "detail": "This is the client's first transaction. No behavioral profile exists.",
+                "description": "Première transaction - Pas d'historique",
+                "detail": "Il s'agit de la première transaction du client. Aucun profil comportemental n'existe.",
                 "type": "statistical",
                 "severity": "high"
             })
@@ -435,8 +433,8 @@ class FraudExplainabilityEngine:
             contributions.append({
                 "factor": "LIMITED_HISTORY",
                 "impact_points": int(15 + fraud_score * 15),
-                "description": "Limited transaction history",
-                "detail": f"Only {total_tx} previous transaction. Insufficient data for reliable profiling.",
+                "description": "Historique limité des transactions",
+                "detail": f"Seulement {total_tx} transaction antérieure. Données insuffisantes pour un profilage fiable.",
                 "type": "statistical",
                 "severity": "medium"
             })
@@ -444,26 +442,26 @@ class FraudExplainabilityEngine:
             contributions.append({
                 "factor": "ESTABLISHED_CLIENT",
                 "impact_points": 5,
-                "description": "Established client",
-                "detail": f"Client with {total_tx} historical transactions over {total_days:.0f} days",
+                "description": "Client établi",
+                "detail": f"Client avec {total_tx} transactions historiques sur {total_days:.0f} jours",
                 "type": "statistical",
                 "severity": "low"
             })
 
-        # Amount anomaly
+        # Anomalie de montant
         if abs(z_score) > thresholds["z_score_anomaly"]:
             is_extreme = abs(z_score) > thresholds["z_score_extreme"]
             points = min(60, int(20 + abs(z_score) * 10))
             if avg_amount > 0:
                 deviation_pct = (amount - avg_amount) / avg_amount * 100
-                direction = "above" if deviation_pct > 0 else "below"
-                detail = f"Amount {direction} average by {abs(deviation_pct):.0f}% (avg: {avg_amount:.0f})"
+                direction = "supérieur" if deviation_pct > 0 else "inférieur"
+                detail = f"Montant {direction} à la moyenne de {abs(deviation_pct):.0f}% (moyenne : {avg_amount:.0f})"
             else:
-                detail = f"Amount anomaly detected (z-score={z_score:.1f})"
+                detail = f"Anomalie de montant détectée (z-score={z_score:.1f})"
             contributions.append({
                 "factor": "AMOUNT_ANOMALY",
                 "impact_points": points,
-                "description": f"Amount anomaly - {'extreme' if is_extreme else 'significant'}",
+                "description": f"Anomalie de montant - {'extrême' if is_extreme else 'significative'}",
                 "detail": detail,
                 "type": "statistical",
                 "severity": "high" if is_extreme else "medium"
@@ -473,33 +471,33 @@ class FraudExplainabilityEngine:
             contributions.append({
                 "factor": "AMOUNT_RATIO",
                 "impact_points": points,
-                "description": "Unusually high amount",
-                "detail": f"Amount is {amount_ratio:.1f}x higher than historical maximum",
+                "description": "Montant anormalement élevé",
+                "detail": f"Le montant est {amount_ratio:.1f} fois supérieur au maximum historique",
                 "type": "statistical",
                 "severity": "high"
             })
 
-        # Velocity anomaly
+        # Anomalie de vélocité
         if 0 < time_since < thresholds["velocity_seconds"] and total_tx > 0:
             is_extreme = time_since < thresholds["velocity_extreme"]
             points = int(20 + (thresholds["velocity_seconds"] - time_since) / thresholds["velocity_seconds"] * 40)
             contributions.append({
                 "factor": "VELOCITY",
                 "impact_points": points,
-                "description": f"Transaction velocity - {'extreme' if is_extreme else 'rapid'}",
-                "detail": f"Only {time_since:.0f} seconds since previous transaction",
+                "description": f"Vélocité des transactions - {'extrême' if is_extreme else 'rapide'}",
+                "detail": f"Seulement {time_since:.0f} secondes depuis la transaction précédente",
                 "type": "statistical",
                 "severity": "high" if is_extreme else "medium"
             })
 
-        # Location anomaly
+        # Anomalie de localisation
         if is_unusual_region:
             points = 35
-            detail = f"Transaction from unusual location (usual: {usual_region})" if usual_region != 'Unknown' else "Transaction from unusual location"
+            detail = f"Transaction depuis une localisation inhabituelle (habituelle : {usual_region})" if usual_region != 'Inconnue' else "Transaction depuis une localisation inhabituelle"
             contributions.append({
                 "factor": "LOCATION_ANOMALY",
                 "impact_points": points,
-                "description": "Unusual location",
+                "description": "Localisation inhabituelle",
                 "detail": detail,
                 "type": "statistical",
                 "severity": "high"
@@ -509,20 +507,20 @@ class FraudExplainabilityEngine:
             contributions.append({
                 "factor": "LOCATION_ANOMALY",
                 "impact_points": points,
-                "description": "Rare location",
-                "detail": f"This location appears in only {region_freq*100:.0f}% of transactions",
+                "description": "Localisation rare",
+                "detail": f"Cette localisation n'apparaît que dans {region_freq*100:.0f}% des transactions",
                 "type": "statistical",
                 "severity": "medium"
             })
 
-        # Channel anomaly
+        # Anomalie de canal
         if is_unusual_channel:
             points = 30
-            detail = f"Unusual transaction channel (usual: {usual_channel})" if usual_channel != 'Unknown' else "Unusual transaction channel"
+            detail = f"Canal de transaction inhabituel (habituel : {usual_channel})" if usual_channel != 'Inconnu' else "Canal de transaction inhabituel"
             contributions.append({
                 "factor": "PATTERN",
                 "impact_points": points,
-                "description": "Unusual channel",
+                "description": "Canal inhabituel",
                 "detail": detail,
                 "type": "statistical",
                 "severity": "high"
@@ -532,20 +530,20 @@ class FraudExplainabilityEngine:
             contributions.append({
                 "factor": "PATTERN",
                 "impact_points": points,
-                "description": "Rare channel",
-                "detail": f"This channel appears in only {channel_freq*100:.0f}% of transactions",
+                "description": "Canal rare",
+                "detail": f"Ce canal n'apparaît que dans {channel_freq*100:.0f}% des transactions",
                 "type": "statistical",
                 "severity": "medium"
             })
 
-        # Category anomaly
+        # Anomalie de catégorie
         if is_unusual_category:
             points = 28
-            detail = f"Unusual merchant category (usual: {usual_category})" if usual_category != 'Unknown' else "Unusual merchant category"
+            detail = f"Catégorie de marchand inhabituelle (habituelle : {usual_category})" if usual_category != 'Inconnue' else "Catégorie de marchand inhabituelle"
             contributions.append({
                 "factor": "PATTERN",
                 "impact_points": points,
-                "description": "Unusual category",
+                "description": "Catégorie inhabituelle",
                 "detail": detail,
                 "type": "statistical",
                 "severity": "medium"
@@ -555,13 +553,13 @@ class FraudExplainabilityEngine:
             contributions.append({
                 "factor": "PATTERN",
                 "impact_points": points,
-                "description": "Rare category",
-                "detail": f"This category appears in only {category_freq*100:.0f}% of transactions",
+                "description": "Catégorie rare",
+                "detail": f"Cette catégorie n'apparaît que dans {category_freq*100:.0f}% des transactions",
                 "type": "statistical",
                 "severity": "medium"
             })
 
-        # Time anomaly
+        # Anomalie horaire
         tx_time = transaction.get('TX_Time', transaction.get('transaction_date', None))
         if tx_time and total_tx > 0:
             try:
@@ -570,44 +568,44 @@ class FraudExplainabilityEngine:
                 hour = tx_time.hour
                 is_late = hour >= thresholds["late_hour_start"] or hour < thresholds["late_hour_end"]
                 if is_late:
-                    time_desc = f"{hour:02d}:00 (early morning)" if hour < 6 else f"{hour:02d}:00 (late night)"
+                    time_desc = f"{hour:02d}:00 (tôt le matin)" if hour < 6 else f"{hour:02d}:00 (tard dans la nuit)"
                     contributions.append({
                         "factor": "TIME_ANOMALY",
                         "impact_points": 20,
-                        "description": "Unusual transaction time",
-                        "detail": f"Transaction at {time_desc} - atypical hour",
+                        "description": "Horaire de transaction inhabituel",
+                        "detail": f"Transaction à {time_desc} - heure atypique",
                         "type": "statistical",
                         "severity": "medium"
                     })
             except Exception:
                 pass
 
-        # Composite risk score
+        # Score de risque composite
         if risk_score > thresholds["risk_score_high"]:
             is_extreme = risk_score > thresholds["risk_score_extreme"]
             points = min(50, int(risk_score * 1.5))
             contributions.append({
                 "factor": "RISK_SCORE",
                 "impact_points": points,
-                "description": f"Behavioral risk score - {'extreme' if is_extreme else 'elevated'}",
-                "detail": f"Composite risk score of {risk_score:.0f} indicates suspicious behavior pattern",
+                "description": f"Score de risque comportemental - {'extrême' if is_extreme else 'élevé'}",
+                "detail": f"Un score de risque composite de {risk_score:.0f} indique un motif de comportement suspect",
                 "type": "statistical",
                 "severity": "high" if is_extreme else "medium"
             })
 
-        # New max amount
+        # Nouveau montant maximum
         if is_new_max and total_tx > 0:
             points = int(15 + (amount / (avg_amount + 1)) * 5)
             contributions.append({
                 "factor": "AMOUNT_ANOMALY",
                 "impact_points": points,
-                "description": "New maximum amount",
-                "detail": f"This transaction sets a new personal record ({amount:.0f})",
+                "description": "Nouveau montant maximum",
+                "detail": f"Cette transaction établit un nouveau record personnel ({amount:.0f})",
                 "type": "statistical",
                 "severity": "medium"
             })
 
-        # Boost contributions by fraud_score
+        # Augmentation des contributions par le score de fraude
         for c in contributions:
             boost = 0.6 + fraud_score * 0.4
             c["impact_points"] = int(c["impact_points"] * boost)
@@ -616,7 +614,7 @@ class FraudExplainabilityEngine:
         return contributions
 
     def _build_contributions_from_shap(self, shap_contribs: Dict[str, float], fraud_score: float) -> List[Dict]:
-        """Convert SHAP contributions to factor-based format."""
+        """Convertit les contributions SHAP en format basé sur les facteurs."""
         factor_map = self._infer_factor_map()
         factor_scores = {}
         for feature, impact in shap_contribs.items():
@@ -633,7 +631,7 @@ class FraudExplainabilityEngine:
                 "factor": factor,
                 "impact_points": scaled,
                 "description": self._get_factor_description(factor),
-                "detail": f"Model identified {factor.lower().replace('_', ' ')} as key contributing factor",
+                "detail": f"Le modèle a identifié {self._get_factor_description_fr(factor).lower()} comme facteur clé contributif",
                 "type": "shap",
                 "severity": "high" if scaled > 50 else "medium"
             })
@@ -641,7 +639,7 @@ class FraudExplainabilityEngine:
         return contributions
 
     def _merge_contributions(self, contributions: List[Dict]) -> List[Dict]:
-        """Merge contributions with the same factor."""
+        """Fusionne les contributions ayant le même facteur."""
         merged = {}
         for c in contributions:
             factor = c["factor"]
@@ -661,13 +659,13 @@ class FraudExplainabilityEngine:
 
     def _build_response(self, contributions: List[Dict], fraud_score: float,
                         transaction: Dict, behavior: Dict, source: str) -> Dict:
-        """Build the final response."""
+        """Construit la réponse finale."""
         if not contributions:
             contributions = [{
                 "factor": "BEHAVIORAL",
                 "impact_points": int(fraud_score * 50),
-                "description": "Behavioral analysis",
-                "detail": "Transaction analyzed with no specific anomalies detected",
+                "description": "Analyse comportementale",
+                "detail": "Transaction analysée sans anomalies spécifiques détectées",
                 "type": "fallback",
                 "severity": "low"
             }]
@@ -678,17 +676,17 @@ class FraudExplainabilityEngine:
         amount = self._safe_float(transaction.get('TX_Amount', transaction.get('amount', 0)))
         
         if total_tx == 0:
-            summary = f"{risk_level}: First transaction - no history available"
+            summary = f"{risk_level} : Première transaction - aucun historique disponible"
         elif total_tx == 1:
-            summary = f"{risk_level}: Limited history - only {total_tx} previous transaction"
+            summary = f"{risk_level} : Historique limité - seulement {total_tx} transaction antérieure"
         else:
-            summary = f"{risk_level}: {contributions[0]['description']}"
+            summary = f"{risk_level} : {contributions[0]['description']}"
         
         narrative = self._generate_intelligent_narrative(primary_factor, contributions, transaction, behavior, fraud_score)
         avg_amount = self._safe_float(behavior.get('client_AVG_TX_Amount', 0))
         risk_score = self._safe_float(behavior.get('client_risk_score', 0))
         
-        # Determine alert_type: force NO_HISTORY for first-time transactions
+        # Détermination du type d'alerte : forcer NO_HISTORY pour les premières transactions
         if total_tx == 0:
             alert_type = "NO_HISTORY"
         else:
@@ -722,56 +720,56 @@ class FraudExplainabilityEngine:
 
     def _generate_intelligent_narrative(self, primary_factor: str, contributions: List[Dict],
                                          transaction: Dict, behavior: Dict, fraud_score: float) -> str:
-        """Generate detailed, contextual narrative."""
+        """Génère un récit détaillé et contextuel."""
         total_tx = self._safe_int(behavior.get('client_total_transactions', 0))
         amount = self._safe_float(transaction.get('TX_Amount', transaction.get('amount', 0)))
         avg_amount = self._safe_float(behavior.get('client_AVG_TX_Amount', 0))
         narratives = []
         
         if total_tx == 0:
-            narratives.append(f"Client has no transaction history. First transaction of {amount:.0f}.")
+            narratives.append(f"Le client n'a aucun historique de transaction. Première transaction de {amount:.0f}.")
         elif total_tx == 1:
-            narratives.append(f"Client has limited history with only {total_tx} previous transaction.")
+            narratives.append(f"Le client a un historique limité avec seulement {total_tx} transaction antérieure.")
         else:
-            narratives.append(f"Client has {total_tx} historical transactions averaging {avg_amount:.0f}.")
+            narratives.append(f"Le client a {total_tx} transactions historiques avec une moyenne de {avg_amount:.0f}.")
         
         primary_contrib = contributions[0] if contributions else {}
         factor = primary_contrib.get('factor', '')
         
         if factor == 'NO_HISTORY':
-            narratives.append("First transaction - elevated risk due to lack of behavioral profile.")
+            narratives.append("Première transaction - risque élevé en raison de l'absence de profil comportemental.")
         elif factor == 'LIMITED_HISTORY':
-            narratives.append("Insufficient transaction history for reliable pattern detection.")
+            narratives.append("Historique de transactions insuffisant pour une détection fiable des motifs.")
         elif factor == 'AMOUNT_ANOMALY':
             if avg_amount > 0:
                 ratio = amount / avg_amount
                 if ratio > 2:
-                    narratives.append(f"Transaction amount {ratio:.1f}x higher than average ({avg_amount:.0f}).")
+                    narratives.append(f"Montant de la transaction {ratio:.1f} fois supérieur à la moyenne ({avg_amount:.0f}).")
                 else:
-                    narratives.append("Transaction amount deviates significantly from normal pattern.")
+                    narratives.append("Le montant de la transaction s'écarte significativement du motif normal.")
         elif factor == 'VELOCITY':
             time_since = behavior.get('client_time_since_last_tx', 0)
-            narratives.append(f"Transaction occurred only {time_since:.0f} seconds after previous one.")
+            narratives.append(f"La transaction a eu lieu seulement {time_since:.0f} secondes après la précédente.")
         elif factor == 'LOCATION_ANOMALY':
-            usual = behavior.get('client_usual_region', 'usual location')
-            narratives.append(f"Transaction from unusual location (typically from {usual}).")
+            usual = behavior.get('client_usual_region', 'localisation habituelle')
+            narratives.append(f"Transaction depuis une localisation inhabituelle (généralement depuis {usual}).")
         elif factor == 'PATTERN':
             if behavior.get('client_is_unusual_channel', False):
-                usual = behavior.get('client_usual_channel', 'usual channel')
-                narratives.append(f"Unusual transaction channel (typically {usual}).")
+                usual = behavior.get('client_usual_channel', 'canal habituel')
+                narratives.append(f"Canal de transaction inhabituel (habituellement {usual}).")
             if behavior.get('client_is_unusual_category', False):
-                usual = behavior.get('client_usual_category', 'usual category')
-                narratives.append(f"Unusual merchant category (typically {usual}).")
+                usual = behavior.get('client_usual_category', 'catégorie habituelle')
+                narratives.append(f"Catégorie de marchand inhabituelle (habituellement {usual}).")
         elif factor == 'RISK_SCORE':
             risk = behavior.get('client_risk_score', 0)
-            narratives.append(f"Behavioral risk score of {risk:.0f} indicates suspicious pattern.")
+            narratives.append(f"Le score de risque comportemental de {risk:.0f} indique un motif suspect.")
         elif factor == 'DL_ANOMALY':
-            narratives.append("Neural network detected anomalous transaction pattern.")
+            narratives.append("Le réseau neuronal a détecté un motif de transaction anormal.")
         
         if fraud_score > 0.8:
-            narratives.append(f"High confidence fraud detection (score: {fraud_score:.1%}).")
+            narratives.append(f"Détection de fraude avec haute confiance (score : {fraud_score:.1%}).")
         elif fraud_score > 0.6:
-            narratives.append(f"Moderate confidence fraud detection (score: {fraud_score:.1%}).")
+            narratives.append(f"Détection de fraude avec confiance modérée (score : {fraud_score:.1%}).")
         
         return " ".join(narratives)
 
@@ -811,7 +809,7 @@ class FraudExplainabilityEngine:
             "VELOCITY": "VELOCITY",
             "LOCATION_ANOMALY": "LOCATION_ANOMALY",
             "PATTERN": "PATTERN",
-            "NO_HISTORY": "NO_HISTORY",       # Changed from BEHAVIORAL
+            "NO_HISTORY": "NO_HISTORY",
             "LIMITED_HISTORY": "BEHAVIORAL",
             "RISK_SCORE": "RISK_SCORE",
             "TIME_ANOMALY": "TIME_ANOMALY",
@@ -823,26 +821,39 @@ class FraudExplainabilityEngine:
     def _get_risk_level(self, fraud_score: float) -> str:
         t = self.threshold
         if fraud_score >= t + (1 - t) * 0.6:
-            return "CRITICAL"
+            return "CRITIQUE"
         if fraud_score >= t:
-            return "HIGH"
+            return "ÉLEVÉ"
         if fraud_score >= t * 0.6:
-            return "MEDIUM"
+            return "MOYEN"
         if fraud_score >= t * 0.3:
-            return "LOW"
-        return "VERY_LOW"
+            return "FAIBLE"
+        return "TRÈS FAIBLE"
 
     def _get_factor_description(self, factor: str) -> str:
         desc_map = {
-            "AMOUNT_ANOMALY": "Model detected amount anomaly",
-            "VELOCITY": "Model detected abnormal velocity",
-            "LOCATION_ANOMALY": "Model detected unusual location",
-            "PATTERN": "Model detected unusual pattern",
-            "NO_HISTORY": "No behavioral history available",
-            "RISK_SCORE": "Elevated behavioral risk score",
-            "TIME_ANOMALY": "Unusual transaction time"
+            "AMOUNT_ANOMALY": "Le modèle a détecté une anomalie de montant",
+            "VELOCITY": "Le modèle a détecté une vélocité anormale",
+            "LOCATION_ANOMALY": "Le modèle a détecté une localisation inhabituelle",
+            "PATTERN": "Le modèle a détecté un motif inhabituel",
+            "NO_HISTORY": "Aucun historique comportemental disponible",
+            "RISK_SCORE": "Score de risque comportemental élevé",
+            "TIME_ANOMALY": "Horaire de transaction inhabituel"
         }
-        return desc_map.get(factor, "Significant model contribution")
+        return desc_map.get(factor, "Contribution significative du modèle")
+
+    def _get_factor_description_fr(self, factor: str) -> str:
+        """Version en français plus courte pour insertion dans les détails."""
+        desc_map = {
+            "AMOUNT_ANOMALY": "l'anomalie de montant",
+            "VELOCITY": "la vélocité anormale",
+            "LOCATION_ANOMALY": "la localisation inhabituelle",
+            "PATTERN": "le motif inhabituel",
+            "NO_HISTORY": "l'absence d'historique",
+            "RISK_SCORE": "le score de risque élevé",
+            "TIME_ANOMALY": "l'horaire inhabituel"
+        }
+        return desc_map.get(factor, "le facteur contributif")
 
     def _format_contributions(self, contributions: List[Dict]) -> List[Dict]:
         factor_display = self.config["factor_display"]

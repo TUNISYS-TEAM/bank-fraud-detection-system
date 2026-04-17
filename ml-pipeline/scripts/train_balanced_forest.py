@@ -1,8 +1,7 @@
 """
 Train a Balanced Random Forest model (imblearn) for bank fraud detection.
-- PR‑curve threshold as primary fallback.
-- User threshold from UI always used (with warning if above max_prob).
-- ONNX export via surrogate sklearn RandomForest.
+No data leakage – per‑split preprocessing, dynamic thresholding, ONNX export.
+Handles both Customer_Postal_Code and Merchant_Postal_Code.
 """
 
 from __future__ import annotations
@@ -26,6 +25,8 @@ from sklearn.metrics import (
     roc_auc_score, confusion_matrix, precision_recall_curve, average_precision_score
 )
 from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import RobustScaler
 import onnx
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
@@ -36,10 +37,6 @@ from ml_pipeline.inference.thresholding import (
     find_threshold_by_fbeta,
     find_threshold_by_cost,
 )
-from ml_pipeline.pipeline.data_split import temporal_split
-from ml_pipeline.transformers.behavioral.temporal_features import TemporalFeatureTransformer
-from ml_pipeline.transformers.encoders.feature_selectors import TreeFeatureSelector
-from ml_pipeline.transformers.scalers.monetary_scaler import SafeScaler
 from ml_pipeline.utils.postal_codes import PostalCodeResolver
 
 logging.basicConfig(
@@ -49,10 +46,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ------------------------------------------------------------------------------
+# Global resolver – loaded once
+# ------------------------------------------------------------------------------
+_RESOLVER = None
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Preprocessing helpers (manual categorical encoding as in original RF script)
-# ──────────────────────────────────────────────────────────────────────────────
+def get_resolver():
+    global _RESOLVER
+    if _RESOLVER is None:
+        logger.info("Loading PostalCodeResolver (once)")
+        _RESOLVER = PostalCodeResolver()
+    return _RESOLVER
+
+# ------------------------------------------------------------------------------
+# Preprocessing helpers (NO data leakage – fit on train only)
+# ------------------------------------------------------------------------------
 
 def extract_numeric_from_id(value):
     if pd.isna(value):
@@ -76,75 +84,151 @@ def extract_numeric_from_id(value):
 def process_id_columns(df):
     df_processed = df.copy()
     id_columns = ['Account_Id', 'Device_Id']
-
     for col in id_columns:
         if col in df_processed.columns:
-            logger.info("Processing ID column with substr: %s", col)
             df_processed[col] = df_processed[col].apply(extract_numeric_from_id).astype(np.float32)
-
     return df_processed
 
 
-def process_postal_codes(df):
-    resolver = PostalCodeResolver()
-    df_processed = df.copy()
-
-    if 'Customer_Postal_Code' in df_processed.columns:
-        logger.info("Processing Customer_Postal_Code...")
-        df_processed = resolver.enrich_dataframe(
-            df_processed, 'Customer_Postal_Code', add_gov=False, add_deleg=False, add_region=True
-        )
-        df_processed['Customer_Region'] = pd.Categorical(df_processed['region']).codes.astype(np.float32)
-        df_processed = df_processed.drop(['Customer_Postal_Code', 'region'], axis=1)
-
-    if 'Merchant_Postal_Code' in df_processed.columns:
-        logger.info("Processing Merchant_Postal_Code...")
-        df_processed = resolver.enrich_dataframe(
-            df_processed, 'Merchant_Postal_Code', add_gov=False, add_deleg=False, add_region=True
-        )
-        df_processed['Merchant_Region'] = pd.Categorical(df_processed['region']).codes.astype(np.float32)
-        df_processed = df_processed.drop(['Merchant_Postal_Code', 'region'], axis=1)
-
-    return df_processed
+def process_customer_postal_fit(df_train):
+    """Fit region mapping for Customer_Postal_Code on training data only."""
+    resolver = get_resolver()
+    logger.info("Enriching training data with Customer_Postal_Code (fit)")
+    df_enriched = resolver.enrich_dataframe(
+        df_train, 'Customer_Postal_Code', add_gov=False, add_deleg=False, add_region=True
+    )
+    region_categories = df_enriched['region'].astype('category').cat.categories
+    logger.info("Customer region categories (fit): %d unique", len(region_categories))
+    return region_categories
 
 
-def encode_categorical_columns(df):
-    df_encoded = df.copy()
+def process_customer_postal_transform(df, region_categories):
+    """Transform Customer_Postal_Code using pre‑fitted region categories."""
+    resolver = get_resolver()
+    df_enriched = resolver.enrich_dataframe(
+        df, 'Customer_Postal_Code', add_gov=False, add_deleg=False, add_region=True
+    )
+    cat_region = pd.Categorical(df_enriched['region'], categories=region_categories)
+    df_enriched['Customer_Region'] = cat_region.codes.astype(np.float32)
+    df_enriched = df_enriched.drop(['Customer_Postal_Code', 'region'], axis=1)
+    return df_enriched
 
-    exclude_columns = [
-        'TX_Time',
-        'Account_Id',
-        'Device_Id',
-        'Customer_Region',
-        'Merchant_Region'
-    ]
 
-    for col in df_encoded.columns:
-        if col in exclude_columns:
+def process_merchant_postal_fit(df_train):
+    """Fit region mapping for Merchant_Postal_Code on training data only."""
+    resolver = get_resolver()
+    logger.info("Enriching training data with Merchant_Postal_Code (fit)")
+    df_enriched = resolver.enrich_dataframe(
+        df_train, 'Merchant_Postal_Code', add_gov=False, add_deleg=False, add_region=True
+    )
+    merchant_region_categories = df_enriched['region'].astype('category').cat.categories
+    logger.info("Merchant region categories (fit): %d unique", len(merchant_region_categories))
+    return merchant_region_categories
+
+
+def process_merchant_postal_transform(df, merchant_region_categories):
+    """Transform Merchant_Postal_Code using pre‑fitted region categories."""
+    resolver = get_resolver()
+    df_enriched = resolver.enrich_dataframe(
+        df, 'Merchant_Postal_Code', add_gov=False, add_deleg=False, add_region=True
+    )
+    cat_region = pd.Categorical(df_enriched['region'], categories=merchant_region_categories)
+    df_enriched['Merchant_Region'] = cat_region.codes.astype(np.float32)
+    df_enriched = df_enriched.drop(['Merchant_Postal_Code', 'region'], axis=1)
+    return df_enriched
+
+
+def encode_categorical_columns_fit(df_train, categorical_cols):
+    encoders = {}
+    df_train_enc = df_train.copy()
+    for col in categorical_cols:
+        if col not in df_train.columns:
             continue
-
-        if df_encoded[col].dtype == 'object' or df_encoded[col].dtype.name == 'category':
-            logger.info("Converting categorical column to codes: %s", col)
-            df_encoded[col] = pd.Categorical(df_encoded[col]).codes.astype(np.float32)
-            df_encoded[col] = df_encoded[col].replace(-1, 0)
-
-    return df_encoded
-
-
-def create_preprocessing_pipeline():
-    return Pipeline([
-        ('temporal', TemporalFeatureTransformer()),
-        ('selector', TreeFeatureSelector()),
-        ('scaler', SafeScaler(scaler_type='robust'))
-    ])
+        unique_vals = df_train[col].astype(str).unique()
+        mapping = {val: idx for idx, val in enumerate(unique_vals)}
+        encoders[col] = mapping
+        df_train_enc[col] = df_train[col].astype(str).map(mapping).astype(np.float32)
+    logger.info("Categorical encoders fitted for %d columns", len(encoders))
+    return df_train_enc, encoders
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+def encode_categorical_columns_transform(df, encoders):
+    df_enc = df.copy()
+    for col, mapping in encoders.items():
+        if col not in df.columns:
+            continue
+        df_enc[col] = df_enc[col].astype(str).map(lambda x: mapping.get(x, -1)).astype(np.float32)
+    return df_enc
+
+
+def create_preprocessing_pipeline(numeric_cols):
+    scaler = RobustScaler()
+    preprocessor = ColumnTransformer(
+        transformers=[('num', scaler, numeric_cols)],
+        remainder='passthrough'
+    )
+    return Pipeline([('scaler', preprocessor)])
+
+
+# ------------------------------------------------------------------------------
+# Hyperparameter loader (accepts JSON string or file path)
+# ------------------------------------------------------------------------------
+
+def load_hyperparameters(hyperparam_arg: str) -> dict:
+    try:
+        return json.loads(hyperparam_arg)
+    except json.JSONDecodeError:
+        try:
+            with open(hyperparam_arg, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            raise ValueError(f"Could not load hyperparameters from '{hyperparam_arg}': {e}")
+
+
+# ------------------------------------------------------------------------------
+# Temporal split function (avoids pandas datetime issues)
+# ------------------------------------------------------------------------------
+
+def temporal_split_by_time(df, time_col, train_ratio=0.7, val_ratio=0.15):
+    if time_col not in df.columns:
+        raise ValueError(f"Time column '{time_col}' not found")
+    df_sorted = df.sort_values(time_col).reset_index(drop=True)
+    n = len(df_sorted)
+    train_end = int(n * train_ratio)
+    val_end = train_end + int(n * val_ratio)
+    train_df = df_sorted.iloc[:train_end].copy()
+    val_df = df_sorted.iloc[train_end:val_end].copy()
+    test_df = df_sorted.iloc[val_end:].copy()
+    logger.info("Temporal split (by %s): train=%d, val=%d, test=%d",
+                time_col, len(train_df), len(val_df), len(test_df))
+    return train_df, val_df, test_df
+
+
+# ------------------------------------------------------------------------------
+# JSON serialization helper
+# ------------------------------------------------------------------------------
+
+def make_json_safe(obj):
+    """Convert numpy/pandas numeric types to Python native types."""
+    if isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [make_json_safe(x) for x in obj]
+    else:
+        return obj
+
+
+# ------------------------------------------------------------------------------
 # ONNX export (surrogate RandomForest)
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
 def export_to_onnx_direct(model, output_path, input_dim):
-    """Export BRF model to ONNX by wrapping it as a standard RandomForestClassifier."""
     try:
         surrogate = RandomForestClassifier()
         surrogate.estimators_ = model.estimators_
@@ -153,23 +237,22 @@ def export_to_onnx_direct(model, output_path, input_dim):
         surrogate.n_classes_ = len(model.classes_)
         surrogate.n_features_in_ = model.n_features_in_
         surrogate.n_outputs_ = model.n_outputs_
-
         initial_type = [('float_input', FloatTensorType([None, input_dim]))]
         onnx_model = convert_sklearn(surrogate, initial_types=initial_type)
         onnx.save_model(onnx_model, str(output_path))
-        logger.info("ONNX model exported successfully to: %s", output_path)
+        logger.info("ONNX model exported to: %s", output_path)
         return str(output_path)
     except Exception as e:
         logger.error("ONNX export failed: %s", e)
         return None
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # Main
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description='Train Balanced Random Forest for bank fraud detection')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--dataset-path', required=True)
     parser.add_argument('--dataset-id', required=True)
     parser.add_argument('--job-id', required=True)
@@ -181,24 +264,19 @@ def main():
 
     started_at = datetime.now()
     overall_start = time.time()
-
     logger.info("Starting Balanced Random Forest training for dataset %s", args.dataset_id)
 
     original_stdout = sys.stdout
     sys.stdout = sys.stderr
 
     try:
-        with open(args.hyperparameters, 'r', encoding='utf-8') as f:
-            hp = json.load(f)
-
+        hp = load_hyperparameters(args.hyperparameters)
         model_name = hp.get('model_name', 'Balanced Random Forest')
         selected_original_features = hp.get('selected_original_features', [])
         all_features = hp.get('all_features', [])
 
         if not selected_original_features:
             raise ValueError("No original features selected for training")
-
-        logger.info("Model name: %s", model_name)
 
         dataset_path = Path(args.dataset_path)
         if not dataset_path.exists():
@@ -209,55 +287,92 @@ def main():
         else:
             df = pd.read_csv(dataset_path)
 
-        logger.info("Applying manual preprocessing...")
-        df = process_id_columns(df)
-        df = process_postal_codes(df)
-        df = encode_categorical_columns(df)
+        if not df.columns.is_unique:
+            df = df.loc[:, ~df.columns.duplicated(keep='first')]
+
+        if 'TX_Time' in df.columns:
+            df['TX_Time'] = pd.to_datetime(df['TX_Time'], errors='coerce')
+            df = df.dropna(subset=['TX_Time']).reset_index(drop=True)
 
         available_features = [f for f in all_features if f in df.columns]
-        if 'Customer_Region' in df.columns and 'Customer_Region' not in available_features:
-            available_features.append('Customer_Region')
-        if 'Merchant_Region' in df.columns and 'Merchant_Region' not in available_features:
-            available_features.append('Merchant_Region')
-
         if not available_features:
-            raise ValueError("None of the required features are available in the dataset")
+            raise ValueError("None of the required features are available")
 
-        X = df[available_features].copy()
+        feature_cols_for_split = available_features.copy()
+        if 'TX_Time' not in feature_cols_for_split and 'TX_Time' in df.columns:
+            feature_cols_for_split.append('TX_Time')
+
+        X = df[feature_cols_for_split].copy()
         y = df['fraud'].values
         df_processed = X.copy()
         df_processed['fraud'] = y
 
-        logger.info("Performing temporal split...")
-        df_train, df_val, df_test = temporal_split(
-            df_processed, train_ratio=0.7, val_ratio=0.15, time_col='TX_Time'
+        categorical_cols = []
+        for col in df_processed.columns:
+            if col not in ['TX_Time', 'fraud', 'Account_Id', 'Device_Id']:
+                if df_processed[col].dtype == 'object' or df_processed[col].dtype.name == 'category':
+                    categorical_cols.append(col)
+
+        # ========== STEP 1: TEMPORAL SPLIT ==========
+        if 'TX_Time' not in df_processed.columns:
+            raise ValueError("TX_Time column missing")
+        train_ratio, val_ratio = 0.7, 0.15
+        df_train, df_val, df_test = temporal_split_by_time(
+            df_processed, time_col='TX_Time', train_ratio=train_ratio, val_ratio=val_ratio
         )
 
-        X_train = df_train.drop('fraud', axis=1)
-        X_val = df_val.drop('fraud', axis=1)
-        X_test = df_test.drop('fraud', axis=1)
+        # ========== STEP 2: PER‑SPLIT PREPROCESSING ==========
+        logger.info("Applying per-split preprocessing...")
+        df_train = process_id_columns(df_train)
+        df_val = process_id_columns(df_val)
+        df_test = process_id_columns(df_test)
+
+        # Customer postal codes
+        customer_region_categories = process_customer_postal_fit(df_train)
+        df_train = process_customer_postal_transform(df_train, customer_region_categories)
+        df_val = process_customer_postal_transform(df_val, customer_region_categories)
+        df_test = process_customer_postal_transform(df_test, customer_region_categories)
+
+        # Merchant postal codes (if present)
+        if 'Merchant_Postal_Code' in df_processed.columns:
+            merchant_region_categories = process_merchant_postal_fit(df_train)
+            df_train = process_merchant_postal_transform(df_train, merchant_region_categories)
+            df_val = process_merchant_postal_transform(df_val, merchant_region_categories)
+            df_test = process_merchant_postal_transform(df_test, merchant_region_categories)
+
+        df_train, encoders = encode_categorical_columns_fit(df_train, categorical_cols)
+        df_val = encode_categorical_columns_transform(df_val, encoders)
+        df_test = encode_categorical_columns_transform(df_test, encoders)
+
+        X_train = df_train.drop(['fraud', 'TX_Time'], axis=1)
+        X_val = df_val.drop(['fraud', 'TX_Time'], axis=1)
+        X_test = df_test.drop(['fraud', 'TX_Time'], axis=1)
         y_train = df_train['fraud'].values
         y_val = df_val['fraud'].values
         y_test = df_test['fraud'].values
+
+        for X_set in [X_train, X_val, X_test]:
+            for col in X_set.columns:
+                if X_set[col].dtype == 'object':
+                    X_set[col] = pd.to_numeric(X_set[col], errors='coerce').fillna(0)
 
         logger.info("Train: %d rows (fraud rate %.4f)", len(X_train), y_train.mean())
         logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
         logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
 
-        logger.info("Creating and fitting preprocessing pipeline...")
-        preprocessor = create_preprocessing_pipeline()
-        X_train_processed = preprocessor.fit_transform(X_train)
-        X_val_processed = preprocessor.transform(X_val)
-        X_test_processed = preprocessor.transform(X_test)
+        # ========== STEP 3: SCALING ==========
+        numeric_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
+        preprocessor = create_preprocessing_pipeline(numeric_cols)
+        X_train_proc = preprocessor.fit_transform(X_train)
+        X_val_proc = preprocessor.transform(X_val)
+        X_test_proc = preprocessor.transform(X_test)
 
         try:
             feature_names = preprocessor.get_feature_names_out()
         except Exception:
-            feature_names = [f"feature_{i}" for i in range(X_train_processed.shape[1])]
+            feature_names = [f"feature_{i}" for i in range(X_train_proc.shape[1])]
 
-        logger.info("Processed feature shape: %s", X_train_processed.shape)
-
-        # Balanced Random Forest parameters
+        # ========== STEP 4: BALANCED RANDOM FOREST ==========
         brf_params = {
             'n_estimators': hp.get('n_estimators', 100),
             'max_depth': hp.get('max_depth', 15),
@@ -270,129 +385,92 @@ def main():
             'n_jobs': -1,
             'verbose': 0
         }
-        logger.info("Training Balanced Random Forest with params: %s", brf_params)
+        logger.info("Training BRF with params: %s", brf_params)
 
         train_start = time.time()
         brf_model = BalancedRandomForestClassifier(**brf_params)
-        brf_model.fit(X_train_processed, y_train)
+        brf_model.fit(X_train_proc, y_train)
         train_time = time.time() - train_start
 
-        y_val_proba = brf_model.predict_proba(X_val_processed)[:, 1]
+        # ========== STEP 5: THRESHOLD CALCULATIONS ==========
+        y_val_proba = brf_model.predict_proba(X_val_proc)[:, 1]
         max_prob = y_val_proba.max()
-        logger.info(
-            "Probability stats (VAL) - Mean: %.4f | Min: %.4f | Max: %.4f",
-            y_val_proba.mean(), y_val_proba.min(), max_prob
-        )
+        logger.info("Validation max probability: %.4f", max_prob)
 
-        # ──────────────────────────────────────────────────────────────────────
-        # Threshold selection (multiple strategies)
-        # ──────────────────────────────────────────────────────────────────────
-        # 1. Precision-Recall curve max F1 (primary fallback)
         precision_vals, recall_vals, thresholds_pr = precision_recall_curve(y_val, y_val_proba)
         f1_scores = 2 * precision_vals[:-1] * recall_vals[:-1] / (precision_vals[:-1] + recall_vals[:-1] + 1e-9)
         best_idx = np.argmax(f1_scores)
         pr_threshold = thresholds_pr[best_idx]
         best_f1 = f1_scores[best_idx]
-        logger.info("PR‑based threshold: %.4f (max F1=%.4f)", pr_threshold, best_f1)
+        logger.info("PR‑based threshold (max F1): %.4f (F1=%.4f)", pr_threshold, best_f1)
 
-        # 2. F-beta (β=2.0)
         fbeta_threshold, fbeta_score_val = find_threshold_by_fbeta(y_val, y_val_proba, beta=2.0)
         logger.info("F-beta (β=2.0): threshold=%.4f, score=%.4f", fbeta_threshold, fbeta_score_val)
 
-        # 3. Cost-based
         cost_threshold, min_cost = find_threshold_by_cost(y_val, y_val_proba, cost_fp=1.0, cost_fn=10.0)
         logger.info("Cost-based: threshold=%.4f, min_cost=%.0f", cost_threshold, min_cost)
-
-        # 4. PR-AUC
-        pr_auc = average_precision_score(y_val, y_val_proba)
-        logger.info("PR-AUC (val): %.4f", pr_auc)
 
         user_threshold = hp.get('detection_threshold')
         if user_threshold is not None:
             final_threshold = float(user_threshold)
-            logger.info("Using user-supplied threshold from UI: %.4f", final_threshold)
+            logger.info("Using user‑supplied threshold from UI: %.4f", final_threshold)
             if final_threshold > max_prob:
-                logger.warning(
-                    "User threshold %.4f is above maximum predicted probability %.4f. "
-                    "This will result in zero detections. Consider lowering the threshold.",
-                    final_threshold, max_prob
-                )
+                logger.warning("User threshold %.4f > max validation prob %.4f → will detect nothing.",
+                               final_threshold, max_prob)
         else:
-            final_threshold = float(pr_threshold)
-            logger.info("No UI threshold provided, using PR‑based threshold: %.4f", final_threshold)
+            final_threshold = pr_threshold
+            logger.info("No UI threshold, using PR‑based: %.4f", final_threshold)
 
-        # ──────────────────────────────────────────────────────────────────────
-        # Test set evaluation
-        # ──────────────────────────────────────────────────────────────────────
-        y_test_proba = brf_model.predict_proba(X_test_processed)[:, 1]
-        logger.info(
-            "Probability stats (TEST) - Mean: %.4f | Min: %.4f | Max: %.4f",
-            y_test_proba.mean(), y_test_proba.min(), y_test_proba.max()
-        )
-
+        # ========== STEP 6: TEST EVALUATION ==========
+        y_test_proba = brf_model.predict_proba(X_test_proc)[:, 1]
         y_test_pred = (y_test_proba >= final_threshold).astype(int)
-        logger.info("Predictions matching final threshold (%.4f): %d", final_threshold, int(y_test_pred.sum()))
 
         accuracy = accuracy_score(y_test, y_test_pred)
         precision = precision_score(y_test, y_test_pred, zero_division=0)
         recall = recall_score(y_test, y_test_pred, zero_division=0)
         f1 = f1_score(y_test, y_test_pred, zero_division=0)
         auc_roc = roc_auc_score(y_test, y_test_proba)
-        pr_auc_test = average_precision_score(y_test, y_test_proba)
+        pr_auc = average_precision_score(y_test, y_test_proba)
         cm = confusion_matrix(y_test, y_test_pred)
 
-        logger.info("Test metrics:")
-        logger.info("  Accuracy:  %.4f", accuracy)
-        logger.info("  Precision: %.4f", precision)
-        logger.info("  Recall:    %.4f", recall)
-        logger.info("  F1:        %.4f", f1)
-        logger.info("  AUC-ROC:   %.4f", auc_roc)
-        logger.info("  PR-AUC:    %.4f", pr_auc_test)
+        logger.info("Test metrics with threshold %.4f:", final_threshold)
+        logger.info("  Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, AUC-ROC: %.4f, PR-AUC: %.4f",
+                    accuracy, precision, recall, f1, auc_roc, pr_auc)
 
         # Feature importance
         importances = brf_model.feature_importances_
-        feature_importance_map = {}
-        for name, importance in zip(feature_names, importances):
-            feature_importance_map[name] = float(importance)
-        feature_importance_map = dict(
-            sorted(feature_importance_map.items(), key=lambda item: item[1], reverse=True)
-        )
+        feature_importance_map = dict(sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True))
 
-        full_pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('classifier', brf_model)
-        ])
-
+        # ========== STEP 7: SAVE ARTIFACTS (atomic) ==========
         timestamp = args.timestamp
         output_models_dir = Path("/app/output/models")
         output_onnx_dir = Path("/app/output/onnx")
         output_pipelines_dir = Path("/app/output/pipelines")
-
-        output_models_dir.mkdir(parents=True, exist_ok=True)
-        output_onnx_dir.mkdir(parents=True, exist_ok=True)
-        output_pipelines_dir.mkdir(parents=True, exist_ok=True)
+        for d in [output_models_dir, output_onnx_dir, output_pipelines_dir]:
+            d.mkdir(parents=True, exist_ok=True)
 
         base_filename = f"trained_model_{timestamp}"
-
         model_path = output_models_dir / f"{base_filename}.joblib"
-        joblib.dump(full_pipeline, model_path)
-
         pipeline_path = output_pipelines_dir / f"pipeline_{timestamp}.joblib"
-        joblib.dump(preprocessor, pipeline_path)
 
-        logger.info("Exporting model to ONNX format...")
+        full_pipeline = Pipeline([('preprocessor', preprocessor), ('classifier', brf_model)])
+
+        temp_path = output_models_dir / f"{base_filename}.tmp"
+        joblib.dump(full_pipeline, temp_path)
+        temp_path.rename(model_path)
+        logger.info("Model saved to %s (%d bytes)", model_path, model_path.stat().st_size)
+
+        joblib.dump(preprocessor, pipeline_path)
+        logger.info("Preprocessor saved to %s", pipeline_path)
+
         onnx_file = output_onnx_dir / f"{base_filename}.onnx"
-        onnx_path = export_to_onnx_direct(
-            model=brf_model,
-            output_path=onnx_file,
-            input_dim=X_train_processed.shape[1]
-        )
+        onnx_path = export_to_onnx_direct(brf_model, onnx_file, X_train_proc.shape[1])
 
         ended_at = datetime.now()
         total_duration = time.time() - overall_start
 
-        sys.stdout = original_stdout
-        result = {
+        # Build result dictionary with JSON‑safe conversion
+        result_raw = {
             'status': 'COMPLETED',
             'job_id': args.job_id,
             'dataset_id': args.dataset_id,
@@ -404,12 +482,12 @@ def main():
             'feature_importance': feature_importance_map,
             'hyperparameters_used': brf_params,
             'metrics': {
-                'accuracy': float(accuracy),
-                'precision': float(precision),
-                'recall': float(recall),
-                'f1_score': float(f1),
-                'auc_roc': float(auc_roc),
-                'pr_auc': float(pr_auc_test),
+                'accuracy': accuracy,
+                'precision': precision,
+                'recall': recall,
+                'f1_score': f1,
+                'auc_roc': auc_roc,
+                'pr_auc': pr_auc,
                 'avg_fraud_score': float(y_test_proba.mean()),
             },
             'confusion_matrix': {
@@ -419,37 +497,41 @@ def main():
                 'true_positives': int(cm[1, 1]),
             },
             'thresholds': {
-                'pr_optimal': float(pr_threshold),
-                'pr_f1': float(best_f1),
-                'fbeta': float(fbeta_threshold),
-                'fbeta_score': float(fbeta_score_val),
-                'cost': float(cost_threshold),
-                'min_cost': float(min_cost),
-                'final': float(final_threshold),
+                'pr_optimal': pr_threshold,
+                'pr_f1': best_f1,
+                'fbeta': fbeta_threshold,
+                'fbeta_score': fbeta_score_val,
+                'cost': cost_threshold,
+                'min_cost': min_cost,
+                'final': final_threshold,
             },
             'training_stats': {
                 'train_rows': int(len(X_train)),
                 'val_rows': int(len(X_val)),
                 'test_rows': int(len(X_test)),
                 'fraud_rate_test': float(y_test.mean()),
-                'train_time_seconds': float(train_time),
+                'train_time_seconds': train_time,
             },
             'start_time': started_at.isoformat(),
             'end_time': ended_at.isoformat(),
-            'duration_seconds': float(total_duration),
+            'duration_seconds': total_duration,
         }
+
+        # Convert numpy types to Python native
+        result = make_json_safe(result_raw)
+
+        sys.stdout = original_stdout
         print(json.dumps(result))
 
     except Exception as e:
-        logger.exception("Training failed")
+        logger.exception("BRF training failed")
         sys.stdout = original_stdout
-        error_result = {
+        print(json.dumps({
             'status': 'FAILED',
             'error': str(e),
             'job_id': getattr(args, 'job_id', None),
             'dataset_id': getattr(args, 'dataset_id', None),
-        }
-        print(json.dumps(error_result))
+        }))
         sys.exit(1)
 
 

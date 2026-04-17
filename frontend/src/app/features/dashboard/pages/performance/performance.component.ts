@@ -87,6 +87,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   statusFilter = signal<'all' | 'Draft' | 'Validated' | 'Rejected' | 'Deployed'>(
     this.authService.getCurrentUser()?.role === 'MANAGER' ? 'all' : 'all'
   );
+  sortFilter = signal<string>('popularity');
   showStatusFilter = signal(false);
 
   // Accordion signal
@@ -105,6 +106,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   private thresholdChart: any = null;
   private confusionHeatmapChart: any = null;
   private driftChart: any = null;
+  private driftResizeObserver: ResizeObserver | null = null;
 
   // Deployment signals
   isDeploying = signal(false);
@@ -123,31 +125,32 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     driftPercentage: 0,
     level: 'success'
   });
+  
+  // Predictions
+  driftPrediction = signal<any>(null);
+  isLoadingPrediction = signal(false);
+  
   deploymentHistory: any[] = [];
   validatedModels: any[] = [];
 
   // Computed signals
   filteredModels = computed(() => {
-    let models = this.rawModels();
+    let models = [...this.rawModels()];
     const search = this.searchQuery().toLowerCase().trim();
     const status = this.statusFilter();
+    const sortBy = this.sortFilter();
 
-    // For managers: show deployed models (any) AND validated models they approved
     if (this.isManager()) {
       models = models.filter(model =>
-        // Deployed models are always visible (anyone can deploy)
         model.status === 'Deployed' ||
-        // Validated models only visible if approved by current manager
         (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail())
       );
     }
 
-    // Apply status filter
     if (status !== 'all') {
       models = models.filter(model => model.status.toLowerCase() === status.toLowerCase());
     }
 
-    // Apply search filter
     if (search) {
       models = models.filter(model =>
         model.modelName.toLowerCase().includes(search) ||
@@ -156,6 +159,26 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         model.modelType.toLowerCase().includes(search)
       );
     }
+
+    // Apply Sorting
+    models.sort((a, b) => {
+      if (sortBy === 'recent') {
+        const dateA = new Date(a.trainingInfo?.completedAt || 0).getTime();
+        const dateB = new Date(b.trainingInfo?.completedAt || 0).getTime();
+        return dateB - dateA; // Descending
+      } else if (sortBy === 'f1') {
+        return (b.metrics?.f1_score || 0) - (a.metrics?.f1_score || 0);
+      } else if (sortBy === 'precision') {
+        return (b.metrics?.precision || 0) - (a.metrics?.precision || 0);
+      } else if (sortBy === 'recall') {
+        return (b.metrics?.recall || 0) - (a.metrics?.recall || 0);
+      } else if (sortBy === 'auc_roc') {
+        return (b.metrics?.auc_roc || 0) - (a.metrics?.auc_roc || 0);
+      } else {
+        // Default: Popularity (modeName alphabetical for now as proxy)
+        return a.modelName.localeCompare(b.modelName);
+      }
+    });
 
     return models;
   });
@@ -179,14 +202,12 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     };
   });
 
-  // Combined comparison source: selected models that match current filters
   filteredSelectedModels = computed(() => {
     const selected = this.selectedModels();
     const search = this.searchQuery().toLowerCase().trim();
     const status = this.statusFilter();
 
     return selected.filter(model => {
-      // For managers, only show deployed or their validated models in comparison
       if (this.isManager()) {
         const isValidForManager = model.status === 'Deployed' ||
           (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail());
@@ -289,6 +310,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   hasComparisonStats = computed(() => this.comparisonStats() !== null);
   hasFilteredModels = computed(() => this.filteredModels().length > 0);
   hasMultiplePages = computed(() => this.totalPages() > 1);
+  
   canShowDrift = computed(() => {
     if (!this.isManager()) return false;
     const deployed = this.activeDeployedModel();
@@ -309,10 +331,8 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   });
 
   constructor() {
-    // FIX: Use effect with manual initialization instead of writing to signals
     effect(() => {
       const selected = this.filteredSelectedModels();
-      // Use setTimeout to avoid signal writes during effect execution
       setTimeout(() => {
         if (selected.length > 0) {
           this.initCharts();
@@ -322,7 +342,6 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       }, 0);
     });
 
-    // FIX: For drift tracking - use effect without writing to signals directly
     effect(() => {
       const deployedModel = this.activeDeployedModel();
       if (this.isManager() && deployedModel) {
@@ -345,10 +364,17 @@ export class PerformanceComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.disposeCharts();
+    if (this.driftResizeObserver) {
+      this.driftResizeObserver.disconnect();
+      this.driftResizeObserver = null;
+    }
   }
 
   toggleAccordion(): void {
     this.isAccordionOpenSignal.update(v => !v);
+    if (this.isAccordionOpen()) {
+      setTimeout(() => this.driftChart?.resize(), 50);
+    }
   }
 
   isAccordionOpen(): boolean {
@@ -363,7 +389,6 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const search = this.searchQuery();
     if (search) url += `&search=${encodeURIComponent(search)}`;
 
-    // Don't filter by status in API for managers - we'll filter in component
     if (!this.isManager() && this.statusFilter() !== 'all') {
       url += `&status=${this.statusFilter()}`;
     }
@@ -372,7 +397,6 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       next: (response) => {
         let transformedModels: ModelMetrics[] = response.content.map((model: any) => this.transformModel(model));
 
-        // For managers: show deployed models (any) AND validated models they approved
         if (this.isManager()) {
           transformedModels = transformedModels.filter((model: ModelMetrics) =>
             model.status === 'Deployed' ||
@@ -549,7 +573,6 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   }
 
   toggleModelSelection(model: ModelMetrics): void {
-    // For managers, prevent selecting models they don't have permission to see
     if (this.isManager()) {
       const isValidForManager = model.status === 'Deployed' ||
         (model.status === 'Validated' && model.validatedBy?.email === this.currentUserEmail());
@@ -610,16 +633,11 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     if (!status) return 'bg-gray-100 text-gray-700';
     const s = status.toLowerCase();
     switch (s) {
-      case 'draft':
-        return 'bg-gray-100 text-gray-700';
-      case 'validated':
-        return 'bg-green-100 text-green-700';
-      case 'rejected':
-        return 'bg-red-100 text-red-700';
-      case 'deployed':
-        return 'bg-blue-100 text-blue-700';
-      default:
-        return 'bg-gray-100 text-gray-700';
+      case 'draft': return 'bg-gray-100 text-gray-700';
+      case 'validated': return 'bg-green-100 text-green-700';
+      case 'rejected': return 'bg-red-100 text-red-700';
+      case 'deployed': return 'bg-blue-100 text-blue-700';
+      default: return 'bg-gray-100 text-gray-700';
     }
   }
 
@@ -689,42 +707,17 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         model.metrics.accuracy
       ],
       name: model.modelName,
-      areaStyle: {
-        color: `rgba(${this.getColorForIndex(index)}, 0.2)`
-      },
-      lineStyle: {
-        color: `rgb(${this.getColorForIndex(index)})`,
-        width: 2
-      },
-      itemStyle: {
-        color: `rgb(${this.getColorForIndex(index)})`
-      }
+      areaStyle: { color: `rgba(${this.getColorForIndex(index)}, 0.2)` },
+      lineStyle: { color: `rgb(${this.getColorForIndex(index)})`, width: 2 },
+      itemStyle: { color: `rgb(${this.getColorForIndex(index)})` }
     }));
 
     this.radarChart.setOption({
-      title: {
-        text: 'Comparaison des Métriques',
-        left: 'center',
-        top: 10,
-        textStyle: { fontSize: 14, fontWeight: 'bold' }
-      },
+      title: { text: 'Comparaison des Métriques', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
       tooltip: { trigger: 'item' },
-      legend: {
-        data: selected.map(m => m.modelName),
-        orient: 'vertical',
-        left: 'left',
-        top: 'center'
-      },
-      radar: {
-        indicator: indicators,
-        shape: 'circle',
-        center: ['50%', '50%'],
-        radius: '60%'
-      },
-      series: [{
-        type: 'radar',
-        data: seriesData
-      }]
+      legend: { data: selected.map(m => m.modelName), orient: 'vertical', left: 'left', top: 'center' },
+      radar: { indicator: indicators, shape: 'circle', center: ['50%', '50%'], radius: '60%' },
+      series: [{ type: 'radar', data: seriesData }]
     });
 
     window.addEventListener('resize', () => this.radarChart?.resize());
@@ -751,60 +744,25 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         model.metrics.auc_roc,
         model.metrics.accuracy
       ],
-      itemStyle: {
-        color: colors[index],
-        borderRadius: [4, 4, 0, 0]
-      },
-      label: {
-        show: true,
-        position: 'top',
-        formatter: (params: any) => (params.value * 100).toFixed(1) + '%',
-        fontSize: 10
-      }
+      itemStyle: { color: colors[index], borderRadius: [4, 4, 0, 0] },
+      label: { show: true, position: 'top', formatter: (params: any) => (params.value * 100).toFixed(1) + '%', fontSize: 10 }
     }));
 
     this.barChart.setOption({
-      title: {
-        text: 'Comparaison des Performances',
-        left: 'center',
-        top: 10,
-        textStyle: { fontSize: 14, fontWeight: 'bold' }
-      },
+      title: { text: 'Comparaison des Performances', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
         formatter: (params: any) => {
           let result = `<strong>${params[0].axisValue}</strong><br/>`;
-          params.forEach((p: any) => {
-            result += `${p.marker} ${p.seriesName}: ${(p.value * 100).toFixed(1)}%<br/>`;
-          });
+          params.forEach((p: any) => result += `${p.marker} ${p.seriesName}: ${(p.value * 100).toFixed(1)}%<br/>`);
           return result;
         }
       },
-      legend: {
-        data: this.selectedModels().map(m => m.modelName),
-        top: 40
-      },
-      grid: {
-        left: '8%',
-        right: '5%',
-        bottom: '10%',
-        top: '20%'
-      },
-      xAxis: {
-        type: 'category',
-        data: metrics,
-        axisLabel: { fontSize: 11, fontWeight: 'bold' }
-      },
-      yAxis: {
-        type: 'value',
-        name: 'Score',
-        min: 0,
-        max: 1,
-        axisLabel: {
-          formatter: (value: number) => (value * 100).toFixed(0) + '%'
-        }
-      },
+      legend: { data: this.selectedModels().map(m => m.modelName), top: 40 },
+      grid: { left: '8%', right: '5%', bottom: '10%', top: '20%' },
+      xAxis: { type: 'category', data: metrics, axisLabel: { fontSize: 11, fontWeight: 'bold' } },
+      yAxis: { type: 'value', name: 'Score', min: 0, max: 1, axisLabel: { formatter: (value: number) => (value * 100).toFixed(0) + '%' } },
       series: seriesData
     });
 
@@ -838,54 +796,21 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         data: fpr.map((x, i) => [x, tpr[i]]),
         smooth: true,
         symbol: 'none',
-        lineStyle: {
-          color: `rgb(${this.getColorForIndex(index)})`,
-          width: 2.5
-        }
+        lineStyle: { color: `rgb(${this.getColorForIndex(index)})`, width: 2.5 }
       };
     });
 
     this.rocCurvesChart.setOption({
-      title: {
-        text: 'Courbes ROC Comparées',
-        left: 'center',
-        top: 10,
-        textStyle: { fontSize: 14, fontWeight: 'bold' }
-      },
+      title: { text: 'Courbes ROC Comparées', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'cross' },
-        formatter: (params: any) => {
-          if (params && params[0]) {
-            return `FPR: ${params[0].data[0].toFixed(3)}<br/>TPR: ${params[0].data[1].toFixed(3)}`;
-          }
-          return '';
-        }
+        formatter: (params: any) => params?.[0] ? `FPR: ${params[0].data[0].toFixed(3)}<br/>TPR: ${params[0].data[1].toFixed(3)}` : ''
       },
-      legend: {
-        data: seriesData.map(s => s.name),
-        top: 40,
-        left: 'center',
-        orient: 'horizontal'
-      },
-      grid: {
-        left: '10%',
-        right: '8%',
-        bottom: '10%',
-        top: '20%'
-      },
-      xAxis: {
-        type: 'value',
-        name: 'Taux Faux Positifs (FPR)',
-        min: 0,
-        max: 1
-      },
-      yAxis: {
-        type: 'value',
-        name: 'Taux Vrais Positifs (TPR)',
-        min: 0,
-        max: 1
-      },
+      legend: { data: seriesData.map(s => s.name), top: 40, left: 'center', orient: 'horizontal' },
+      grid: { left: '10%', right: '8%', bottom: '10%', top: '20%' },
+      xAxis: { type: 'value', name: 'Taux Faux Positifs (FPR)', min: 0, max: 1 },
+      yAxis: { type: 'value', name: 'Taux Vrais Positifs (TPR)', min: 0, max: 1 },
       series: seriesData
     });
 
@@ -915,58 +840,25 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
-        lineStyle: {
-          color: `rgb(${this.getColorForIndex(index)})`,
-          width: 2.5
-        },
-        itemStyle: {
-          color: `rgb(${this.getColorForIndex(index)})`
-        }
+        lineStyle: { color: `rgb(${this.getColorForIndex(index)})`, width: 2.5 },
+        itemStyle: { color: `rgb(${this.getColorForIndex(index)})` }
       };
     });
 
     this.thresholdChart.setOption({
-      title: {
-        text: 'Impact du Seuil sur F1-Score',
-        left: 'center',
-        top: 10,
-        textStyle: { fontSize: 14, fontWeight: 'bold' }
-      },
+      title: { text: 'Impact du Seuil sur F1-Score', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
       tooltip: {
         trigger: 'axis',
         formatter: (params: any) => {
           let result = `<strong>Seuil: ${params[0].axisValue}</strong><br/>`;
-          params.forEach((p: any) => {
-            result += `${p.marker} ${p.seriesName}: ${(p.value * 100).toFixed(1)}%<br/>`;
-          });
+          params.forEach((p: any) => result += `${p.marker} ${p.seriesName}: ${(p.value * 100).toFixed(1)}%<br/>`);
           return result;
         }
       },
-      legend: {
-        data: selected.map(m => m.modelName),
-        top: 40
-      },
-      grid: {
-        left: '10%',
-        right: '8%',
-        bottom: '10%',
-        top: '20%'
-      },
-      xAxis: {
-        type: 'category',
-        name: 'Seuil de Détection',
-        data: thresholds.map(t => (t * 100).toFixed(0) + '%'),
-        axisLabel: { rotate: 45 }
-      },
-      yAxis: {
-        type: 'value',
-        name: 'F1-Score',
-        min: 0,
-        max: 1,
-        axisLabel: {
-          formatter: (value: number) => (value * 100).toFixed(0) + '%'
-        }
-      },
+      legend: { data: selected.map(m => m.modelName), top: 40 },
+      grid: { left: '10%', right: '8%', bottom: '10%', top: '20%' },
+      xAxis: { type: 'category', name: 'Seuil de Détection', data: thresholds.map(t => (t * 100).toFixed(0) + '%'), axisLabel: { rotate: 45 } },
+      yAxis: { type: 'value', name: 'F1-Score', min: 0, max: 1, axisLabel: { formatter: (value: number) => (value * 100).toFixed(0) + '%' } },
       series: seriesData
     });
 
@@ -1014,63 +906,22 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           </div>`;
         }
       },
-      grid: {
-        top: 20,
-        bottom: 115,
-        left: 120,
-        right: 40
-      },
-      xAxis: {
-        type: 'category',
-        data: selected.map(m => m.modelName),
-        splitArea: { show: true },
-        axisLabel: { rotate: 25, fontSize: 10, fontWeight: 'bold' }
-      },
-      yAxis: {
-        type: 'category',
-        data: metrics,
-        splitArea: { show: true },
-        axisLabel: { fontWeight: 'bold', fontSize: 11 }
-      },
+      grid: { top: 20, bottom: 115, left: 120, right: 40 },
+      xAxis: { type: 'category', data: selected.map(m => m.modelName), splitArea: { show: true }, axisLabel: { rotate: 25, fontSize: 10, fontWeight: 'bold' } },
+      yAxis: { type: 'category', data: metrics, splitArea: { show: true }, axisLabel: { fontWeight: 'bold', fontSize: 11 } },
       visualMap: {
-        min: 0,
-        max: 100,
-        calculable: true,
-        orient: 'horizontal',
-        left: 'center',
-        bottom: -20,
-        dimension: 2,
+        min: 0, max: 100, calculable: true, orient: 'horizontal', left: 'center', bottom: -20, dimension: 2,
         formatter: (value: number) => value.toFixed(0) + '%',
-        inRange: {
-          color: ['#f8fafc', '#dbeafe', '#3b82f6', '#1d4ed8']
-        },
-        outOfRange: {
-          opacity: 0
-        }
+        inRange: { color: ['#f8fafc', '#dbeafe', '#3b82f6', '#1d4ed8'] },
+        outOfRange: { opacity: 0 }
       },
       series: [{
         name: 'Confusion Matrix',
         type: 'heatmap',
         data: data,
-        label: {
-          show: true,
-          formatter: (params: any) => {
-            const rawVal = params.data[3];
-            return rawVal > 1000 ? (rawVal / 1000).toFixed(1) + 'k' : rawVal;
-          },
-          fontSize: 12,
-          fontWeight: 'black'
-        },
-        itemStyle: {
-          borderWidth: 2,
-          borderColor: '#ffffff'
-        },
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowColor: 'rgba(0, 0, 0, 0.2)'
-          }
-        }
+        label: { show: true, formatter: (params: any) => params.data[3] > 1000 ? (params.data[3] / 1000).toFixed(1) + 'k' : params.data[3], fontSize: 12, fontWeight: 'black' },
+        itemStyle: { borderWidth: 2, borderColor: '#ffffff' },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.2)' } }
       }]
     });
 
@@ -1078,18 +929,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   }
 
   public getColorForIndex(index: number): string {
-    const colors = [
-      '59, 130, 246',   // Blue 500
-      '16, 185, 129',   // Emerald 500
-      '139, 92, 246',   // Violet 500
-      '245, 158, 11',   // Amber 500
-      '239, 68, 68',    // Red 500
-      '236, 72, 153',   // Pink 500
-      '14, 165, 233',   // Sky 500
-      '168, 85, 247',   // Purple 500
-      '249, 115, 22',   // Orange 500
-      '20, 184, 166'    // Teal 500
-    ];
+    const colors = ['59, 130, 246', '16, 185, 129', '139, 92, 246', '245, 158, 11', '239, 68, 68', '236, 72, 153', '14, 165, 233', '168, 85, 247', '249, 115, 22', '20, 184, 166'];
     return colors[index % colors.length];
   }
 
@@ -1098,9 +938,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   // ============================================
 
   loadModelDriftData(): void {
-    if (!this.isManager() || !this.activeDeployedModel()) {
-      return;
-    }
+    if (!this.isManager() || !this.activeDeployedModel()) return;
 
     this.isLoadingDrift.set(true);
 
@@ -1132,9 +970,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       next: () => {
         this.loadModelDriftData();
         const model = this.activeDeployedModel();
-        if (model) {
-          this.loadDriftPrediction(model.modelUuid);   // <-- add this
-        }
+        if (model) this.loadDriftPrediction(model.modelUuid);
       },
       error: (error) => {
         console.error('Error triggering drift check:', error);
@@ -1144,35 +980,49 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     });
   }
 
+  loadDriftPrediction(modelUuid: string): void {
+    if (!modelUuid) return;
+    this.isLoadingPrediction.set(true);
+    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/drift/predict/${modelUuid}`).subscribe({
+      next: (response: any) => {
+        this.driftPrediction.set(response);
+        this.isLoadingPrediction.set(false);
+      },
+      error: (error) => {
+        console.error('Error loading drift prediction:', error);
+        this.driftPrediction.set(null);
+        this.isLoadingPrediction.set(false);
+      }
+    });
+  }
+
   private transformBackendDriftData(response: any): any {
     const history = response.drift_history || [];
     const driftValues = history.map((h: any) => h.overall_drift_percentage || 0);
     const distributionDriftValues = history.map((h: any) => h.score_distribution_drift || 0);
-    const performanceDriftValues = history.map((h: any) => Math.abs(h.f1_drift || 0));
+    const performanceDriftValues = history.map((h: any) => h.f1_drift || 0);   // signed values
     const periods = history.map((h: any) => {
       const date = new Date(h.checked_at);
       return date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric', hour: '2-digit' });
     });
 
     const lastPoint = history.length > 0 ? history[history.length - 1] : null;
-
     const currentDist = lastPoint?.score_distribution_drift || 0;
     const baselineF1 = lastPoint?.baseline_f1 || 0;
     const currentF1 = lastPoint?.current_f1 || 0;
-    const currentPerf = (baselineF1 > 0) ? ((currentF1 / baselineF1) - 1) * 100 : 0;
-    const overallDrift = lastPoint?.overall_drift_percentage || currentDist;
+    const currentPerf = (baselineF1 > 0) ? ((currentF1 / baselineF1) - 1) * 100 : 0; // signed
 
     return {
-      periods: periods,
-      driftValues: driftValues,
-      distributionDriftValues: distributionDriftValues,
-      performanceDriftValues: performanceDriftValues,
+      periods,
+      driftValues,
+      distributionDriftValues,
+      performanceDriftValues,
       threshold: this.driftThreshold,
       currentDrift: Math.abs(currentDist),
       currentDistributionDrift: Math.abs(currentDist),
-      currentPerformanceDrift: currentPerf,
-      baselineF1: baselineF1,
-      currentF1: currentF1,
+      currentPerformanceDrift: currentPerf,   // keep sign
+      baselineF1,
+      currentF1,
       performanceStatus: lastPoint?.performance_status === 'INSUFFICIENT_DATA' ? 'INSUFFICIENT_DATA' : this.getAlertLevel(currentPerf, 'performance').toUpperCase(),
       distributionStatus: this.getAlertLevel(currentDist, 'distribution').toUpperCase(),
       baselineAvgScore: lastPoint?.baseline_avg_fraud_score || 0,
@@ -1184,13 +1034,11 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       recommendations: this.getRecommendationsBasedOnDrift(lastPoint?.overall_drift_percentage || 0, response.current_status),
       performanceMetrics: lastPoint?.current_metrics || {},
       dataPoints: history,
-      alertLevel: this.getAlertLevel(lastPoint?.overall_drift_percentage || 0, 'distribution'), // Par défaut, on garde la logique dist pour le niveau global
+      alertLevel: this.getAlertLevel(lastPoint?.overall_drift_percentage || 0, 'distribution'),
       modelName: response.model_name,
       deploymentDate: response.last_check
     };
   }
-
-  // Remove obsolete manual calculation helpers
 
   private generateFallbackDriftDataFromModel(model: any): void {
     const modelMetrics = model.metrics || {};
@@ -1202,6 +1050,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const driftValues = [];
     const distributionDriftValues = [];
     const performanceDriftValues = [];
+    
     for (let i = 0; i < 5; i++) {
       const weekOffset = Math.max(0, weeksSinceDeployment - (4 - i));
       const progressionFactor = Math.min(1, weekOffset / 12);
@@ -1210,12 +1059,13 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       distributionDriftValues.push(val * 0.6);
       performanceDriftValues.push(val * 0.4);
     }
+    
     const periods = this.generatePeriods(5);
     const driftData = {
-      periods: periods,
-      driftValues: driftValues,
-      distributionDriftValues: distributionDriftValues,
-      performanceDriftValues: performanceDriftValues,
+      periods,
+      driftValues,
+      distributionDriftValues,
+      performanceDriftValues,
       threshold: this.driftThreshold,
       currentDrift: driftValues[driftValues.length - 1],
       currentDistributionDrift: distributionDriftValues[distributionDriftValues.length - 1],
@@ -1242,6 +1092,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       modelName: model.modelName,
       deploymentDate: model.deployedAt
     };
+    
     this.modelDriftData.set(driftData);
     this.updateDriftAlert(driftData);
     this.isLoadingDrift.set(false);
@@ -1267,16 +1118,14 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       if (absValue >= this.driftWarningThreshold) return 'warning';
       return 'success';
     } else {
-      // Performance Drift: Alert ONLY if it's a degradation (negative value) 
-      // exceeding the critical threshold (e.g., -10%, which means 90% retention or less)
-      if (value <= -this.driftCriticalThreshold) return 'critical';
-      if (value <= -this.driftWarningThreshold) return 'warning';
+      // performance: negative values = degradation
+      if (value < -this.driftCriticalThreshold) return 'critical';
+      if (value < -this.driftWarningThreshold) return 'warning';
       return 'success';
     }
   }
 
   private updateDriftAlert(driftData: any): void {
-    // 0. If no history has been recorded yet, do not show any alert
     if (!driftData || !driftData.dataPoints || driftData.dataPoints.length === 0) {
       this.driftAlert.set({ show: false, message: '', driftPercentage: 0, level: 'success' });
       return;
@@ -1285,11 +1134,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const distDrift = driftData.currentDistributionDrift;
     const perfDrift = driftData.currentPerformanceDrift;
 
-    // Performance level is only considered if data is sufficient
-    const perfLevel = driftData.performanceStatus === 'INSUFFICIENT_DATA'
-      ? 'success'
-      : this.getAlertLevel(perfDrift, 'performance');
-
+    const perfLevel = driftData.performanceStatus === 'INSUFFICIENT_DATA' ? 'success' : this.getAlertLevel(perfDrift, 'performance');
     const distLevel = this.getAlertLevel(distDrift, 'distribution');
 
     if (distLevel === 'critical' || perfLevel === 'critical') {
@@ -1303,17 +1148,14 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         driftPercentage: (distLevel === 'critical') ? distDrift : Math.abs(perfDrift),
         level: 'critical'
       });
-    }
-    else if (distLevel === 'warning' || perfLevel === 'warning') {
+    } else if (distLevel === 'warning' || perfLevel === 'warning') {
       this.driftAlert.set({
         show: true,
         message: `AVERTISSEMENT : Détection de dérive (Dist: ${distDrift.toFixed(1)}%, Perf: ${perfLevel === 'success' ? '—' : perfDrift.toFixed(1)}%). La donnée dévie du comportement normal (> ${this.driftWarningThreshold}%). Planifiez un réentraînement.`,
         driftPercentage: Math.max(distDrift, perfLevel === 'success' ? 0 : Math.abs(perfDrift)),
         level: 'warning'
       });
-    }
-    else {
-      // Success case (could be improvement or small stable change)
+    } else {
       this.driftAlert.set({ show: false, message: '', driftPercentage: 0, level: 'success' });
     }
   }
@@ -1352,14 +1194,23 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     const isInvalidDate = !deploymentDateValue || deploymentDateValue === 'Never' || isNaN(new Date(deploymentDateValue).getTime());
     const displayDate = isInvalidDate ? 'Non spécifié' : new Date(deploymentDateValue).toLocaleDateString('fr-FR');
 
+    const hasPerformanceData = data.performanceStatus !== 'INSUFFICIENT_DATA';
+
+    // Collect all values to determine Y-axis range dynamically (including negative values)
     const allValues = [
       ...data.distributionDriftValues,
-      ...data.performanceDriftValues,
+      ...(hasPerformanceData ? data.performanceDriftValues : []),
       this.driftCriticalThreshold
     ];
-    const yMax = Math.max(12, Math.ceil(Math.max(...allValues) * 1.3));
-
-    const hasPerformanceData = data.performanceStatus !== 'INSUFFICIENT_DATA';
+    
+    const minValue = Math.min(...allValues);
+    const maxValue = Math.max(...allValues);
+    const range = maxValue - minValue;
+    const padding = range * 0.1;
+    
+    // Set dynamic min and max with padding
+    const yMin = minValue >= 0 ? 0 : minValue - padding;
+    const yMax = maxValue + padding;
 
     const option: any = {
       title: {
@@ -1377,7 +1228,9 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           if (!params || params.length === 0) return '';
           let result = `<strong>${params[0].axisValue}</strong><br/>`;
           params.forEach((p: any) => {
-            result += `${p.marker} ${p.seriesName}: <strong>${p.value.toFixed(2)}%</strong><br/>`;
+            const value = p.value.toFixed(2);
+            const color = p.value < 0 ? '#ef4444' : (p.seriesName.includes('Distribution') ? '#8b5cf6' : '#f59e0b');
+            result += `<span style="color: ${color};">${p.marker} ${p.seriesName}: <strong>${value}%</strong></span><br/>`;
           });
           return result;
         }
@@ -1394,7 +1247,7 @@ export class PerformanceComponent implements OnInit, OnDestroy {
       grid: {
         left: '8%',
         right: '8%',
-        bottom: '10%',
+        bottom: '15%',
         top: '22%',
         containLabel: true
       },
@@ -1412,10 +1265,11 @@ export class PerformanceComponent implements OnInit, OnDestroy {
         name: 'Dérive (%)',
         nameLocation: 'middle',
         nameGap: 45,
-        min: 0,
+        min: yMin,
         max: yMax,
         axisLabel: { fontSize: 11, formatter: (value: number) => value.toFixed(0) + '%' },
-        splitLine: { lineStyle: { type: 'dashed', color: '#e5e7eb' } }
+        axisLine: { show: true },
+        splitLine: { show: true, lineStyle: { type: 'dashed', color: '#e5e7eb' } }
       },
       series: [
         {
@@ -1426,7 +1280,11 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           symbol: 'circle',
           symbolSize: 8,
           lineStyle: { color: '#8b5cf6', width: 3 },
-          itemStyle: { color: '#8b5cf6', borderColor: '#ffffff', borderWidth: 2 },
+          itemStyle: {
+            color: (params: any) => params.value < 0 ? '#ef4444' : '#8b5cf6',
+            borderColor: '#ffffff',
+            borderWidth: 2
+          },
           areaStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
               { offset: 0, color: 'rgba(139, 92, 246, 0.15)' },
@@ -1434,21 +1292,29 @@ export class PerformanceComponent implements OnInit, OnDestroy {
             ])
           },
           markLine: {
-            data: [{
-              name: 'Seuil Critique',
-              yAxis: this.driftCriticalThreshold,
-              lineStyle: { color: '#ef4444', width: 2, type: 'dashed' },
-              label: { show: true, formatter: `Seuil Critique: ${this.driftCriticalThreshold}%`, position: 'end', color: '#ef4444', fontWeight: 'bold', fontSize: 10 }
-            }],
+            data: [
+              {
+                name: 'Seuil Critique',
+                yAxis: this.driftCriticalThreshold,
+                lineStyle: { color: '#ef4444', width: 2, type: 'dashed' },
+                label: { show: true, formatter: `Seuil Critique: ${this.driftCriticalThreshold}%`, position: 'end', color: '#ef4444', fontWeight: 'bold', fontSize: 10 }
+              },
+              ...(minValue < 0 ? [{
+                name: 'Baseline (0%)',
+                yAxis: 0,
+                lineStyle: { color: '#6b7280', width: 1, type: 'solid' },
+                label: { show: false }
+              }] : [])
+            ],
             symbol: 'none'
           },
           label: {
             show: true,
-            position: 'top',
+            position: (params: any) => params.value < 0 ? 'bottom' : 'top',
             formatter: (params: any) => params.value.toFixed(1) + '%',
             fontSize: 10,
             fontWeight: 'bold',
-            color: '#8b5cf6'
+            color: (params: any) => params.value < 0 ? '#ef4444' : '#8b5cf6'
           }
         },
         ...(hasPerformanceData ? [{
@@ -1459,7 +1325,11 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           symbol: 'diamond',
           symbolSize: 8,
           lineStyle: { color: '#f59e0b', width: 3 },
-          itemStyle: { color: '#f59e0b', borderColor: '#ffffff', borderWidth: 2 },
+          itemStyle: {
+            color: (params: any) => params.value < 0 ? '#ef4444' : '#f59e0b',
+            borderColor: '#ffffff',
+            borderWidth: 2
+          },
           areaStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
               { offset: 0, color: 'rgba(245, 158, 11, 0.12)' },
@@ -1468,17 +1338,31 @@ export class PerformanceComponent implements OnInit, OnDestroy {
           },
           label: {
             show: true,
-            position: 'bottom',
+            position: (params: any) => params.value < 0 ? 'top' : 'bottom',
             formatter: (params: any) => params.value.toFixed(1) + '%',
             fontSize: 10,
             fontWeight: 'bold',
-            color: '#f59e0b'
+            color: (params: any) => params.value < 0 ? '#ef4444' : '#f59e0b'
           }
         }] : [])
+      ],
+      dataZoom: [
+        { type: 'slider', start: 0, end: 100, height: 20, bottom: 0 },
+        { type: 'inside', start: 0, end: 100 }
       ]
     };
 
     this.driftChart.setOption(option);
+    
+    if (this.driftResizeObserver) {
+      this.driftResizeObserver.disconnect();
+    }
+    
+    this.driftResizeObserver = new ResizeObserver(() => {
+      this.driftChart?.resize();
+    });
+    this.driftResizeObserver.observe(chartDom);
+    
     window.addEventListener('resize', () => this.driftChart?.resize());
   }
 
@@ -1486,16 +1370,11 @@ export class PerformanceComponent implements OnInit, OnDestroy {
     if (!status) return 'Inconnu';
     switch (status.toUpperCase()) {
       case 'NORMAL':
-      case 'SUCCESS':
-        return '';
-      case 'WARNING':
-        return 'AVERTISSEMENT';
-      case 'CRITICAL':
-        return 'CRITIQUE';
-      case 'INSUFFICIENT_DATA':
-        return 'DONNÉES INSUFFISANTES';
-      default:
-        return status;
+      case 'SUCCESS': return '';
+      case 'WARNING': return 'AVERTISSEMENT';
+      case 'CRITICAL': return 'CRITIQUE';
+      case 'INSUFFICIENT_DATA': return 'DONNÉES INSUFFISANTES';
+      default: return status;
     }
   }
 
@@ -1529,28 +1408,5 @@ export class PerformanceComponent implements OnInit, OnDestroy {
   onPageChange(page: number): void {
     this.currentPage.set(page);
     this.loadModels();
-  }
-
-  // ============================================
-  // PREDICTIVE DRIFT 
-  // ============================================
-  driftPrediction = signal<any>(null);
-  isLoadingPrediction = signal(false);
-
-  loadDriftPrediction(modelUuid: string): void {
-    if (!modelUuid) return;
-    this.isLoadingPrediction.set(true);
-    this.http.get(`${environment.apiUrl}/v1/fraud-detection/deployment/drift/predict/${modelUuid}`)
-      .subscribe({
-        next: (response: any) => {
-          this.driftPrediction.set(response);
-          this.isLoadingPrediction.set(false);
-        },
-        error: (error) => {
-          console.error('Error loading drift prediction:', error);
-          this.driftPrediction.set(null);
-          this.isLoadingPrediction.set(false);
-        }
-      });
   }
 }

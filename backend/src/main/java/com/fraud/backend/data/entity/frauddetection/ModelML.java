@@ -1,6 +1,7 @@
 package com.fraud.backend.data.entity.frauddetection;
 
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
+import com.fraud.backend.data.enums.InferenceEngine;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -62,6 +63,11 @@ public class ModelML {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "hyperparameters", columnDefinition = "jsonb")
     private Map<String, Object> hyperparameters;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inference_engine")
+    @Builder.Default
+    private InferenceEngine inferenceEngine = InferenceEngine.ONNX_LOCAL;
 
     private String description;
 

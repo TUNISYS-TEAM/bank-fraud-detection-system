@@ -55,7 +55,8 @@ export class AlertsComponent implements OnInit {
   searchQuery = signal('');
   statusFilter = signal<string>('all');
   riskLevelFilter = signal<string>('all');
-  scoreSortDirection = signal<'ASC' | 'DESC' | null>(null);
+  sortField = signal<string | null>(null);
+  sortDirection = signal<'ASC' | 'DESC' | null>(null);
 
   // 1. Computed: applied global filter on full dataset
   filteredAlerts = computed(() => {
@@ -78,7 +79,7 @@ export class AlertsComponent implements OnInit {
       all = all.filter(a => a.riskLevel === riskF);
     }
 
-    if (!query && !statusF && !riskF && !this.scoreSortDirection()) return all;
+    if (!query && !statusF && !riskF && !this.sortDirection()) return all;
 
     let filtered = all.filter(alert => {
       const txnId = String(alert.transactionId ?? '').toLowerCase();
@@ -101,17 +102,39 @@ export class AlertsComponent implements OnInit {
     });
 
     // Apply sorting
-    const sortDir = this.scoreSortDirection();
-    if (sortDir) {
-      filtered = [...filtered].sort((a, b) => {
-        const scoreA = a.fraudScore ?? 0;
-        const scoreB = b.fraudScore ?? 0;
-        return sortDir === 'DESC' ? scoreB - scoreA : scoreA - scoreB;
-      });
-    }
-
-    return filtered;
+    return this.applySorting(filtered);
   });
+
+  private applySorting(list: FraudAlertResponse[]): FraudAlertResponse[] {
+    const field = this.sortField();
+    const direction = this.sortDirection();
+
+    if (!field || !direction) return list;
+
+    return [...list].sort((a, b) => {
+      let valA: any, valB: any;
+
+      switch (field) {
+        case 'createdAt':
+          valA = new Date(a.createdAt).getTime();
+          valB = new Date(b.createdAt).getTime();
+          break;
+        case 'transactionAmount':
+          valA = a.transactionAmount || 0;
+          valB = b.transactionAmount || 0;
+          break;
+        case 'fraudScore':
+          valA = a.fraudScore || 0;
+          valB = b.fraudScore || 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (direction === 'DESC') return valB - valA;
+      return valA - valB;
+    });
+  }
 
   // 2. Computed: stats and pagination metadata
   totalElements = computed(() => this.filteredAlerts().length);
@@ -167,11 +190,12 @@ export class AlertsComponent implements OnInit {
   // All unassigned (used for selection, counts, etc.)
   getAllUnassignedAlerts(): FraudAlertResponse[] {
     const risk = this.assignRiskFilter();
-    return this.allAlerts().filter(a => {
+    const filtered = this.allAlerts().filter(a => {
       const isUnassigned = !a.assignedAnalystId;
       const matchesRisk = risk === 'all' || a.riskLevel === risk;
       return isUnassigned && matchesRisk;
     });
+    return this.applySorting(filtered);
   }
 
   // Assignment tab pagination & filtering
@@ -769,14 +793,20 @@ export class AlertsComponent implements OnInit {
     this.currentPage.set(0);
   }
 
-  toggleScoreSort(): void {
-    const current = this.scoreSortDirection();
-    if (current === 'DESC') {
-      this.scoreSortDirection.set('ASC');
-    } else if (current === 'ASC') {
-      this.scoreSortDirection.set(null);
+  toggleSort(field: string): void {
+    if (this.sortField() === field) {
+      const current = this.sortDirection();
+      if (current === 'DESC') {
+        this.sortDirection.set('ASC');
+      } else if (current === 'ASC') {
+        this.sortDirection.set(null);
+        this.sortField.set(null);
+      } else {
+        this.sortDirection.set('DESC');
+      }
     } else {
-      this.scoreSortDirection.set('DESC');
+      this.sortField.set(field);
+      this.sortDirection.set('DESC');
     }
   }
 

@@ -150,7 +150,8 @@ public class ModelDriftMonitoringService {
         }
 
         driftHistory.sort((a, b) -> ((String) b.get("checked_at")).compareTo((String) a.get("checked_at")));
-        List<Map<String, Object>> recent = driftHistory.subList(0, Math.min(PREDICTION_HISTORY_WINDOW, driftHistory.size()));
+        List<Map<String, Object>> recent = driftHistory.subList(0,
+                Math.min(PREDICTION_HISTORY_WINDOW, driftHistory.size()));
         Collections.reverse(recent);
 
         LocalDateTime first = LocalDateTime.parse((String) recent.get(0).get("checked_at"));
@@ -199,7 +200,8 @@ public class ModelDriftMonitoringService {
         double currentF1 = getDouble(recent.get((int) lastIdx), "current_f1");
         double predictedF1 = baselineF1 * (1 + predictedF1Drift / 100.0);
 
-        String currentState = classifyState(f1Drift[(int) lastIdx], scoreDrift[(int) lastIdx], psiValues[(int) lastIdx]);
+        String currentState = classifyState(f1Drift[(int) lastIdx], scoreDrift[(int) lastIdx],
+                psiValues[(int) lastIdx]);
         String predictedState = classifyState(predictedF1Drift, predictedScoreDrift, predictedPsi);
 
         // Velocity
@@ -211,7 +213,8 @@ public class ModelDriftMonitoringService {
         double healthScore = computeHealthScore(model, predictedF1Drift, predictedScoreDrift, predictedPsi,
                 f1Velocity, scoreVelocity, psiVelocity);
 
-        String riskLevel = determineRiskLevel(predictedState, predictedPsi, f1Velocity, scoreVelocity, f1Reg.getSlope());
+        String riskLevel = determineRiskLevel(predictedState, predictedPsi, f1Velocity, scoreVelocity,
+                f1Reg.getSlope());
 
         Map<String, Object> prediction = new LinkedHashMap<>();
         prediction.put("model_uuid", modelUuid.toString());
@@ -227,29 +230,25 @@ public class ModelDriftMonitoringService {
         prediction.put("velocity", Map.of(
                 "f1_velocity", round(f1Velocity, 4),
                 "score_velocity", round(scoreVelocity, 4),
-                "psi_velocity", round(psiVelocity, 4)
-        ));
+                "psi_velocity", round(psiVelocity, 4)));
 
         prediction.put("trend", Map.of(
                 "f1_drift_slope", round(f1Reg.getSlope(), 4),
                 "score_drift_slope", round(scoreReg.getSlope(), 4),
-                "psi_slope", round(psiReg.getSlope(), 4)
-        ));
+                "psi_slope", round(psiReg.getSlope(), 4)));
 
         prediction.put("current", Map.of(
                 "f1_score", round(currentF1, 2),
                 "f1_drift_pct", round(f1Drift[(int) lastIdx], 2),
                 "score_drift_pct", round(scoreDrift[(int) lastIdx], 2),
-                "psi", round(psiValues[(int) lastIdx], 4)
-        ));
+                "psi", round(psiValues[(int) lastIdx], 4)));
 
         prediction.put("predicted", Map.of(
                 "f1_score", round(predictedF1, 2),
                 "f1_drift_pct", round(predictedF1Drift, 2),
                 "f1_confidence_band", Map.of("lower", round(f1Lower, 2), "upper", round(f1Upper, 2)),
                 "score_drift_pct", round(predictedScoreDrift, 2),
-                "psi", round(predictedPsi, 4)
-        ));
+                "psi", round(predictedPsi, 4)));
 
         prediction.put("recommendation", generateRecommendation(currentState, predictedState));
         prediction.put("generated_at", LocalDateTime.now().toString());
@@ -266,7 +265,8 @@ public class ModelDriftMonitoringService {
         for (int i = 0; i < values.length; i++) {
             int start = Math.max(0, i - window + 1);
             double sum = 0;
-            for (int j = start; j <= i; j++) sum += values[j];
+            for (int j = start; j <= i; j++)
+                sum += values[j];
             smoothed[i] = sum / (i - start + 1);
         }
         return smoothed;
@@ -287,13 +287,15 @@ public class ModelDriftMonitoringService {
 
     private boolean isAnomalousJump(ModelML model, double currentPsi) {
         List<Map<String, Object>> history = extractDriftHistory(model);
-        if (history == null || history.size() < 5) return false;
+        if (history == null || history.size() < 5)
+            return false;
 
         double[] psiHistory = history.stream()
                 .mapToDouble(e -> getDouble(e, "score_psi"))
                 .filter(v -> v > 0)
                 .toArray();
-        if (psiHistory.length < 5) return false;
+        if (psiHistory.length < 5)
+            return false;
 
         double mean = Arrays.stream(psiHistory).average().orElse(0);
         double std = calculateStdDev(psiHistory);
@@ -302,7 +304,8 @@ public class ModelDriftMonitoringService {
 
     private double getDynamicThreshold(ModelML model, String metric, double fallback) {
         List<Map<String, Object>> history = extractDriftHistory(model);
-        if (history == null || history.size() < 5) return fallback;
+        if (history == null || history.size() < 5)
+            return fallback;
 
         double[] values;
         if (metric.startsWith("performance")) {
@@ -322,7 +325,8 @@ public class ModelDriftMonitoringService {
                     .toArray();
         }
 
-        if (values.length < 5) return fallback;
+        if (values.length < 5)
+            return fallback;
 
         Arrays.sort(values);
         int idx = (int) Math.ceil(0.95 * values.length) - 1;
@@ -337,7 +341,7 @@ public class ModelDriftMonitoringService {
 
     /**
      * Weighted linear regression with exponential decay.
-     * Weights: w_i = α^(n-1-i)  → most recent gets weight 1.
+     * Weights: w_i = α^(n-1-i) → most recent gets weight 1.
      */
     private static class WeightedRegression {
         private final double alpha;
@@ -345,7 +349,9 @@ public class ModelDriftMonitoringService {
         private final List<Double> yVals = new ArrayList<>();
         private double sumW, sumWX, sumWY, sumWXY, sumWXX;
 
-        WeightedRegression(double alpha) { this.alpha = alpha; }
+        WeightedRegression(double alpha) {
+            this.alpha = alpha;
+        }
 
         void add(double x, double y) {
             xVals.add(x);
@@ -378,10 +384,13 @@ public class ModelDriftMonitoringService {
             return denominator == 0 ? 0 : (sumWXX * sumWY - sumWX * sumWXY) / denominator;
         }
 
-        double predict(double x) { return getIntercept() + getSlope() * x; }
+        double predict(double x) {
+            return getIntercept() + getSlope() * x;
+        }
 
         double getRSquare() {
-            if (xVals.size() < 2) return 0;
+            if (xVals.size() < 2)
+                return 0;
             double meanY = sumWY / sumW;
             double ssTot = 0, ssRes = 0;
             for (int i = 0; i < xVals.size(); i++) {
@@ -395,7 +404,8 @@ public class ModelDriftMonitoringService {
 
         double getPredictionStdError(double x) {
             int n = xVals.size();
-            if (n < 3) return 0.1;
+            if (n < 3)
+                return 0.1;
             double meanX = sumWX / sumW;
             double ssRes = 0;
             for (int i = 0; i < n; i++) {
@@ -412,17 +422,45 @@ public class ModelDriftMonitoringService {
     // PSI calculation (empirical histogram + fallback normal)
     // -------------------------------------------------------------------------
     private double calculatePSI(Map<String, Object> baseline, List<Double> recentScores) {
-        // If we have actual scores, compute empirical PSI
-        if (!recentScores.isEmpty()) {
-            // Baseline mean/std from deployment
-            double baselineMean = getDoubleFromMapFlexible(baseline, List.of("avg_fraud_score", "avgFraudScore"), 0.5);
-            double baselineStd = getDoubleFromMapFlexible(baseline, List.of("std_dev_fraud_score"), 0.1);
-            // Create baseline distribution using normal assumption (since we don't store raw scores)
-            // In production, you would store histograms at deployment.
-            return computeEmpiricalPSI(baselineMean, baselineStd, recentScores);
+        if (recentScores == null || recentScores.isEmpty()) {
+            return 0.0;
         }
-        // Fallback: normal approximation using current mean/std only (less accurate)
-        return calculatePSINormal(baseline, Map.of("avg_fraud_score", recentScores.stream().mapToDouble(v -> v).average().orElse(0.0)));
+
+        // Check if baseline contains a precomputed histogram
+        @SuppressWarnings("unchecked")
+        List<Double> baselineHist = baseline.containsKey("score_histogram")
+                ? (List<Double>) baseline.get("score_histogram")
+                : null;
+
+        if (baselineHist != null && !baselineHist.isEmpty()) {
+            return computePSIFromHistogram(baselineHist, recentScores);
+        }
+
+        // Fallback to normal approximation (less accurate)
+        double baselineMean = getDoubleFromMapFlexible(baseline, List.of("avg_fraud_score", "avgFraudScore"), 0.5);
+        double baselineStd = getDoubleFromMapFlexible(baseline, List.of("std_dev_fraud_score"), 0.1);
+        return computeEmpiricalPSI(baselineMean, baselineStd, recentScores);
+    }
+
+    private double computePSIFromHistogram(List<Double> expectedHist, List<Double> currentScores) {
+        int bins = expectedHist.size();
+        double[] actualBins = new double[bins];
+        for (double score : currentScores) {
+            int bin = (int) Math.floor(score * bins);
+            if (bin >= bins)
+                bin = bins - 1;
+            if (bin < 0)
+                bin = 0;
+            actualBins[bin]++;
+        }
+        int total = currentScores.size();
+        double psi = 0.0;
+        for (int i = 0; i < bins; i++) {
+            double expected = Math.max(expectedHist.get(i), 0.0001);
+            double actual = Math.max(actualBins[i] / (double) total, 0.0001);
+            psi += (actual - expected) * Math.log(actual / expected);
+        }
+        return psi;
     }
 
     private double computeEmpiricalPSI(double baselineMean, double baselineStd, List<Double> currentScores) {
@@ -440,8 +478,10 @@ public class ModelDriftMonitoringService {
         // Actual: histogram of current scores
         for (double score : currentScores) {
             int bin = (int) Math.floor(score * bins);
-            if (bin >= bins) bin = bins - 1;
-            if (bin < 0) bin = 0;
+            if (bin >= bins)
+                bin = bins - 1;
+            if (bin < 0)
+                bin = 0;
             actual[bin]++;
         }
         int total = currentScores.size();
@@ -455,12 +495,13 @@ public class ModelDriftMonitoringService {
         return psi;
     }
 
+    // Unused but kept for reference
+    @SuppressWarnings("unused")
     private double calculatePSINormal(Map<String, Object> baseline, Map<String, Double> current) {
         double baselineMean = getDoubleFromMapFlexible(baseline, List.of("avg_fraud_score", "avgFraudScore"), 0.5);
         double currentMean = current.getOrDefault("avg_fraud_score", baselineMean);
         double baselineStd = getDoubleFromMapFlexible(baseline, List.of("std_dev_fraud_score"), 0.1);
-        double currentStd = 0.1; // not used in this simplified version
-        return computeEmpiricalPSI(baselineMean, baselineStd, List.of()); // fallback to empty
+        return computeEmpiricalPSI(baselineMean, baselineStd, Collections.emptyList());
     }
 
     private double normalCDF(double x, double mean, double std) {
@@ -480,29 +521,36 @@ public class ModelDriftMonitoringService {
     // State classification (nuanced)
     // -------------------------------------------------------------------------
     private String classifyState(double f1Drift, double scoreDrift, double psi) {
-        if (psi > 0.25) return "CRITICAL_DRIFT";
-        if (psi > 0.1) return "DISTRIBUTION_SHIFT";
-        if (f1Drift <= -8.0) return "F1_DROP";
-        if (f1Drift <= -3.0) return "MILD_F1_DROP";
-        if (Math.abs(scoreDrift) >= 8.0) return "SCORE_SHIFT";
+        if (psi > 0.25)
+            return "CRITICAL_DRIFT";
+        if (psi > 0.1)
+            return "DISTRIBUTION_SHIFT";
+        if (f1Drift <= -8.0)      // negative = degradation
+            return "F1_DROP";
+        if (f1Drift <= -3.0)
+            return "MILD_F1_DROP";
+        if (Math.abs(scoreDrift) >= 8.0)
+            return "SCORE_SHIFT";
         return "STABLE";
     }
 
     private String computeConfidence(double r2F1, double r2Score, String temporalQuality) {
         double avgR2 = (r2F1 + r2Score) / 2.0;
-        if ("POOR".equals(temporalQuality)) return "LOW";
-        if (avgR2 > 0.7) return "HIGH";
-        if (avgR2 > 0.4) return "MEDIUM";
+        if ("POOR".equals(temporalQuality))
+            return "LOW";
+        if (avgR2 > 0.7)
+            return "HIGH";
+        if (avgR2 > 0.4)
+            return "MEDIUM";
         return "LOW";
     }
 
     private double computeHealthScore(ModelML model, double f1Drift, double scoreDrift, double psi,
-                                      double f1Vel, double scoreVel, double psiVel) {
-        // Use historical 95th percentile for normalization
+            double f1Vel, double scoreVel, double psiVel) {
         double maxF1 = getDynamicThreshold(model, "performance", 15.0);
         double maxScore = getDynamicThreshold(model, "score", 15.0);
         double maxPsi = getDynamicThreshold(model, "psi", 0.3);
-        double maxVel = 5.0; // velocity threshold could also be dynamic
+        double maxVel = 5.0;
 
         double f1Norm = Math.min(Math.abs(f1Drift) / maxF1, 1.0);
         double scoreNorm = Math.min(Math.abs(scoreDrift) / maxScore, 1.0);
@@ -513,38 +561,45 @@ public class ModelDriftMonitoringService {
         return Math.max(0.0, 100.0 * (1.0 - penalty));
     }
 
-    private String determineRiskLevel(String state, double psi, double f1Velocity, double scoreVelocity, double f1Slope) {
-        if (state.contains("CRITICAL") || psi > 0.25) return "HIGH";
-        if (state.contains("SHIFT") || state.contains("DROP") || psi > 0.1) return "MEDIUM";
-        if (Math.abs(f1Velocity) > 3.0 || Math.abs(scoreVelocity) > 3.0) return "MEDIUM";
-        if (f1Slope < -1.0) return "MEDIUM";
+    private String determineRiskLevel(String state, double psi, double f1Velocity, double scoreVelocity,
+            double f1Slope) {
+        if (state.contains("CRITICAL") || psi > 0.25)
+            return "HIGH";
+        if (state.contains("SHIFT") || state.contains("DROP") || psi > 0.1)
+            return "MEDIUM";
+        if (Math.abs(f1Velocity) > 3.0 || Math.abs(scoreVelocity) > 3.0)
+            return "MEDIUM";
+        if (f1Slope < -1.0)
+            return "MEDIUM";
         return "LOW";
     }
 
     private String generateRecommendation(String current, String predicted) {
         if (current.contains("DRIFT") || predicted.contains("DRIFT") ||
                 current.contains("SHIFT") || predicted.contains("SHIFT"))
-            return "Retrain model with recent data or adjust classification threshold.";
+            return "Réentraîner le modèle avec des données récentes ou ajuster le seuil de classification.";
         if (current.contains("F1_DROP") || predicted.contains("F1_DROP"))
-            return "Investigate potential data/concept drift. Consider retraining.";
+            return "Examiner un éventuel drift des données ou du concept. Envisager un réentraînement.";
         if (current.contains("MILD_F1_DROP"))
-            return "Monitor closely; slight performance degradation.";
-        return "Model is stable. Continue regular monitoring.";
+            return "Surveiller de près ; légère dégradation des performances.";
+        return "Le modèle est stable. Continuer la surveillance régulière.";
     }
 
     // -------------------------------------------------------------------------
-    // Existing helper methods (slightly modified signatures)
+    // Existing helper methods (unchanged except for minor adjustments)
     // -------------------------------------------------------------------------
     private Optional<ModelDeploymentHistory> getActiveDeployment(Long managerId) {
         if (managerId != null)
-            return deploymentHistoryRepository.findFirstByStatusAndDeployedBy_IdOrderByDeploymentDateDesc("ACTIVE", managerId);
+            return deploymentHistoryRepository.findFirstByStatusAndDeployedBy_IdOrderByDeploymentDateDesc("ACTIVE",
+                    managerId);
         return deploymentHistoryRepository.findFirstByStatusOrderByDeploymentDateDesc("ACTIVE");
     }
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> extractDriftHistory(ModelML model) {
         Map<String, Object> hp = model.getHyperparameters();
-        if (hp == null) return Collections.emptyList();
+        if (hp == null)
+            return Collections.emptyList();
         return (List<Map<String, Object>>) hp.getOrDefault("_driftHistory", Collections.emptyList());
     }
 
@@ -555,23 +610,30 @@ public class ModelDriftMonitoringService {
 
     private Map<String, Double> calculateCurrentPerformance(List<FraudAlert> resolvedAlerts, double threshold) {
         long truePositives = resolvedAlerts.stream()
-                .filter(a -> "CONFIRMED".equals(a.getStatus()) && a.getFraudScore() != null && a.getFraudScore() >= threshold)
+                .filter(a -> "CONFIRMED".equals(a.getStatus()) && a.getFraudScore() != null
+                        && a.getFraudScore() >= threshold)
                 .count();
 
         long falsePositives = resolvedAlerts.stream()
-                .filter(a -> "FALSE_POSITIVE".equals(a.getStatus()) && a.getFraudScore() != null && a.getFraudScore() >= threshold)
+                .filter(a -> "FALSE_POSITIVE".equals(a.getStatus()) && a.getFraudScore() != null
+                        && a.getFraudScore() >= threshold)
                 .count();
 
         long trueNegatives = resolvedAlerts.stream()
-                .filter(a -> "FALSE_POSITIVE".equals(a.getStatus()) && a.getFraudScore() != null && a.getFraudScore() < threshold)
+                .filter(a -> "FALSE_POSITIVE".equals(a.getStatus()) && a.getFraudScore() != null
+                        && a.getFraudScore() < threshold)
                 .count();
 
         long falseNegatives = resolvedAlerts.stream()
-                .filter(a -> "CONFIRMED".equals(a.getStatus()) && a.getFraudScore() != null && a.getFraudScore() < threshold)
+                .filter(a -> "CONFIRMED".equals(a.getStatus()) && a.getFraudScore() != null
+                        && a.getFraudScore() < threshold)
                 .count();
 
-        double precision = (truePositives + falsePositives) > 0 ? (double) truePositives / (truePositives + falsePositives) : 0.0;
-        double recall = (truePositives + falseNegatives) > 0 ? (double) truePositives / (truePositives + falseNegatives) : 0.0;
+        double precision = (truePositives + falsePositives) > 0
+                ? (double) truePositives / (truePositives + falsePositives)
+                : 0.0;
+        double recall = (truePositives + falseNegatives) > 0 ? (double) truePositives / (truePositives + falseNegatives)
+                : 0.0;
         double f1Score = (precision + recall) > 0 ? 2 * (precision * recall) / (precision + recall) : 0.0;
 
         Map<String, Double> metrics = new HashMap<>();
@@ -595,12 +657,12 @@ public class ModelDriftMonitoringService {
     }
 
     private Map<String, Object> analyzeDrift(Map<String, Object> baseline,
-                                             Map<String, Double> current,
-                                             int alertsCount,
-                                             int transactionsCount,
-                                             double scoreWarn, double scoreCrit,
-                                             double perfWarn, double perfCrit,
-                                             double psiWarn, double psiCrit) {
+            Map<String, Double> current,
+            int alertsCount,
+            int transactionsCount,
+            double scoreWarn, double scoreCrit,
+            double perfWarn, double perfCrit,
+            double psiWarn, double psiCrit) {
 
         Map<String, Object> analysis = new HashMap<>();
 
@@ -610,7 +672,7 @@ public class ModelDriftMonitoringService {
         String performanceStatus;
         double f1Drift = 0.0;
         if (currentF1 >= 0) {
-            f1Drift = computeRelativeDrift(baselineF1, currentF1);
+            f1Drift = computeRelativeDrift(baselineF1, currentF1);  // positive = improvement, negative = degradation
             if (f1Drift <= -perfCrit) {
                 performanceStatus = "CRITICAL";
             } else if (f1Drift <= -perfWarn) {
@@ -645,16 +707,18 @@ public class ModelDriftMonitoringService {
             psiStatus = "NORMAL";
         }
 
-        // Overall drift status: worst of the three
         String driftStatus;
         boolean needsRetraining;
-        if (performanceStatus.equals("CRITICAL") || distributionStatus.equals("CRITICAL") || psiStatus.equals("CRITICAL")) {
+        if (performanceStatus.equals("CRITICAL") || distributionStatus.equals("CRITICAL")
+                || psiStatus.equals("CRITICAL")) {
             driftStatus = "CRITICAL_DRIFT";
             needsRetraining = true;
-        } else if (performanceStatus.equals("WARNING") || distributionStatus.equals("WARNING") || psiStatus.equals("WARNING")) {
+        } else if (performanceStatus.equals("WARNING") || distributionStatus.equals("WARNING")
+                || psiStatus.equals("WARNING")) {
             driftStatus = "WARNING";
             needsRetraining = true;
-        } else if (performanceStatus.equals("NORMAL") && distributionStatus.equals("NORMAL") && psiStatus.equals("NORMAL")) {
+        } else if (performanceStatus.equals("NORMAL") && distributionStatus.equals("NORMAL")
+                && psiStatus.equals("NORMAL")) {
             driftStatus = "NORMAL";
             needsRetraining = false;
         } else {
@@ -666,8 +730,9 @@ public class ModelDriftMonitoringService {
         analysis.put("performance_status", performanceStatus);
         analysis.put("distribution_status", distributionStatus);
         analysis.put("psi_status", psiStatus);
-        analysis.put("overall_drift_percentage", round(Math.max(Math.max(Math.abs(f1Drift), scoreDrift) * 100, psi * 100), 2));
-        analysis.put("f1_drift", round(f1Drift * 100, 2));
+        analysis.put("overall_drift_percentage",
+                round(Math.max(Math.max(Math.abs(f1Drift), scoreDrift) * 100, psi * 100), 2));
+        analysis.put("f1_drift", round(f1Drift * 100, 2));   // signed value
         analysis.put("baseline_f1", round(baselineF1 * 100, 2));
         analysis.put("current_f1", currentF1 >= 0 ? round(currentF1 * 100, 2) : 0.0);
         analysis.put("score_distribution_drift", round(scoreDrift * 100, 2));
@@ -684,7 +749,8 @@ public class ModelDriftMonitoringService {
     }
 
     private double computeRelativeDrift(double baseline, double current) {
-        if (baseline == 0.0) return 0.0;
+        if (baseline == 0.0)
+            return 0.0;
         return (current - baseline) / baseline;
     }
 
@@ -694,11 +760,13 @@ public class ModelDriftMonitoringService {
 
     private void updateModelDriftMetadata(ModelML model, Map<String, Object> driftAnalysis) {
         Map<String, Object> hyperparameters = model.getHyperparameters();
-        if (hyperparameters == null) hyperparameters = new HashMap<>();
+        if (hyperparameters == null)
+            hyperparameters = new HashMap<>();
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> driftHistory = (List<Map<String, Object>>) hyperparameters.get("_driftHistory");
-        if (driftHistory == null) driftHistory = new ArrayList<>();
+        if (driftHistory == null)
+            driftHistory = new ArrayList<>();
 
         driftHistory.add(new HashMap<>(driftAnalysis));
         if (driftHistory.size() > 30) {
@@ -719,7 +787,8 @@ public class ModelDriftMonitoringService {
 
     public Map<String, Object> getDriftStatus(Long managerId) {
         Optional<ModelDeploymentHistory> deploymentOpt = getActiveDeployment(managerId);
-        if (deploymentOpt.isEmpty()) return Map.of("status", "NO_ACTIVE_MODEL");
+        if (deploymentOpt.isEmpty())
+            return Map.of("status", "NO_ACTIVE_MODEL");
 
         ModelML model = deploymentOpt.get().getModel();
         Map<String, Object> hyperparameters = model.getHyperparameters();
@@ -729,7 +798,10 @@ public class ModelDriftMonitoringService {
                     "status", "NO_DRIFT_DATA",
                     "message", "No drift checks have been performed yet",
                     "model_name", model.getModelName(),
-                    "last_check", hyperparameters != null ? hyperparameters.getOrDefault("_deployedAt", LocalDateTime.now().toString()) : LocalDateTime.now().toString());
+                    "last_check",
+                    hyperparameters != null
+                            ? hyperparameters.getOrDefault("_deployedAt", LocalDateTime.now().toString())
+                            : LocalDateTime.now().toString());
         }
 
         @SuppressWarnings("unchecked")
@@ -757,7 +829,8 @@ public class ModelDriftMonitoringService {
                 if (results.containsKey("training_stats")) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> stats = (Map<String, Object>) results.get("training_stats");
-                    if (stats.containsKey("test_rows")) return ((Number) stats.get("test_rows")).intValue();
+                    if (stats.containsKey("test_rows"))
+                        return ((Number) stats.get("test_rows")).intValue();
                 }
             }
         } catch (Exception e) {
@@ -776,26 +849,31 @@ public class ModelDriftMonitoringService {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> thresholds = (Map<String, Object>) results.get("thresholds");
                     Object finalObj = thresholds.get("final");
-                    if (finalObj instanceof Number) return ((Number) finalObj).doubleValue();
+                    if (finalObj instanceof Number)
+                        return ((Number) finalObj).doubleValue();
                 }
             }
         } catch (Exception e) {
-            log.warn("Could not extract model threshold, using default {}: {}", DEFAULT_CLASSIFICATION_THRESHOLD, e.getMessage());
+            log.warn("Could not extract model threshold, using default {}: {}", DEFAULT_CLASSIFICATION_THRESHOLD,
+                    e.getMessage());
         }
         return DEFAULT_CLASSIFICATION_THRESHOLD;
     }
 
     private double getDoubleFromMapFlexible(Map<String, Object> map, List<String> keys, double defaultValue) {
-        if (map == null) return defaultValue;
+        if (map == null)
+            return defaultValue;
         for (String key : keys) {
             Object value = map.get(key);
-            if (value instanceof Number) return ((Number) value).doubleValue();
+            if (value instanceof Number)
+                return ((Number) value).doubleValue();
         }
         return defaultValue;
     }
 
     private double calculateStdDev(double[] values) {
-        if (values.length == 0) return 0.0;
+        if (values.length == 0)
+            return 0.0;
         double mean = Arrays.stream(values).average().orElse(0.0);
         double variance = Arrays.stream(values).map(v -> Math.pow(v - mean, 2)).average().orElse(0.0);
         return Math.sqrt(variance);

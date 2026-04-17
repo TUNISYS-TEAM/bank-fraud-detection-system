@@ -43,6 +43,34 @@ export class MlModelsService {
     );
   }
 
+  trainHybridEnsemble(request: TrainingJobRequest): Observable<TrainingJobResponse> {
+    return this.http.post<TrainingJobResponse>(
+      `${this.apiUrl}/api/v1/fraud-detection/models/training/hybrid-ensemble`, 
+      request
+    );
+  }
+
+  trainAutoencoder(request: TrainingJobRequest): Observable<TrainingJobResponse> {
+    return this.http.post<TrainingJobResponse>(
+      `${this.apiUrl}/api/v1/fraud-detection/models/training/autoencoder`, 
+      request
+    );
+  }
+
+  trainECOD(request: TrainingJobRequest): Observable<TrainingJobResponse> {
+    return this.http.post<TrainingJobResponse>(
+      `${this.apiUrl}/api/v1/fraud-detection/models/training/ecod`, 
+      request
+    );
+  }
+
+  trainCOPOD(request: TrainingJobRequest): Observable<TrainingJobResponse> {
+    return this.http.post<TrainingJobResponse>(
+      `${this.apiUrl}/api/v1/fraud-detection/models/training/copod`, 
+      request
+    );
+  }
+
   getModelMetrics(modelUuid: string): Observable<ModelMetricsResponse> {
     return this.http.get<ModelMetricsResponse>(
       `${this.apiUrl}/api/v1/fraud-detection/models/training/${modelUuid}/metrics`

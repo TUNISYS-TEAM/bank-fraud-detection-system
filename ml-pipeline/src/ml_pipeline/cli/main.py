@@ -16,6 +16,10 @@ from scripts.train_random_forest import main as train_random_forest_main
 from scripts.train_xgboost import main as train_xgboost_main
 from scripts.train_lightgbm import main as train_lightgbm_main
 from scripts.train_balanced_forest import main as train_balanced_forest_main
+from scripts.train_hybrid_ensemble import main as train_hybrid_ensemble_main
+from scripts.train_autoencoder import main as train_autoencoder_main
+from scripts.train_ecod import main as train_ecod_main
+from scripts.train_copod import main as train_copod_main
 
 
 
@@ -95,6 +99,58 @@ def build_parser() -> argparse.ArgumentParser:
     lgbm_parser.add_argument("--hyperparameters", required=True)
     lgbm_parser.add_argument("--test-size", type=float, default=0.2)
     lgbm_parser.add_argument("--random-seed", type=int, default=42)
+
+    # ---- train-hybrid-ensemble ----
+    hybrid_parser = subparsers.add_parser(
+        "train-hybrid-ensemble",
+        help="Entraîne un modèle hybride (Supervisé + PyOD + Meta-learner)"
+    )
+    hybrid_parser.add_argument("--dataset-path", required=True)
+    hybrid_parser.add_argument("--dataset-id", required=True)
+    hybrid_parser.add_argument("--job-id", required=True)
+    hybrid_parser.add_argument("--timestamp", required=True)
+    hybrid_parser.add_argument("--hyperparameters", required=True)
+    hybrid_parser.add_argument("--test-size", type=float, default=0.2)
+    hybrid_parser.add_argument("--random-seed", type=int, default=42)
+
+    # ---- train-autoencoder ----
+    ae_parser = subparsers.add_parser(
+        "train-autoencoder",
+        help="Entraîne un modèle Autoencoder pour la détection d'anomalies"
+    )
+    ae_parser.add_argument("--dataset-path", required=True)
+    ae_parser.add_argument("--dataset-id", required=True)
+    ae_parser.add_argument("--job-id", required=True)
+    ae_parser.add_argument("--timestamp", required=True)
+    ae_parser.add_argument("--hyperparameters", required=True)
+    ae_parser.add_argument("--test-size", type=float, default=0.2)
+    ae_parser.add_argument("--random-seed", type=int, default=42)
+
+    # ---- train-ecod ----
+    ecod_parser = subparsers.add_parser(
+        "train-ecod",
+        help="Entraîne un modèle ECOD (PyOD)"
+    )
+    ecod_parser.add_argument("--dataset-path", required=True)
+    ecod_parser.add_argument("--dataset-id", required=True)
+    ecod_parser.add_argument("--job-id", required=True)
+    ecod_parser.add_argument("--timestamp", required=True)
+    ecod_parser.add_argument("--hyperparameters", required=True)
+    ecod_parser.add_argument("--test-size", type=float, default=0.2)
+    ecod_parser.add_argument("--random-seed", type=int, default=42)
+
+    # ---- train-copod ----
+    copod_parser = subparsers.add_parser(
+        "train-copod",
+        help="Entraîne un modèle COPOD (PyOD)"
+    )
+    copod_parser.add_argument("--dataset-path", required=True)
+    copod_parser.add_argument("--dataset-id", required=True)
+    copod_parser.add_argument("--job-id", required=True)
+    copod_parser.add_argument("--timestamp", required=True)
+    copod_parser.add_argument("--hyperparameters", required=True)
+    copod_parser.add_argument("--test-size", type=float, default=0.2)
+    copod_parser.add_argument("--random-seed", type=int, default=42)
 
     # ---- export-onnx ----
     export_parser = subparsers.add_parser("export-onnx", help="Exporte le modèle au format ONNX")
@@ -479,6 +535,58 @@ def main() -> None:
             "--random-seed", str(args.random_seed),
         ]
         train_balanced_forest_main()
+
+    elif args.command == "train-hybrid-ensemble":
+        sys.argv = [
+            "train_hybrid_ensemble",
+            "--dataset-path", args.dataset_path,
+            "--dataset-id", args.dataset_id,
+            "--job-id", args.job_id,
+            "--timestamp", args.timestamp,
+            "--hyperparameters", args.hyperparameters,
+            "--test-size", str(args.test_size),
+            "--random-seed", str(args.random_seed),
+        ]
+        train_hybrid_ensemble_main()
+
+    elif args.command == "train-autoencoder":
+        sys.argv = [
+            "train_autoencoder",
+            "--dataset-path", args.dataset_path,
+            "--dataset-id", args.dataset_id,
+            "--job-id", args.job_id,
+            "--timestamp", args.timestamp,
+            "--hyperparameters", args.hyperparameters,
+            "--test-size", str(args.test_size),
+            "--random-seed", str(args.random_seed),
+        ]
+        train_autoencoder_main()
+
+    elif args.command == "train-ecod":
+        sys.argv = [
+            "train_ecod",
+            "--dataset-path", args.dataset_path,
+            "--dataset-id", args.dataset_id,
+            "--job-id", args.job_id,
+            "--timestamp", args.timestamp,
+            "--hyperparameters", args.hyperparameters,
+            "--test-size", str(args.test_size),
+            "--random-seed", str(args.random_seed),
+        ]
+        train_ecod_main()
+
+    elif args.command == "train-copod":
+        sys.argv = [
+            "train_copod",
+            "--dataset-path", args.dataset_path,
+            "--dataset-id", args.dataset_id,
+            "--job-id", args.job_id,
+            "--timestamp", args.timestamp,
+            "--hyperparameters", args.hyperparameters,
+            "--test-size", str(args.test_size),
+            "--random-seed", str(args.random_seed),
+        ]
+        train_copod_main()
 
 
     elif args.command == "export-onnx":

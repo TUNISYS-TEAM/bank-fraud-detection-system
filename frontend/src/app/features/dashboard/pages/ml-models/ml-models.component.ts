@@ -49,8 +49,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       name: 'Random Forest',
       description: 'Robuste et interprétable',
       icon: 'git-merge',
-      color: 'blue',
-      recommended: false,
+      color: 'green',
+      recommended: true,
       status: 'active'
     },
     {
@@ -59,7 +59,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       description: 'Performances élevées',
       icon: 'trending-up',
       color: 'orange',
-      recommended: true,
+      recommended: false,
       status: 'active'
     },
     {
@@ -77,6 +77,42 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       description: 'Idéal pour données déséquilibrées',
       icon: 'shield',
       color: 'emerald',
+      recommended: false,
+      status: 'active'
+    },
+    {
+      type: 'ECOD',
+      name: 'ECOD',
+      description: 'Détection basée sur les copules',
+      icon: 'globe',
+      color: 'teal',
+      recommended: false,
+      status: 'active'
+    },
+    {
+      type: 'COPOD',
+      name: 'COPOD',
+      description: 'Détection statistique avancée',
+      icon: 'activity',
+      color: 'cyan',
+      recommended: false,
+      status: 'active'
+    },
+    {
+      type: 'AUTOENCODER',
+      name: 'Autoencoder',
+      description: 'Réseau de neurones profond (Unsupervised)',
+      icon: 'cpu',
+      color: 'purple',
+      recommended: false,
+      status: 'active'
+    },
+    {
+      type: 'HYBRID_ENSEMBLE',
+      name: 'Hybride Ensemble',
+      description: 'Supervisé + Anomaly Detection',
+      icon: 'layers',
+      color: 'indigo',
       recommended: false,
       status: 'active'
     }
@@ -138,6 +174,54 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       sampling_strategy: 'auto',
       replacement: true,
       bootstrap: true
+    },
+    testSize: 0.2,
+    randomSeed: 42
+  };
+
+  // Hybrid Ensemble configuration (matches ensemble config in model_config.json)
+  hybridConfig: ModelConfig = {
+    modelName: 'Hybride Ensemble',
+    modelType: 'HYBRID_ENSEMBLE',
+    hyperparameters: {
+      strategy: 'weighted',
+      n_weight_restarts: 10,
+      and_high_conf_threshold: 0.85
+    },
+    testSize: 0.2,
+    randomSeed: 42
+  };
+
+  // Autoencoder configuration (matches AutoencoderConfig in config_schema.py)
+  aeConfig: ModelConfig = {
+    modelName: 'Autoencoder',
+    modelType: 'AUTOENCODER',
+    hyperparameters: {
+      encoding_dim: 32,
+      epochs: 20,
+      batch_size: 1024
+    },
+    testSize: 0.2,
+    randomSeed: 42
+  };
+
+  // ECOD configuration (matches AnomalyConfig in config_schema.py)
+  ecodConfig: ModelConfig = {
+    modelName: 'ECOD',
+    modelType: 'ECOD',
+    hyperparameters: {
+      contamination: 0.05
+    },
+    testSize: 0.2,
+    randomSeed: 42
+  };
+
+  // COPOD configuration (matches AnomalyConfig in config_schema.py)
+  copodConfig: ModelConfig = {
+    modelName: 'COPOD',
+    modelType: 'COPOD',
+    hyperparameters: {
+      contamination: 0.05
     },
     testSize: 0.2,
     randomSeed: 42
@@ -591,6 +675,14 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       config = { ...this.lgbmConfig };
     } else if (this.selectedModelType === 'BALANCED_RANDOM_FOREST') {
       config = { ...this.brfConfig };
+    } else if (this.selectedModelType === 'HYBRID_ENSEMBLE') {
+      config = { ...this.hybridConfig };
+    } else if (this.selectedModelType === 'AUTOENCODER') {
+      config = { ...this.aeConfig };
+    } else if (this.selectedModelType === 'ECOD') {
+      config = { ...this.ecodConfig };
+    } else if (this.selectedModelType === 'COPOD') {
+      config = { ...this.copodConfig };
     } else {
       config = { ...this.rfConfig };
     }
@@ -610,6 +702,14 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       config = this.lgbmConfig;
     } else if (this.selectedModelType === 'BALANCED_RANDOM_FOREST') {
       config = this.brfConfig;
+    } else if (this.selectedModelType === 'HYBRID_ENSEMBLE') {
+      config = this.hybridConfig;
+    } else if (this.selectedModelType === 'AUTOENCODER') {
+      config = this.aeConfig;
+    } else if (this.selectedModelType === 'ECOD') {
+      config = this.ecodConfig;
+    } else if (this.selectedModelType === 'COPOD') {
+      config = this.copodConfig;
     } else {
       config = this.rfConfig;
     }
@@ -655,7 +755,11 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     const endpoint = config.modelType === 'XGBOOST' ? 'xgboost' :
       config.modelType === 'LIGHTGBM' ? 'lightgbm' :
-        config.modelType === 'BALANCED_RANDOM_FOREST' ? 'balanced-random-forest' : 'random-forest';
+        config.modelType === 'BALANCED_RANDOM_FOREST' ? 'balanced-random-forest' :
+          config.modelType === 'HYBRID_ENSEMBLE' ? 'hybrid-ensemble' :
+            config.modelType === 'AUTOENCODER' ? 'autoencoder' :
+              config.modelType === 'ECOD' ? 'ecod' :
+                config.modelType === 'COPOD' ? 'copod' : 'random-forest';
 
 
     const request: TrainingJobRequest = {
@@ -828,6 +932,9 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     const type = model.modelType || '';
     if (type.includes('RANDOM_FOREST') || type.includes('BRF')) return 'bg-green-50 text-green-700 border-green-100';
     if (type.includes('XGB')) return 'bg-orange-50 text-orange-700 border-orange-100';
+    if (type.includes('HYBRID')) return 'bg-indigo-50 text-indigo-700 border-indigo-100';
+    if (type.includes('AUTOENCODER')) return 'bg-purple-50 text-purple-700 border-purple-100';
+    if (type.includes('ECOD') || type.includes('COPOD')) return 'bg-teal-50 text-teal-700 border-teal-100';
     return 'bg-blue-50 text-blue-700 border-blue-100';
   }
 

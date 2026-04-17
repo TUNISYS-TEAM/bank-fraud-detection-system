@@ -35,7 +35,7 @@
             <p *ngIf="availableModels().length === 0"
               class="text-[10px] text-amber-600 font-bold flex items-center gap-1">
               <i-feather name="alert-circle" class="w-3 h-3"></i-feather>
-              Aucun modèle validé disponible pour la simulation
+              Aucun modèle disponible pour la simulation
             </p>
           </div>
 
@@ -606,14 +606,13 @@
                         <i-feather name="target" class="w-4 h-4 text-slate-300"></i-feather>
                       </div>
                       <p class="text-3xl font-black tabular-nums transition-colors"
-                        [style.color]="res.f1Score >= 0.9 ? '#10b981' : (res.f1Score >= 0.7 ? '#f59e0b' : '#ef4444')">
+                        [style.color]="res.f1Score >= 0.2 ? '#10b981' : '#ef4444'">
                         {{ (res.f1Score * 100).toFixed(1) }}%
                       </p>
                       <div class="mt-4">
-                        <span class="status-pill" [class.status-success]="res.f1Score >= 0.9"
-                          [class.status-warning]="res.f1Score < 0.9 && res.f1Score >= 0.7"
-                          [class.status-danger]="res.f1Score < 0.7">
-                          {{ res.f1Score >= 0.9 ? 'Optimal' : (res.f1Score >= 0.7 ? 'Moyen' : 'Critique') }}
+                        <span class="status-pill" [class.status-success]="res.f1Score >= 0.2"
+                          [class.status-danger]="res.f1Score < 0.2">
+                          {{ res.f1Score >= 0.2 ? 'STABLE' : 'CRITIQUE' }}
                         </span>
                       </div>
                     </div>
@@ -628,14 +627,13 @@
                         <i-feather name="check-circle" class="w-4 h-4 text-slate-300"></i-feather>
                       </div>
                       <p class="text-3xl font-black tabular-nums transition-colors"
-                        [style.color]="res.precision >= 0.9 ? '#10b981' : (res.precision >= 0.7 ? '#f59e0b' : '#ef4444')">
+                        [style.color]="res.precision >= 0.2 ? '#10b981' : '#ef4444'">
                         {{ (res.precision * 100).toFixed(1) }}%
                       </p>
                       <div class="mt-4">
-                        <span class="status-pill" [class.status-success]="res.precision >= 0.9"
-                          [class.status-warning]="res.precision < 0.9 && res.precision >= 0.7"
-                          [class.status-danger]="res.precision < 0.7">
-                          {{ res.precision >= 0.9 ? 'Fiable' : (res.precision >= 0.7 ? 'Bruité' : 'Inexploitable') }}
+                        <span class="status-pill" [class.status-success]="res.precision >= 0.2"
+                          [class.status-danger]="res.precision < 0.2">
+                          {{ res.precision >= 0.2 ? 'PRÉCIS' : 'INEXPLOITABLE' }}
                         </span>
                       </div>
                     </div>
@@ -650,15 +648,13 @@
                         <i-feather name="search" class="w-4 h-4 text-slate-300"></i-feather>
                       </div>
                       <p class="text-3xl font-black tabular-nums transition-colors"
-                        [style.color]="res.detectionRate >= 0.9 ? '#10b981' : (res.detectionRate >= 0.7 ? '#f59e0b' : '#ef4444')">
+                        [style.color]="res.detectionRate >= 0.3 ? '#10b981' : '#ef4444'">
                         {{ (res.detectionRate * 100).toFixed(1) }}%
                       </p>
                       <div class="mt-4">
-                        <span class="status-pill" [class.status-success]="res.detectionRate >= 0.9"
-                          [class.status-warning]="res.detectionRate < 0.9 && res.detectionRate >= 0.7"
-                          [class.status-danger]="res.detectionRate < 0.7">
-                          {{ res.detectionRate >= 0.9 ? 'Exhaustif' : (res.detectionRate >= 0.7 ? 'Évasif' : 'Aveugle')
-                          }}
+                        <span class="status-pill" [class.status-success]="res.detectionRate >= 0.3"
+                          [class.status-danger]="res.detectionRate < 0.3">
+                          {{ res.detectionRate >= 0.3 ? 'EFFICACE' : 'AVEUGLE' }}
                         </span>
                       </div>
                     </div>

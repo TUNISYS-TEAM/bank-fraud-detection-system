@@ -27,7 +27,7 @@ import java.util.concurrent.*;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PythonInferenceService {
+public class PythonInferenceService implements InferenceService {
 
     private final StorageService storageService;
     private final ObjectMapper objectMapper;
@@ -85,6 +85,7 @@ public class PythonInferenceService {
         });
     }
 
+    @Override
     public Map<String, Object> predict(UUID modelUuid, Long accountId, UUID transactionUuid) {
         if (useMock) {
             return mockPredict(modelUuid, accountId, transactionUuid);
@@ -170,6 +171,7 @@ public class PythonInferenceService {
         }
     }
 
+    @Override
     public List<Map<String, Object>> predictBatch(UUID modelUuid, List<Map<String, Object>> batchItems) {
         if (useMock) {
             return batchItems.stream()
@@ -422,6 +424,7 @@ public class PythonInferenceService {
         return result;
     }
 
+    @Override
     public Map<String, Object> transactionToMap(Transaction tx) {
         Map<String, Object> map = new HashMap<>();
         map.put("TX_Amount", tx.getAmount() != null ? tx.getAmount().doubleValue() : 0.0);
@@ -437,6 +440,7 @@ public class PythonInferenceService {
         return map;
     }
 
+    @Override
     public Map<String, Object> behaviorToMap(ClientBehavior behavior) {
         Map<String, Object> map = new HashMap<>();
         map.put("client_AVG_TX_Amount",
@@ -510,6 +514,7 @@ public class PythonInferenceService {
     }
 
     @SuppressWarnings("unchecked")
+    @Override
     public double getModelThreshold(ModelML model) {
         if (model.getHyperparameters() != null &&
                 model.getHyperparameters().containsKey("_trainingResults")) {
