@@ -2,25 +2,10 @@ import numpy as np
 import pandas as pd
 from typing import Optional, Any, List
 
-class RankNormalizer:
-    """
-    Mappe les scores d'anomalie bruts sur [0, 1].
-    Doit être identique à la version utilisée lors de l'entraînement.
-    """
-    def __init__(self):
-        self._sorted_scores: Optional[np.ndarray] = None
-
-    def transform(self, scores: np.ndarray) -> np.ndarray:
-        if self._sorted_scores is None:
-            return scores
-        scores = np.asarray(scores).reshape(-1)
-        ranks = np.searchsorted(self._sorted_scores, scores, side="right")
-        return ranks / len(self._sorted_scores)
-
 class HybridEnsembleBundle:
     """
     Wrapper monolithique pour le modèle hybride.
-    Synchronisé avec ml-pipeline/scripts/train_hybrid_ensemble.py
+    Synchronisé avec ml-hybrid-service/scripts/train_hybrid_ensemble.py
     """
     def __init__(self, rf_model=None, xgb_model=None, copod_model=None, meta_learner=None, 
                  preprocessor=None, feature_names=None, threshold=0.5):
@@ -58,40 +43,3 @@ class HybridEnsembleBundle:
         # Meta-fusion
         stacked = np.column_stack([rf_score, xgb_score, copod_score])
         return self.meta_learner.predict_proba(stacked)[:, 1]
-
-class AnomalyAutoencoder:
-    """Squelette pour charger l'Autoencoder entraîné."""
-    def __init__(self, **kwargs):
-        self._model = None
-        self._normalizer = RankNormalizer()
-        self.threshold_ = 0.5
-        self.name = "Autoencoder"
-
-    def predict_proba(self, X) -> np.ndarray:
-        if hasattr(self, '_raw_mse'): 
-             return self._normalizer.transform(self._raw_mse(X))
-        return np.zeros(len(X))
-
-class ECODFraudModel:
-    """Squelette pour charger le modèle ECOD."""
-    def __init__(self, **kwargs):
-        self._model = None
-        self._normalizer = RankNormalizer()
-        self.threshold_ = 0.5
-        self.name = "ECOD"
-
-    def predict_proba(self, X) -> np.ndarray:
-        raw = self._model.decision_function(X)
-        return self._normalizer.transform(raw)
-
-class COPODFraudModel:
-    """Squelette pour charger le modèle COPOD standalone."""
-    def __init__(self, **kwargs):
-        self._model = None
-        self._normalizer = RankNormalizer()
-        self.threshold_ = 0.5
-        self.name = "COPOD"
-
-    def predict_proba(self, X) -> np.ndarray:
-        raw = self._model.decision_function(X)
-        return self._normalizer.transform(raw)

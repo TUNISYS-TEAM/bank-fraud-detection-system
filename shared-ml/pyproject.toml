@@ -22,6 +22,15 @@ pipeline = [
     "onnxruntime>=1.14",
     "skl2onnx>=1.15",
 ]
+inference = [
+    "onnxruntime>=1.14",
+    "joblib>=1.1",
+]
+explanation = [
+    "shap>=0.41",
+    "captum>=0.6",
+    "torch>=1.12",
+]
 hybrid = [
     "tensorflow>=2.10",
     "pyod>=1.0",

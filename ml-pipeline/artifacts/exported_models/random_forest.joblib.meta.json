@@ -1,7 +1,0 @@
-{
-  "name": "RandomForest",
-  "class": "RandomForestFraudModel",
-  "threshold": 0.16569050026478582,
-  "fit_time_sec": 1.122314214706421,
-  "saved_at": "2026-03-09T19:48:09.576602+00:00"
-}

@@ -1,6 +1,0 @@
-{
-  "name": "Autoencoder",
-  "keras_path": "/app/artifacts/exported_models/autoencoder_keras.keras",
-  "threshold": 0.7427902150023888,
-  "saved_at": "2026-03-09T19:48:19.616532+00:00"
-}

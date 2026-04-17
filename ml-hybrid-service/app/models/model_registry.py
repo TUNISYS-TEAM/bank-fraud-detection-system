@@ -4,12 +4,14 @@ from typing import Dict, Any
 from app.models.model_loader import ModelLoader
 from app.models import bundles
 
+from app.models.unsupervised import anomaly_models
+from shared_ml.models import base_model
+
 # --- LOGIQUE D'ALIASING DES MODULES ---
-# Permet à joblib de charger les classes (Bundle, modèles d'anomalies) 
-# même si elles ont été sérialisées dans un autre contexte (script training ou package ml_pipeline).
+# Permet à joblib de charger les anciens modèles même après le refactoring
 sys.modules['train_hybrid_ensemble'] = bundles
-sys.modules['ml_pipeline.models.unsupervised.anomaly_models'] = bundles
-sys.modules['ml_pipeline.models.base_model'] = bundles # Pour RankNormalizer etc.
+sys.modules['ml_pipeline.models.unsupervised.anomaly_models'] = anomaly_models
+sys.modules['ml_pipeline.models.base_model'] = base_model
 # --------------------------------------
 
 logger = logging.getLogger(__name__)

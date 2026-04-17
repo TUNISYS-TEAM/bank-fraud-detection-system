@@ -28,8 +28,8 @@ from sklearn.pipeline import Pipeline
 
 sys.path.insert(0, '/app/src')
 
-from ml_pipeline.models.unsupervised.anomaly_models import ECODFraudModel
-from shared_ml.inference.thresholding import (
+from app.models.unsupervised.anomaly_models import ECODFraudModel
+from shared_ml.evaluation.thresholding import (
     find_threshold_by_fbeta,
     find_threshold_by_cost,
 )

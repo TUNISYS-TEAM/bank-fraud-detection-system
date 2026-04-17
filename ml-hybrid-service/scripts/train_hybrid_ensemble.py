@@ -32,7 +32,7 @@ from pyod.models.copod import COPOD
 
 sys.path.insert(0, '/app/src')
 
-from shared_ml.inference.thresholding import (
+from shared_ml.evaluation.thresholding import (
     find_threshold_by_fbeta,
     find_threshold_by_cost,
 )
