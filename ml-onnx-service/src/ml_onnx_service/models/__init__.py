@@ -1,5 +1,5 @@
 """Fraud detection model package."""
 
-from .base_model import FraudBaseModel
+from shared_ml.models.base_model import FraudBaseModel
 
 __all__ = ["FraudBaseModel"]

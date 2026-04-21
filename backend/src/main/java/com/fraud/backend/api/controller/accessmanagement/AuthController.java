@@ -232,12 +232,12 @@ public class AuthController {
             AppUser user = userService.getByEmail(request.getEmail());
 
             // Check email verification – if not verified, return error (frontend will request OTP)
-            if (!isEmailVerified(user)) {
+            /*if (!isEmailVerified(user)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(Map.of(
                                 "error", "EMAIL_NOT_VERIFIED",
                                 "message", "Votre email n'est pas encore vérifié. Veuillez demander un code OTP."));
-            }
+            }*/
 
             // Ensure KeycloakMapping exists
             try {

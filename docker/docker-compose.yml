@@ -30,6 +30,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.3
     container_name: fraud-keycloak
@@ -39,11 +40,8 @@ services:
       KC_DB_URL: ${KEYCLOAK_DB_URL}
       KC_DB_USERNAME: ${POSTGRES_KEYCLOAK_USER}
       KC_DB_PASSWORD: ${POSTGRES_KEYCLOAK_PASSWORD}
-
-      # Admin
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-
     ports:
       - "8180:8080"
     depends_on:
@@ -58,8 +56,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Console UI
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -81,7 +79,6 @@ services:
       mc anonymous set none local/fraud-datalake || true
       "
 
-  # Service d'inférence ONNX (Supervisé)
   ml-onnx-service:
     build:
       context: ../ml-onnx-service
@@ -93,9 +90,10 @@ services:
       - "8888:8888"
     volumes:
       - ../ml-onnx-service:/app
+      - ../shared-ml/src/shared_ml:/app/src/shared_ml
     environment:
-      - PYTHONUNBUFFERED=${PYTHONUNBUFFERED}
-      - PYTHONPATH=${PYTHONPATH}
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
       - MINIO_ENDPOINT=${ML_PIPELINE_MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${ML_PIPELINE_MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${ML_PIPELINE_MINIO_SECRET_KEY}
@@ -128,7 +126,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Service d'inférence Hybride (FastAPI)
   ml-hybrid-service:
     build:
       context: ../ml-hybrid-service
@@ -137,21 +134,23 @@ services:
         shared-ml: ../shared-ml
     container_name: fraud-ml-hybrid
     ports:
-      - "${ML_HYBRID_SERVICE_PORT:-8001}:8000"
+      - "8001:8000"
+    volumes:
+      - ../shared-ml/src/shared_ml:/app/src/shared_ml
+      - ../ml-hybrid-service/scripts:/app/scripts
+      - ../ml-hybrid-service/app:/app/app
     environment:
+      - PYTHONPATH=/app/src
       - MINIO_ENDPOINT=${ML_HYBRID_MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${ML_HYBRID_MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${ML_HYBRID_MINIO_SECRET_KEY}
       - MINIO_BUCKET=${ML_HYBRID_MINIO_BUCKET}
       - LOG_LEVEL=INFO
+    command: >
+      sh -c "pip install shap && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       minio:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
     restart: unless-stopped
 
   kafka:
@@ -171,10 +170,11 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_LOG_DIRS: "/var/lib/kafka/data"
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
-      # Additional settings for consumer groups
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
 
 volumes:
   postgres_app_data:

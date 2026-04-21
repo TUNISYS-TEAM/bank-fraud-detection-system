@@ -445,32 +445,13 @@
                         </div>
                         }
 
-                        @if (selectedModelType === 'ECOD') {
-                        <!-- ECOD Parameters -->
+                        @if (selectedModelType === 'ECOD' || selectedModelType === 'COPOD') {
+                        <!-- ECOD/COPOD Parameters -->
                         <div class="space-y-3">
                             <label class="block text-sm font-bold text-gray-600">Taux de Contamination</label>
                             <div class="relative group">
-                                <select [(ngModel)]="ecodConfig.hyperparameters.contamination"
-                                    class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all text-sm font-medium appearance-none cursor-pointer">
-                                    <option [ngValue]="0.01">0.01 (Très conservateur)</option>
-                                    <option [ngValue]="0.05">0.05 (Standard — Recommandé)</option>
-                                    <option [ngValue]="0.1">0.10 (Agressif)</option>
-                                </select>
-                                <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </div>
-                        </div>
-                        }
-
-                        @if (selectedModelType === 'COPOD') {
-                        <!-- COPOD Parameters -->
-                        <div class="space-y-3">
-                            <label class="block text-sm font-bold text-gray-600">Taux de Contamination</label>
-                            <div class="relative group">
-                                <select [(ngModel)]="copodConfig.hyperparameters.contamination"
+                                <select
+                                    [(ngModel)]="selectedModelType === 'ECOD' ? ecodConfig.hyperparameters.contamination : copodConfig.hyperparameters.contamination"
                                     class="w-full p-4 pl-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all text-sm font-medium appearance-none cursor-pointer">
                                     <option [ngValue]="0.01">0.01 (Très conservateur)</option>
                                     <option [ngValue]="0.05">0.05 (Standard — Recommandé)</option>
@@ -706,9 +687,9 @@
                             } @else if (selectedModelType === 'HYBRID_ENSEMBLE') {
                             <i-feather name="layers" class="w-full h-full"></i-feather>
                             } @else if (selectedModelType === 'AUTOENCODER') {
-                            <i-feather name="brain" class="w-full h-full"></i-feather>
+                            <i-feather name="cpu" class="w-full h-full"></i-feather>
                             } @else if (selectedModelType === 'ECOD') {
-                            <i-feather name="compass" class="w-full h-full"></i-feather>
+                            <i-feather name="globe" class="w-full h-full"></i-feather>
                             } @else if (selectedModelType === 'COPOD') {
                             <i-feather name="activity" class="w-full h-full"></i-feather>
                             } @else {

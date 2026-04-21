@@ -210,7 +210,7 @@ class PostalCodeResolver:
 
         unknown_count = (df["region"] == self.unknown_region).sum() if add_region else 0
         if unknown_count:
-            logger.warning(
+            logger.debug(
                 "PostalCodeResolver: %d/%d rows had unrecognised postal codes",
                 unknown_count, len(df),
             )

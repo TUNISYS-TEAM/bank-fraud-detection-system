@@ -29,6 +29,7 @@ import org.springframework.data.domain.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -62,6 +63,9 @@ public class DatasetService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final UserService userService;
+
+    @Value("${fraud.ml.onnx.container-name:fraud-ml-onnx}")
+    private String onnxContainerName;
 
     private static final List<DatasetType> ADMIN_KPI_TYPES = List.of(
             DatasetType.CLIENTS,
@@ -239,12 +243,12 @@ public class DatasetService {
                 utf8File = utf8CsvFile;
             }
 
-            // 3. Docker paths
-            String containerInputFile = "/app/data/" + utf8CsvFile.getFileName().toString();
-            containerOutputFile = "/app/data/" + ds.getDatasetUuid() + ".parquet";
+            // 3. Docker paths (use /tmp to avoid local volume leak)
+            String containerInputFile = "/tmp/fraud-work/" + utf8CsvFile.getFileName().toString();
+            containerOutputFile = "/tmp/fraud-work/" + ds.getDatasetUuid() + ".parquet";
 
             // 4. Ensure data directory exists in container
-            execDockerCommand("mkdir", "-p", "/app/data");
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work");
 
             // 5. Copy CSV to container
             execDockerCopy(utf8CsvFile, containerInputFile);
@@ -264,9 +268,8 @@ public class DatasetService {
             // 7. Run conversion command
             List<String> cmd = new ArrayList<>();
             cmd.addAll(List.of(
-                    "docker", "exec", "fraud-ml-pipeline",
-                    "python", "-m", "ml_pipeline.cli.main",
-                    "convert-to-parquet",
+                    "docker", "exec", onnxContainerName,
+                    "python", "/shared-ml/scripts/convert_to_parquet.py",
                     "--input", containerInputFile,
                     "--output", containerOutputFile));
 
@@ -1388,8 +1391,8 @@ public class DatasetService {
     private InputStream downloadAsCsv(Dataset ds) {
         Path tempParquet = null;
         Path tempCsv = null;
-        String containerInput = "/app/data/export_" + ds.getDatasetUuid() + ".parquet";
-        String containerOutput = "/app/data/export_" + ds.getDatasetUuid() + ".csv";
+        String containerInput = "/tmp/fraud-work/export_" + ds.getDatasetUuid() + ".parquet";
+        String containerOutput = "/tmp/fraud-work/export_" + ds.getDatasetUuid() + ".csv";
 
         try {
             // 1. Download Parquet from MinIO to local temp
@@ -1399,13 +1402,13 @@ public class DatasetService {
             }
 
             // 2. Ensure data directory exists in container
-            execDockerCommand("mkdir", "-p", "/app/data");
+            execDockerCommand(onnxContainerName, "mkdir", "-p", "/tmp/fraud-work");
 
             // 3. Copy Parquet to container
-            execDockerCopy(tempParquet, containerInput);
+            execDockerCopy(tempParquet, onnxContainerName + ":" + containerInput);
 
             // 4. Convert via Python CLI
-            execDockerCommand("python", "-m", "ml_pipeline.cli.main", "convert-to-csv",
+            execDockerCommand(onnxContainerName, "python", "-m", "ml_onnx_service.cli.main", "convert-to-csv",
                     "--input", containerInput,
                     "--output", containerOutput);
 
@@ -1686,26 +1689,25 @@ public class DatasetService {
                     utf8File = tempFile;
             }
 
-            // 3. Préparer les répertoires dans le conteneur
-            execDockerCommand("mkdir", "-p", "/app/data");
-            execDockerCommand("mkdir", "-p", "/app/data/enriched");
-            execDockerCommand("mkdir", "-p", "/app/output");
+            // 3. Préparer les répertoires dans le conteneur (utiliser /tmp pour éviter le volume local)
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work");
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work/enriched");
 
             // 4. Copier dans le conteneur
-            containerInput = "/app/data/" + utf8File.getFileName().toString();
+            containerInput = "/tmp/fraud-work/" + utf8File.getFileName().toString();
             execDockerCopy(utf8File, containerInput);
             log.info("Fichier copié dans le conteneur: {}", containerInput);
 
             // 5. Construire la commande Python
             List<String> cmd = new ArrayList<>();
             cmd.addAll(List.of(
-                    "docker", "exec", "fraud-ml-pipeline",
-                    "python", "-m", "ml_pipeline.cli.main",
+                    "docker", "exec", onnxContainerName,
+                    "python", "-m", "ml_onnx_service.cli.main",
                     "extract-behavior",
                     "--input", containerInput,
                     "--dataset-id", sourceDataset.getDatasetUuid().toString(),
                     "--job-id", jobId,
-                    "--output", "/app/data/enriched/enriched_" + sourceDataset.getDatasetUuid() + ".parquet"));
+                    "--output", "/tmp/fraud-work/enriched/enriched_" + sourceDataset.getDatasetUuid() + ".parquet"));
 
             log.info("Exécution de la commande: {}", String.join(" ", cmd));
 
@@ -1750,7 +1752,7 @@ public class DatasetService {
 
             // 7. Récupérer le chemin du fichier de sortie
             String outputFilename = "enriched_" + sourceDataset.getDatasetUuid() + ".parquet";
-            containerOutput = "/app/data/enriched/" + outputFilename;
+            containerOutput = "/tmp/fraud-work/enriched/" + outputFilename;
             log.info("Recherche du fichier dans le conteneur: {}", containerOutput);
 
             // 8. Télécharger le fichier depuis le conteneur
@@ -1902,7 +1904,7 @@ public class DatasetService {
     // Docker Utils
 
     private String execDockerCommand(String... commands) throws Exception {
-        List<String> cmd = new ArrayList<>(List.of("docker", "exec", "fraud-ml-pipeline"));
+        List<String> cmd = new ArrayList<>(List.of("docker", "exec", onnxContainerName));
         cmd.addAll(Arrays.asList(commands));
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
@@ -1917,7 +1919,7 @@ public class DatasetService {
     private void execDockerCopy(Path source, String destination) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
                 "docker", "cp", source.toAbsolutePath().toString(),
-                "fraud-ml-pipeline:" + destination);
+                onnxContainerName + ":" + destination);
         pb.redirectErrorStream(true);
         Process process = pb.start();
         String output = readStream(process.getInputStream());
@@ -1928,7 +1930,7 @@ public class DatasetService {
 
     private void execDockerCopyFromContainer(String containerPath, Path localPath) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
-                "docker", "cp", "fraud-ml-pipeline:" + containerPath,
+                "docker", "cp", onnxContainerName + ":" + containerPath,
                 localPath.toAbsolutePath().toString());
         pb.redirectErrorStream(true);
         Process process = pb.start();

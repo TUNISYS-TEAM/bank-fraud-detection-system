@@ -10,8 +10,8 @@ minio==7.2.0
 pyod==1.1.2
 xgboost==2.0.2
 python-multipart==0.0.6
-
 pytest==7.4.3
 httpx==0.25.1
-
--e /app/shared-ml[hybrid]
+pyarrow>=14.0.0
+tensorflow>=2.15.0
+lz4

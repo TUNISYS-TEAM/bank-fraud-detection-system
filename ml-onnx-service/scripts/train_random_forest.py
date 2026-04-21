@@ -1,7 +1,7 @@
 """
 Train a Random Forest model for bank fraud detection.
 No data leakage – per‑split preprocessing, cost‑sensitive learning, dynamic thresholding.
-Handles both Customer_Postal_Code and Merchant_Postal_Code.
+Uses shared_ml components for splitting, postal codes, preprocessing.
 """
 
 from __future__ import annotations
@@ -24,14 +24,11 @@ from sklearn.metrics import (
     roc_auc_score, confusion_matrix, precision_recall_curve, average_precision_score
 )
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import RobustScaler
-import onnx
-from skl2onnx import convert_sklearn
-from skl2onnx.common.data_types import FloatTensorType
 
 sys.path.insert(0, '/app')
 
+# Shared ML imports
+from shared_ml.evaluation.data_split import temporal_split
 from shared_ml.evaluation.thresholding import (
     find_threshold_by_fbeta,
     find_threshold_by_cost,
@@ -40,7 +37,12 @@ from shared_ml.preprocessing.behavioral.temporal_features import TemporalFeature
 from shared_ml.preprocessing.encoders.categorical_encoder import SafeOneHotEncoder
 from shared_ml.preprocessing.encoders.feature_selectors import TreeFeatureSelector
 from shared_ml.preprocessing.scalers.monetary_scaler import SafeScaler
-from shared_ml.utils.postal_codes import PostalCodeResolver
+from shared_ml.utils.postal_codes import (
+    process_customer_postal_fit,
+    process_customer_postal_transform,
+    process_merchant_postal_fit,
+    process_merchant_postal_transform,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,22 +51,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ------------------------------------------------------------------------------
-# Global resolver – loaded once
-# ------------------------------------------------------------------------------
-_RESOLVER = None
-
-def get_resolver():
-    global _RESOLVER
-    if _RESOLVER is None:
-        logger.info("Loading PostalCodeResolver (once)")
-        _RESOLVER = PostalCodeResolver()
-    return _RESOLVER
 
 # ------------------------------------------------------------------------------
-# Preprocessing helpers (NO data leakage – fit on train only)
+# Helpers for ID columns (not yet in shared_ml)
 # ------------------------------------------------------------------------------
-
 def extract_numeric_from_id(value):
     if pd.isna(value):
         return 0
@@ -85,7 +75,6 @@ def extract_numeric_from_id(value):
 
 
 def process_id_columns(df):
-    """Extract numeric IDs – safe per-split operation."""
     df_processed = df.copy()
     id_columns = ['Account_Id', 'Device_Id']
     for col in id_columns:
@@ -94,84 +83,9 @@ def process_id_columns(df):
     return df_processed
 
 
-def process_postal_codes_fit(df_train):
-    """Fit region mapping for Customer_Postal_Code on training data only."""
-    resolver = get_resolver()
-    logger.info("Enriching training data with Customer_Postal_Code (fit)")
-    df_enriched = resolver.enrich_dataframe(
-        df_train, 'Customer_Postal_Code', add_gov=False, add_deleg=False, add_region=True
-    )
-    region_categories = df_enriched['region'].astype('category').cat.categories
-    logger.info("Customer region categories (fit): %d unique", len(region_categories))
-    return region_categories
-
-
-def process_customer_postal_transform(df, region_categories):
-    """Transform Customer_Postal_Code using pre‑fitted region categories."""
-    resolver = get_resolver()
-    df_enriched = resolver.enrich_dataframe(
-        df, 'Customer_Postal_Code', add_gov=False, add_deleg=False, add_region=True
-    )
-    cat_region = pd.Categorical(df_enriched['region'], categories=region_categories)
-    df_enriched['Customer_Region'] = cat_region.codes.astype(np.float32)
-    df_enriched = df_enriched.drop(['Customer_Postal_Code', 'region'], axis=1)
-    return df_enriched
-
-
-def process_merchant_postal_fit(df_train):
-    """Fit region mapping for Merchant_Postal_Code on training data only."""
-    resolver = get_resolver()
-    logger.info("Enriching training data with Merchant_Postal_Code (fit)")
-    df_enriched = resolver.enrich_dataframe(
-        df_train, 'Merchant_Postal_Code', add_gov=False, add_deleg=False, add_region=True
-    )
-    merchant_region_categories = df_enriched['region'].astype('category').cat.categories
-    logger.info("Merchant region categories (fit): %d unique", len(merchant_region_categories))
-    return merchant_region_categories
-
-
-def process_merchant_postal_transform(df, merchant_region_categories):
-    """Transform Merchant_Postal_Code using pre‑fitted region categories."""
-    resolver = get_resolver()
-    df_enriched = resolver.enrich_dataframe(
-        df, 'Merchant_Postal_Code', add_gov=False, add_deleg=False, add_region=True
-    )
-    cat_region = pd.Categorical(df_enriched['region'], categories=merchant_region_categories)
-    df_enriched['Merchant_Region'] = cat_region.codes.astype(np.float32)
-    df_enriched = df_enriched.drop(['Merchant_Postal_Code', 'region'], axis=1)
-    return df_enriched
-
-
-def identify_categorical_columns(df: pd.DataFrame) -> list[str]:
-    """
-    Dynamically identify categorical columns present in the DataFrame.
-    Only columns that are object/category type (excluding known numeric columns).
-    """
-    expected_cats = ['category', 'Channel', 'client_usual_region', 'client_usual_channel', 'client_usual_category']
-    exclude = {'TX_Time', 'Account_Id', 'Device_Id', 'Customer_Region', 'Merchant_Region'}
-    categorical_cols = []
-    for col in df.columns:
-        if col in exclude:
-            continue
-        if col in expected_cats or df[col].dtype == 'object' or df[col].dtype.name == 'category':
-            categorical_cols.append(col)
-    return categorical_cols
-
-
-def create_preprocessing_pipeline(categorical_columns: list[str]) -> Pipeline:
-    """Build preprocessing pipeline: one‑hot encoding, temporal features, feature selection, scaling."""
-    return Pipeline([
-        ('onehot', SafeOneHotEncoder(categorical_cols=categorical_columns, include_raw_cats=True)),
-        ('temporal', TemporalFeatureTransformer()),
-        ('selector', TreeFeatureSelector()),
-        ('scaler', SafeScaler(scaler_type='robust'))
-    ])
-
-
 # ------------------------------------------------------------------------------
-# Hyperparameter loader (accepts JSON string or file path)
+# Hyperparameter loader
 # ------------------------------------------------------------------------------
-
 def load_hyperparameters(hyperparam_arg: str) -> dict:
     try:
         return json.loads(hyperparam_arg)
@@ -184,30 +98,36 @@ def load_hyperparameters(hyperparam_arg: str) -> dict:
 
 
 # ------------------------------------------------------------------------------
-# Temporal split function (avoids pandas datetime issues)
+# Identify categorical columns dynamically
 # ------------------------------------------------------------------------------
+def identify_categorical_columns(df: pd.DataFrame) -> list[str]:
+    expected_cats = ['category', 'Channel', 'client_usual_region', 'client_usual_channel', 'client_usual_category']
+    exclude = {'TX_Time', 'Account_Id', 'Device_Id', 'Customer_Region', 'Merchant_Region'}
+    categorical_cols = []
+    for col in df.columns:
+        if col in exclude:
+            continue
+        if col in expected_cats or df[col].dtype == 'object' or df[col].dtype.name == 'category':
+            categorical_cols.append(col)
+    return categorical_cols
 
-def temporal_split_by_time(df, time_col, train_ratio=0.7, val_ratio=0.15):
-    if time_col not in df.columns:
-        raise ValueError(f"Time column '{time_col}' not found")
-    df_sorted = df.sort_values(time_col).reset_index(drop=True)
-    n = len(df_sorted)
-    train_end = int(n * train_ratio)
-    val_end = train_end + int(n * val_ratio)
-    train_df = df_sorted.iloc[:train_end].copy()
-    val_df = df_sorted.iloc[train_end:val_end].copy()
-    test_df = df_sorted.iloc[val_end:].copy()
-    logger.info("Temporal split (by %s): train=%d, val=%d, test=%d",
-                time_col, len(train_df), len(val_df), len(test_df))
-    return train_df, val_df, test_df
+
+# ------------------------------------------------------------------------------
+# Preprocessing pipeline
+# ------------------------------------------------------------------------------
+def create_preprocessing_pipeline(categorical_columns: list[str]) -> Pipeline:
+    return Pipeline([
+        ('onehot', SafeOneHotEncoder(categorical_cols=categorical_columns, include_raw_cats=True)),
+        ('temporal', TemporalFeatureTransformer()),
+        ('selector', TreeFeatureSelector()),
+        ('scaler', SafeScaler(scaler_type='robust'))
+    ])
 
 
 # ------------------------------------------------------------------------------
 # JSON serialization helper
 # ------------------------------------------------------------------------------
-
 def make_json_safe(obj):
-    """Convert numpy/pandas numeric types to Python native types."""
     if isinstance(obj, (np.integer, np.int64, np.int32)):
         return int(obj)
     elif isinstance(obj, (np.floating, np.float64, np.float32)):
@@ -223,11 +143,14 @@ def make_json_safe(obj):
 
 
 # ------------------------------------------------------------------------------
-# ONNX export
+# ONNX export (RandomForest works with skl2onnx)
 # ------------------------------------------------------------------------------
-
 def export_to_onnx_direct(model, output_path, input_dim):
     try:
+        from skl2onnx import convert_sklearn
+        from skl2onnx.common.data_types import FloatTensorType
+        import onnx
+
         initial_type = [('float_input', FloatTensorType([None, input_dim]))]
         onnx_model = convert_sklearn(model, initial_types=initial_type)
         onnx.save_model(onnx_model, str(output_path))
@@ -241,7 +164,6 @@ def export_to_onnx_direct(model, output_path, input_dim):
 # ------------------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------------------
-
 def main():
     parser = argparse.ArgumentParser(description='Train Random Forest for bank fraud detection')
     parser.add_argument('--dataset-path', required=True)
@@ -271,8 +193,6 @@ def main():
         if not selected_original_features:
             raise ValueError("No original features selected for training")
 
-        logger.info("Model name: %s", model_name)
-
         dataset_path = Path(args.dataset_path)
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset not found: {dataset_path}")
@@ -283,12 +203,10 @@ def main():
         else:
             df = pd.read_csv(dataset_path)
 
-        # Ensure unique columns
         if not df.columns.is_unique:
             logger.warning("Duplicate column names detected. Keeping first occurrence.")
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
-        # Convert TX_Time to datetime
         if 'TX_Time' in df.columns:
             df['TX_Time'] = pd.to_datetime(df['TX_Time'], errors='coerce')
             before = len(df)
@@ -296,7 +214,6 @@ def main():
             if len(df) < before:
                 logger.warning("Dropped %d rows with invalid TX_Time", before - len(df))
 
-        # Keep available features (including TX_Time for splitting)
         available_features = [f for f in all_features if f in df.columns]
         if not available_features:
             raise ValueError("None of the required features are available")
@@ -310,37 +227,34 @@ def main():
         df_processed = X.copy()
         df_processed['fraud'] = y
 
-        # ========== STEP 1: TEMPORAL SPLIT (no leakage) ==========
+        # ========== STEP 1: TEMPORAL SPLIT (shared_ml) ==========
         if 'TX_Time' not in df_processed.columns:
             raise ValueError("TX_Time column missing")
-        train_ratio = 0.7
-        val_ratio = 0.15
-        df_train, df_val, df_test = temporal_split_by_time(
-            df_processed, time_col='TX_Time', train_ratio=train_ratio, val_ratio=val_ratio
+        df_train, df_val, df_test = temporal_split(
+            df_processed, time_col='TX_Time', train_ratio=0.7, val_ratio=0.15
         )
 
         # ========== STEP 2: PER‑SPLIT PREPROCESSING ==========
         logger.info("Applying per-split preprocessing...")
-        # ID columns (independent)
         df_train = process_id_columns(df_train)
         df_val = process_id_columns(df_val)
         df_test = process_id_columns(df_test)
 
-        # Customer postal codes: fit region categories on TRAIN only
-        customer_region_categories = process_postal_codes_fit(df_train)
+        # Customer postal codes
+        customer_region_categories = process_customer_postal_fit(df_train)
         df_train = process_customer_postal_transform(df_train, customer_region_categories)
         df_val = process_customer_postal_transform(df_val, customer_region_categories)
         df_test = process_customer_postal_transform(df_test, customer_region_categories)
 
-        # Merchant postal codes: fit region categories on TRAIN only
+        # Merchant postal codes (if present)
         if 'Merchant_Postal_Code' in df_processed.columns:
             merchant_region_categories = process_merchant_postal_fit(df_train)
             df_train = process_merchant_postal_transform(df_train, merchant_region_categories)
             df_val = process_merchant_postal_transform(df_val, merchant_region_categories)
             df_test = process_merchant_postal_transform(df_test, merchant_region_categories)
 
-        # Keep TX_Time for pipeline (do NOT drop it here)
-        X_train = df_train.drop('fraud', axis=1)
+        # Garder TX_Time pour le pipeline
+        X_train = df_train.drop('fraud', axis=1)   # TX_Time est conservé
         X_val = df_val.drop('fraud', axis=1)
         X_test = df_test.drop('fraud', axis=1)
         y_train = df_train['fraud'].values
@@ -351,15 +265,21 @@ def main():
         logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
         logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
 
-        # Identify categorical columns in TRAINING data only (TX_Time excluded by identify_categorical_columns)
+        # Identify categorical columns on training data
         categorical_columns = identify_categorical_columns(X_train)
         logger.info("Categorical columns to encode: %s", categorical_columns)
 
-        # ========== STEP 3: PREPROCESSING PIPELINE (fit on train only) ==========
+        # ========== STEP 3: PREPROCESSING PIPELINE ==========
         preprocessor = create_preprocessing_pipeline(categorical_columns)
         X_train_proc = preprocessor.fit_transform(X_train)
         X_val_proc = preprocessor.transform(X_val)
         X_test_proc = preprocessor.transform(X_test)
+
+        # Supprimer TX_Time s'il est encore présent (le sélecteur l'a déjà fait, mais par sécurité)
+        if 'TX_Time' in X_train_proc.columns:
+            X_train_proc = X_train_proc.drop('TX_Time', axis=1)
+            X_val_proc = X_val_proc.drop('TX_Time', axis=1)
+            X_test_proc = X_test_proc.drop('TX_Time', axis=1)
 
         try:
             feature_names = preprocessor.get_feature_names_out()
@@ -368,7 +288,7 @@ def main():
 
         logger.info("Processed feature shape: %s", X_train_proc.shape)
 
-        # ========== STEP 4: COST‑SENSITIVE CONFIGURATION ==========
+        # ========== STEP 4: COST‑SENSITIVE RANDOM FOREST ==========
         fraud_weight = hp.get('fraud_weight')
         if fraud_weight is None:
             fraud_ratio = y_train.mean()
@@ -404,7 +324,6 @@ def main():
         max_prob = y_val_proba.max()
         logger.info("Validation max probability: %.4f", max_prob)
 
-        # 5.1 PR‑based (max F1)
         precision_vals, recall_vals, thresholds_pr = precision_recall_curve(y_val, y_val_proba)
         f1_scores = 2 * precision_vals[:-1] * recall_vals[:-1] / (precision_vals[:-1] + recall_vals[:-1] + 1e-9)
         best_idx = np.argmax(f1_scores)
@@ -412,15 +331,12 @@ def main():
         best_f1 = f1_scores[best_idx]
         logger.info("PR‑based threshold (max F1): %.4f (F1=%.4f)", pr_threshold, best_f1)
 
-        # 5.2 F‑beta (β=2.0)
         fbeta_threshold, fbeta_score_val = find_threshold_by_fbeta(y_val, y_val_proba, beta=2.0)
         logger.info("F-beta (β=2.0): threshold=%.4f, score=%.4f", fbeta_threshold, fbeta_score_val)
 
-        # 5.3 Cost‑based (FP=1, FN=10)
         cost_threshold, min_cost = find_threshold_by_cost(y_val, y_val_proba, cost_fp=1.0, cost_fn=10.0)
         logger.info("Cost-based: threshold=%.4f, min_cost=%.0f", cost_threshold, min_cost)
 
-        # 5.4 User threshold from UI
         user_threshold = hp.get('detection_threshold')
         if user_threshold is not None:
             final_threshold = float(user_threshold)
@@ -428,8 +344,9 @@ def main():
             if final_threshold > max_prob:
                 logger.warning("User threshold %.4f > max prob %.4f → will detect nothing.", final_threshold, max_prob)
         else:
-            final_threshold = pr_threshold
-            logger.info("No UI threshold, using PR‑based: %.4f", final_threshold)
+            # MODIF : utiliser F-beta par défaut (meilleur compromis recall/précision)
+            final_threshold = fbeta_threshold
+            logger.info("No UI threshold, using F-beta threshold: %.4f", final_threshold)
 
         # ========== STEP 6: TEST EVALUATION ==========
         y_test_proba = rf_model.predict_proba(X_test_proc)[:, 1]
@@ -451,11 +368,11 @@ def main():
         importances = rf_model.feature_importances_
         feature_importance_map = dict(sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True))
 
-        # ========== STEP 7: SAVE ARTIFACTS (atomic) ==========
+        # ========== STEP 7: SAVE ARTIFACTS ==========
         timestamp = args.timestamp
-        output_models_dir = Path("/app/output/models")
-        output_onnx_dir = Path("/app/output/onnx")
-        output_pipelines_dir = Path("/app/output/pipelines")
+        output_models_dir = Path("/tmp/fraud-work/output/models")
+        output_onnx_dir = Path("/tmp/fraud-work/output/onnx")
+        output_pipelines_dir = Path("/tmp/fraud-work/output/pipelines")
         for d in [output_models_dir, output_onnx_dir, output_pipelines_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
@@ -473,7 +390,7 @@ def main():
         temp_model_path.rename(model_path)
         logger.info("Classifier saved to %s (%d bytes)", model_path, model_path.stat().st_size)
 
-        # Export ONNX
+        # ONNX export
         onnx_file = output_onnx_dir / f"{base_filename}.onnx"
         onnx_path = export_to_onnx_direct(rf_model, onnx_file, X_train_proc.shape[1])
         if not onnx_path:
@@ -482,7 +399,6 @@ def main():
         ended_at = datetime.now()
         total_duration = time.time() - overall_start
 
-        # Build result dictionary with JSON‑safe conversion
         result_raw = {
             'status': 'COMPLETED',
             'job_id': args.job_id,
@@ -530,7 +446,6 @@ def main():
             'duration_seconds': total_duration,
         }
 
-        # Convert numpy types to Python native
         result = make_json_safe(result_raw)
 
         sys.stdout = original_stdout

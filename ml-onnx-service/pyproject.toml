@@ -31,13 +31,10 @@ dependencies = [
     "tqdm>=4.65.0"
 ]
 
-[tool.setuptools]
-package-dir = {"ml_onnx_service" = "app"}
-
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["ml_onnx_service*"]
-exclude = ["tests*", "scripts*"]
+exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 "ml_onnx_service.utils.resources" = ["*.json"]

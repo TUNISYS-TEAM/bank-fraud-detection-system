@@ -49,7 +49,7 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Set Python path
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src:/app
 
 # Keep container alive
 CMD ["tail", "-f", "/dev/null"]

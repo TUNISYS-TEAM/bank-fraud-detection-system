@@ -63,6 +63,8 @@ class AnomalyAutoencoder(FraudBaseModel):
         self._model = None
         self._normalizer = RankNormalizer()
         self.input_dim_: int = 0
+        self._keras_config: Optional[str] = None
+        self._keras_weights: Optional[list] = None
 
     def fit(self, X, y, X_val=None, y_val=None):
         from tensorflow import keras
@@ -117,6 +119,18 @@ class AnomalyAutoencoder(FraudBaseModel):
         train_mse = self._raw_mse(X)
         self._normalizer.fit(train_mse)
 
+        # Calculate feature importance based on reconstruction error (MSE per feature)
+        # We do this on the normal samples used for training
+        recon_train = self._model.predict(X_normal, verbose=0)
+        mse_per_feature = np.mean(np.square(X_normal - recon_train), axis=0)
+        
+        # Normalize to 0-1 range (relative importance)
+        total_mse = np.sum(mse_per_feature)
+        if total_mse > 0:
+            self.feature_importances_ = mse_per_feature / total_mse
+        else:
+            self.feature_importances_ = np.zeros(self.input_dim_)
+
         if X_val is not None and y_val is not None:
             scores_val = self._normalizer.transform(self._raw_mse(X_val))
             self.find_best_threshold(
@@ -129,9 +143,28 @@ class AnomalyAutoencoder(FraudBaseModel):
         self._fitted = True
         return self
 
+    def get_feature_importance(self, feature_names=None) -> dict:
+        if not self._fitted or not hasattr(self, 'feature_importances_'):
+            return {}
+        
+        if feature_names is None:
+            feature_names = [f"feature_{i}" for i in range(self.input_dim_)]
+            
+        return dict(zip(feature_names, self.feature_importances_.tolist()))
+
     def _raw_mse(self, X) -> np.ndarray:
         if self._model is None:
-            raise ValueError("AnomalyAutoencoder doit être ajusté avant le scoring.")
+            k_config = getattr(self, '_keras_config', None)
+            k_weights = getattr(self, '_keras_weights', None)
+            if k_config and k_weights:
+                logger.info("Rebuilding Keras model from embedded weights...")
+                from tensorflow.keras.models import Model
+                import json
+                self._model = Model.from_config(json.loads(k_config))
+                self._model.set_weights(k_weights)
+            else:
+                raise ValueError("AnomalyAutoencoder must be fitted (or self-contained weights missing) before scoring.")
+        
         recon = self._model.predict(X, verbose=0)
         return np.mean(np.square(X - recon), axis=1)
 
@@ -150,32 +183,35 @@ class AnomalyAutoencoder(FraudBaseModel):
         import tempfile
         from datetime import datetime, timezone
 
+        # On embarque la structure et les poids pour la portabilité
+        self._keras_config = json.dumps(self._model.get_config())
+        self._keras_weights = self._model.get_weights()
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        # On garde quand même la sauvegarde Keras standard au cas où
         keras_path = path.parent / f"{path.stem}_keras.keras"
         self._model.save(str(keras_path))
 
         model_backup = self._model
-        self._model = None
+        self._model = None # Pour éviter les problèmes de pickling Keras
 
         fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
         try:
             os.close(fd)
             joblib.dump(self, tmp, compress=("lz4", 3))
             os.replace(tmp, path)
-        except Exception:
-            if os.path.exists(tmp): os.unlink(tmp)
-            raise
         finally:
             self._model = model_backup
+            if os.path.exists(tmp): os.unlink(tmp)
 
         Path(str(path) + ".meta.json").write_text(
             json.dumps({
                 "name": self.name,
-                "keras_path": str(keras_path),
                 "threshold": self.threshold_,
                 "saved_at": datetime.now(timezone.utc).isoformat(),
+                "self_contained": True
             }, indent=2),
             encoding="utf-8"
         )

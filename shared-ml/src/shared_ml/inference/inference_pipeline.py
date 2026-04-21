@@ -1,11 +1,12 @@
 """
 Pure inference service – model loading, feature extraction, scoring.
-No business logic, no rules, no explainability.
+Now relies on a full pipeline saved during training.
 """
 
 import re
 import math
 from datetime import datetime
+from typing import List, Optional, Dict, Any
 
 import joblib
 import numpy as np
@@ -17,18 +18,19 @@ try:
 except ImportError:
     ONNX_AVAILABLE = False
 
-from shared_ml.utils.postal_codes import get_resolver
-
 __all__ = ['FraudInferenceEngine']
 
 
 class FraudInferenceEngine:
-    """Handles model loading, feature extraction, and raw prediction."""
+    """
+    Handles model loading and raw prediction.
+    No manual feature engineering – uses pre-saved full pipeline.
+    """
 
     def __init__(self, model_path: str, pipeline_path: str):
         self.model_path = model_path
         self.pipeline_path = pipeline_path
-        self.preprocessor = joblib.load(pipeline_path)
+        self.pipeline = joblib.load(pipeline_path)   # Full pipeline (ID, postal, cat, scaling)
         self.session = None          # ONNX runtime session
         self.sklearn_model = None    # joblib model (if not ONNX)
         self._load_model()
@@ -119,115 +121,18 @@ class FraudInferenceEngine:
         return 1.0 / (1.0 + math.exp(z))
 
     def _get_calibration_sigmoid(self):
-        calibration = getattr(self.preprocessor, 'calibration_sigmoid', None)
+        calibration = getattr(self.pipeline, 'calibration_sigmoid', None)
         if calibration is None and self.sklearn_model is not None:
             calibration = getattr(self.sklearn_model, 'calibration_sigmoid', None)
         return calibration
 
-    def prepare_dataframe(self, transactions, existing_behaviors):
-        """Convert raw transactions + behaviors into a preprocessed DataFrame."""
-        df = pd.DataFrame(transactions)
-        df['_original_index'] = range(len(df))
-
-        column_mapping = {
-            'created_at': 'TX_Time', 'transaction_date': 'TX_Time',
-            'amount': 'TX_Amount', 'channel': 'Channel',
-            'merchant_category': 'category',
-            'postal_code_client': 'Customer_Postal_Code',
-            'postal_code_merchant': 'Merchant_Postal_Code',
-            'device_id': 'Device_Id', 'ip_address': 'ip_adress',
-            'currency': 'currency', 'account_id': 'Account_Id'
-        }
-        for old_name, new_name in column_mapping.items():
-            if old_name in df.columns and new_name not in df.columns:
-                df[new_name] = df[old_name]
-
-        if 'TX_Time' in df.columns:
-            df['TX_Time'] = pd.to_datetime(df['TX_Time'], errors='coerce')
-        if 'Account_Id' in df.columns:
-            df = df.sort_values(['Account_Id', 'TX_Time'], na_position='first')
-
-        behavior_defaults = {
-            'client_AVG_TX_Amount': 0.0, 'client_AVG_TX_PerDay': 0.0,
-            'client_amount_deviation': 0.0, 'client_abs_amount_deviation': 0.0,
-            'client_amount_max_ratio': 1.0, 'client_amount_z_score': 0.0,
-            'client_is_new_max': 0, 'client_is_new_min': 0,
-            'client_total_transactions': 0, 'client_time_since_last_tx': 0,
-            'client_hours_since_last_tx': 0.0, 'client_total_days_since_first': 0.0,
-            'client_usual_region': 'Unknown', 'client_is_unusual_region': 0,
-            'client_region_freq': 0.0, 'client_usual_channel': 'Unknown',
-            'client_is_unusual_channel': 0, 'client_channel_freq': 0.0,
-            'client_usual_category': 'Unknown', 'client_is_unusual_category': 0,
-            'client_category_freq': 0.0, 'client_risk_score': 0.0,
-        }
-        for key, default_value in behavior_defaults.items():
-            if key not in df.columns:
-                df[key] = default_value
-
-        for i, behavior in enumerate(existing_behaviors):
-            if behavior:
-                for key, value in behavior.items():
-                    if key in df.columns:
-                        df.at[i, key] = value
-
-        required_cols = ['TX_Amount', 'TX_Time', 'Channel', 'category',
-                         'Customer_Postal_Code', 'Merchant_Postal_Code',
-                         'Device_Id', 'ip_adress', 'currency', 'Account_Id']
-        for col in required_cols:
-            if col not in df.columns:
-                df[col] = 0.0 if col == 'TX_Amount' else datetime.now() if col == 'TX_Time' else 'Unknown'
-
-        df['TX_Amount'] = pd.to_numeric(df['TX_Amount'], errors='coerce').fillna(0)
-
-        # Apply all transformations (exactly as in the monolithic script)
-        df = self._process_id_columns(df)
-        df = self._process_postal_codes(df)
-        df = self._encode_categorical_columns(df)
-
-        return df
-
-    def _process_id_columns(self, df):
-        def extract_numeric_from_id(value):
-            if pd.isna(value):
-                return 0.0
-            try:
-                s = str(value)
-                numbers = re.findall(r'\d+', s)
-                return float(numbers[0]) if numbers else 0.0
-            except Exception:
-                return 0.0
-
-        dfp = df.copy()
-        for col in ['Account_Id', 'Device_Id']:
-            if col in dfp.columns:
-                dfp[col] = dfp[col].apply(extract_numeric_from_id).astype(np.float32)
-        return dfp
-
-    def _process_postal_codes(self, df):
-        resolver = get_resolver()
-        dfp = df.copy()
-        for pcol, rcol in [('Customer_Postal_Code', 'Customer_Region'), ('Merchant_Postal_Code', 'Merchant_Region')]:
-            if pcol in dfp.columns:
-                dfp = resolver.enrich_dataframe(dfp, pcol, add_gov=False, add_deleg=False, add_region=True)
-                if 'region' in dfp.columns:
-                    dfp[rcol] = pd.Categorical(dfp['region']).codes.astype(np.float32)
-                    dfp = dfp.drop(['region', pcol], axis=1, errors='ignore')
-        return dfp
-
-    def _encode_categorical_columns(self, df):
-        dfe = df.copy()
-        exclude = {'TX_Time', 'Account_Id', 'Device_Id', 'Customer_Region', 'Merchant_Region', '_original_index'}
-        for col in dfe.columns:
-            if col in exclude:
-                continue
-            if dfe[col].dtype == 'object' or str(dfe[col].dtype) == 'category':
-                dfe[col] = pd.Categorical(dfe[col]).codes.astype(np.float32)
-                dfe[col] = dfe[col].replace(-1, 0)
-        return dfe
-
-    def predict_scores(self, df):
-        """Run model inference on a prepared DataFrame and return raw fraud scores."""
-        X_processed = self.preprocessor.transform(df)
+    def predict_scores(self, df_raw: pd.DataFrame) -> np.ndarray:
+        """
+        Apply full pipeline and run model inference.
+        df_raw must contain the original columns (e.g., TX_Amount, Customer_Postal_Code, etc.).
+        """
+        # Apply the full preprocessing pipeline (ID extraction, postal encoding, categorical encoding, scaling)
+        X_processed = self.pipeline.transform(df_raw)
         if hasattr(X_processed, 'toarray'):
             X_processed = X_processed.toarray()
         X_processed = np.asarray(X_processed, dtype=np.float32)
@@ -255,12 +160,12 @@ class FraudInferenceEngine:
 
     def get_feature_names(self):
         try:
-            return self.preprocessor.get_feature_names_out()
+            return self.pipeline.get_feature_names_out()
         except Exception:
             return [f"feature_{i}" for i in range(100)]
 
     def get_model_for_shap(self):
-        """Return the underlying model suitable for SHAP (unwrapping calibration etc.)."""
+        """Return the underlying model suitable for SHAP."""
         if self.sklearn_model is None:
             return None
         classifier = self.sklearn_model

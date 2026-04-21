@@ -43,6 +43,41 @@ class ModelRegistry:
         logger.info(f"Chargement du modèle joblib: {model_path}")
         model = self.loader.load_joblib(model_path)
         
+        # --- FIX SPECIFIQUE AUTOENCODER (Multi-fichiers sur MinIO) ---
+        class_name = type(model).__name__
+        if class_name == "AnomalyAutoencoder" and getattr(model, '_model', None) is None:
+            try:
+                keras_path = model_path.replace('.joblib', '_keras.keras')
+                logger.info(f"Tentative de restauration manuelle du modèle Keras depuis MinIO: {keras_path} (Bucket: {self.loader.bucket})")
+                
+                try:
+                    response = self.loader.client.get_object(self.loader.bucket, keras_path)
+                except Exception as me:
+                    logger.error(f"Fichier Keras introuvable sur MinIO à {keras_path}: {me}")
+                    # Tentative alternative si le nom est different (ex : sans _keras)
+                    alt_path = model_path.replace('.joblib', '.keras')
+                    logger.info(f"Tentative alternative avec: {alt_path}")
+                    response = self.loader.client.get_object(self.loader.bucket, alt_path)
+                
+                import io
+                import tempfile
+                from tensorflow import keras
+                
+                with tempfile.NamedTemporaryFile(suffix=".keras", delete=False) as tmp:
+                    tmp.write(response.read())
+                    tmp_path = tmp.name
+                try:
+                    model._model = keras.models.load_model(tmp_path)
+                    logger.info("Autoencoder Keras restauré avec succès.")
+                finally:
+                    import os
+                    if os.path.exists(tmp_path): os.unlink(tmp_path)
+                response.close()
+                response.release_conn()
+            except Exception as ke:
+                logger.error(f"ECHEC CRITIQUE de restauration Keras pour l'Autoencoder: {ke}", exc_info=True)
+        # -------------------------------------------------------------
+        
         preprocessor = None
         if pipeline_path:
             logger.info(f"Chargement du pipeline de pré-traitement: {pipeline_path}")

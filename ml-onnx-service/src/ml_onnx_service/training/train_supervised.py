@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ml_pipeline.config.model_config import ModelConfig
-from ml_pipeline.utils.logging_config import setup_logging
+from shared_ml.config.model_config import ModelConfig
+from shared_ml.utils.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
 

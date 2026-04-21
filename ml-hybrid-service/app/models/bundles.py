@@ -1,14 +1,15 @@
 import numpy as np
 import pandas as pd
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Dict
 
 class HybridEnsembleBundle:
     """
     Wrapper monolithique pour le modèle hybride.
-    Synchronisé avec ml-hybrid-service/scripts/train_hybrid_ensemble.py
+    Supporte désormais l'explicabilité SHAP.
     """
     def __init__(self, rf_model=None, xgb_model=None, copod_model=None, meta_learner=None, 
-                 preprocessor=None, feature_names=None, threshold=0.5):
+                 preprocessor=None, feature_names=None, threshold=0.5,
+                 full_pipeline=None, background_data=None, model_uuid=None):
         self.rf_model = rf_model
         self.xgb_model = xgb_model
         self.copod_model = copod_model
@@ -19,6 +20,11 @@ class HybridEnsembleBundle:
         self.copod_min = None
         self.copod_max = None
         self.name = "HYBRID_ENSEMBLE"
+        
+        # Attributs pour l'explicabilité SHAP
+        self.full_pipeline = full_pipeline          # Pipeline complet avec classifieur XGBoost
+        self.background_data = background_data      # Échantillons background pour SHAP
+        self.model_uuid = model_uuid                # Identifiant du modèle
 
     def set_copod_normalization(self, min_val, max_val):
         self.copod_min = min_val
@@ -27,12 +33,12 @@ class HybridEnsembleBundle:
     def predict_proba(self, X):
         """Logique de prédiction centralisée pour assurer la cohérence."""
         X_trans = self.preprocessor.transform(X)
-        if hasattr(X_trans, 'toarray'): X_trans = X_trans.toarray()
+        if hasattr(X_trans, 'toarray'):
+            X_trans = X_trans.toarray()
             
         rf_score = self.rf_model.predict_proba(X_trans)[:, 1]
         xgb_score = self.xgb_model.predict_proba(X_trans)[:, 1]
         
-        # Logique COPOD avec normalisation apprise
         copod_raw = self.copod_model.decision_function(X_trans)
         if self.copod_min is not None and self.copod_max is not None:
             copod_score = (copod_raw - self.copod_min) / (self.copod_max - self.copod_min + 1e-6)
@@ -40,6 +46,16 @@ class HybridEnsembleBundle:
         else:
             copod_score = copod_raw
         
-        # Meta-fusion
         stacked = np.column_stack([rf_score, xgb_score, copod_score])
         return self.meta_learner.predict_proba(stacked)[:, 1]
+    
+    def get_xgb_classifier(self):
+        """Retourne le classifieur XGBoost pour SHAP, s'il existe."""
+        if self.full_pipeline is not None and hasattr(self.full_pipeline, 'named_steps'):
+            classifier = self.full_pipeline.named_steps.get('classifier')
+            if classifier is not None and hasattr(classifier, 'get_booster'):
+                return classifier
+        # Fallback : utiliser xgb_model direct (mais attention : peut être ONNX)
+        if self.xgb_model is not None and hasattr(self.xgb_model, 'get_booster'):
+            return self.xgb_model
+        return None

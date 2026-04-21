@@ -9,11 +9,6 @@ import joblib
 import numpy as np
 
 from shared_ml.pipeline.fraud_pipeline import FraudFeaturePipeline, build_stateless_pipeline
-from ml_pipeline.utils.onnx_utils import (
-    convert_tree_model_to_onnx,
-    save_onnx_metadata,
-    verify_onnx_equivalence,
-)
 
 logger = logging.getLogger(__name__)
 

@@ -735,7 +735,20 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
   }
 
   getOriginalFeatures(): string[] {
-    return this.modelResult?.selectedFeatures || [];
+    return this.modelResult?.selectedFeatures || this.modelResult?.selected_original_features || [];
+  }
+
+  isAutoencoder(): boolean {
+    const type = this.modelResult?.modelType;
+    if (type === 'AUTOENCODER') return true;
+    
+    // Check hyperparameters as well
+    const hp = this.modelResult?.hyperparameters || {};
+    const hpUsed = this.modelResult?.hyperparameters_used || {};
+    const modelNameFromHp = hp.model_name || hpUsed.model_name || '';
+    
+    const name = (this.modelResult?.modelName || this.modelResult?.jobName || modelNameFromHp || '').toUpperCase();
+    return name.includes('AUTOENCODER') || name.startsWith('AE');
   }
 
   getModelFullTypeName(): string {
@@ -747,6 +760,10 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
       if (name.includes('XGB')) type = 'XGBOOST';
       else if (name.includes('LGBM') || name.includes('LIGHTGBM')) type = 'LIGHTGBM';
       else if (name.includes('RF') || name.includes('RANDOM')) type = 'RANDOM_FOREST';
+      else if (name.includes('AUTOENCODER') || name.startsWith('AE')) type = 'AUTOENCODER';
+      else if (name.includes('ECOD')) type = 'ECOD';
+      else if (name.includes('COPOD')) type = 'COPOD';
+      else if (name.includes('HYBRID') || name.startsWith('ENS')) type = 'HYBRID_ENSEMBLE';
     }
 
     if (!type) return this.modelResult?.modelName || 'Modèle ML';
@@ -754,7 +771,12 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     const names: Record<string, string> = {
       'XGBOOST': 'XGBoost',
       'RANDOM_FOREST': 'Random Forest',
-      'LIGHTGBM': 'LightGBM'
+      'LIGHTGBM': 'LightGBM',
+      'BALANCED_RANDOM_FOREST': 'Balanced Random Forest',
+      'ECOD': 'ECOD',
+      'COPOD': 'COPOD',
+      'AUTOENCODER': 'Autoencoder',
+      'HYBRID_ENSEMBLE': 'Ensemble Hybride'
     };
     
     return names[type] || type;

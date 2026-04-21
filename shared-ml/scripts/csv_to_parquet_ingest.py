@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 import argparse
 
-UPLOAD_DIR = Path("/app/data").resolve()
+UPLOAD_DIR = Path("/tmp/fraud-work").resolve()
 
 
 def validate_path(input_path: str) -> Path:
@@ -153,7 +153,7 @@ def clean_with_immediate_null_removal(
         )
 
         # 8. Save output as Parquet
-        output_dir = Path('/app/output')
+        output_dir = Path('/tmp/fraud-work/output')
         output_dir.mkdir(parents=True, exist_ok=True)
 
         output_filename = f"cleaned_{dataset_id}.parquet"

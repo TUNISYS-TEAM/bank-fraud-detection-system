@@ -14,15 +14,17 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 import shap
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-# Importations pour l'apprentissage profond (optionnelles mais recommandées)
 try:
-    import torch
-    import torch.nn as nn
     from captum.attr import IntegratedGradients, DeepLift, GradientShap
-    TORCH_AVAILABLE = True
+    CAPTUM_AVAILABLE = True
 except ImportError:
-    TORCH_AVAILABLE = False
+    CAPTUM_AVAILABLE = False
+
+TORCH_AVAILABLE = True
 
 __all__ = ['FraudExplainabilityEngine']
 

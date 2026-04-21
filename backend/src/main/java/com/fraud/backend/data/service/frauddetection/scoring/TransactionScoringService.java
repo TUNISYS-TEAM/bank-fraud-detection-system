@@ -337,13 +337,16 @@ public class TransactionScoringService {
         return results;
     }
 
+    /**
+     * Met à jour le comportement client en calculant les indicateurs statistiques
+     * (z-score, écart, ratio max, etc.) à partir de l'historique des transactions.
+     */
     private void updateClientBehavior(ClientBehavior behavior, Transaction transaction,
             Double fraudScore, Map<String, Object> signals) {
         int currentTotal = behavior.getClientTotalTransactions() != null ? behavior.getClientTotalTransactions() : 0;
         int newTotal = currentTotal + 1;
 
-        BigDecimal currentAvg = behavior.getClientAvgTxAmount() != null ? behavior.getClientAvgTxAmount()
-                : BigDecimal.ZERO;
+        BigDecimal currentAvg = behavior.getClientAvgTxAmount() != null ? behavior.getClientAvgTxAmount() : BigDecimal.ZERO;
         BigDecimal newAvg = currentAvg.multiply(BigDecimal.valueOf(currentTotal))
                 .add(transaction.getAmount())
                 .divide(BigDecimal.valueOf(newTotal), 2, RoundingMode.HALF_UP);
@@ -352,6 +355,33 @@ public class TransactionScoringService {
         behavior.setClientAvgTxPerDay(newAvg.divide(BigDecimal.valueOf(30), 2, RoundingMode.HALF_UP));
         behavior.setClientTotalTransactions(newTotal);
 
+        // Récupérer toutes les transactions du client pour calculer les déviations
+        List<Transaction> clientTransactions = transactionRepository.findByAccountId(transaction.getAccount().getId());
+        if (!clientTransactions.isEmpty()) {
+            List<BigDecimal> amounts = clientTransactions.stream().map(Transaction::getAmount).collect(Collectors.toList());
+            BigDecimal sum = amounts.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal mean = sum.divide(BigDecimal.valueOf(amounts.size()), 4, RoundingMode.HALF_UP);
+            BigDecimal variance = BigDecimal.ZERO;
+            BigDecimal maxAmount = amounts.stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+            BigDecimal minAmount = amounts.stream().min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+            for (BigDecimal amt : amounts) {
+                BigDecimal diff = amt.subtract(mean);
+                variance = variance.add(diff.multiply(diff));
+            }
+            variance = variance.divide(BigDecimal.valueOf(amounts.size()), 4, RoundingMode.HALF_UP);
+            BigDecimal stdDev = BigDecimal.valueOf(Math.sqrt(variance.doubleValue()));
+            BigDecimal zScore = stdDev.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
+                    : transaction.getAmount().subtract(mean).divide(stdDev, 4, RoundingMode.HALF_UP);
+            behavior.setClientAmountZScore(zScore);
+            behavior.setClientAmountDeviation(transaction.getAmount().subtract(mean));
+            behavior.setClientAbsAmountDeviation(transaction.getAmount().subtract(mean).abs());
+            behavior.setClientAmountMaxRatio(maxAmount.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ONE
+                    : transaction.getAmount().divide(maxAmount, 4, RoundingMode.HALF_UP));
+            behavior.setClientIsNewMax(transaction.getAmount().compareTo(maxAmount) > 0);
+            behavior.setClientIsNewMin(transaction.getAmount().compareTo(minAmount) < 0);
+        }
+
+        // Récupérer le temps écoulé depuis la dernière transaction (envoyé par Python)
         long secondsSince = 0L;
         Object secondsObj = signals.getOrDefault("seconds_since_last_tx", 0L);
         if (secondsObj instanceof Number) {
@@ -359,20 +389,22 @@ public class TransactionScoringService {
             secondsSince = (val >= 0) ? val : 0L;
         }
         behavior.setClientTimeSinceLastTx(secondsSince);
+        if (secondsSince > 0) {
+            behavior.setClientHoursSinceLastTx(BigDecimal.valueOf(secondsSince / 3600.0));
+        }
 
-        BigDecimal currentRisk = behavior.getClientRiskScore() != null ? behavior.getClientRiskScore()
-                : BigDecimal.ZERO;
+        // Mettre à jour le score de risque (exponentiel)
+        BigDecimal currentRisk = behavior.getClientRiskScore() != null ? behavior.getClientRiskScore() : BigDecimal.ZERO;
         BigDecimal newRisk = currentRisk.multiply(BigDecimal.valueOf(0.7))
                 .add(BigDecimal.valueOf(fraudScore * 0.3));
         behavior.setClientRiskScore(newRisk);
 
-        // Update behavioral fields from Python signals
+        // Mettre à jour les champs comportementaux à partir des signaux Python
         if (signals.containsKey("client_usual_region")) {
             behavior.setClientUsualRegion((String) signals.get("client_usual_region"));
         }
         if (signals.containsKey("client_region_freq")) {
-            behavior.setClientRegionFreq(
-                    BigDecimal.valueOf(((Number) signals.get("client_region_freq")).doubleValue()));
+            behavior.setClientRegionFreq(BigDecimal.valueOf(((Number) signals.get("client_region_freq")).doubleValue()));
         }
         if (signals.containsKey("client_is_unusual_region")) {
             behavior.setClientIsUnusualRegion(Boolean.TRUE.equals(signals.get("client_is_unusual_region")));
@@ -382,8 +414,7 @@ public class TransactionScoringService {
             behavior.setClientUsualChannel((String) signals.get("client_usual_channel"));
         }
         if (signals.containsKey("client_channel_freq")) {
-            behavior.setClientChannelFreq(
-                    BigDecimal.valueOf(((Number) signals.get("client_channel_freq")).doubleValue()));
+            behavior.setClientChannelFreq(BigDecimal.valueOf(((Number) signals.get("client_channel_freq")).doubleValue()));
         }
         if (signals.containsKey("client_is_unusual_channel")) {
             behavior.setClientIsUnusualChannel(Boolean.TRUE.equals(signals.get("client_is_unusual_channel")));
@@ -393,8 +424,7 @@ public class TransactionScoringService {
             behavior.setClientUsualCategory((String) signals.get("client_usual_category"));
         }
         if (signals.containsKey("client_category_freq")) {
-            behavior.setClientCategoryFreq(
-                    BigDecimal.valueOf(((Number) signals.get("client_category_freq")).doubleValue()));
+            behavior.setClientCategoryFreq(BigDecimal.valueOf(((Number) signals.get("client_category_freq")).doubleValue()));
         }
         if (signals.containsKey("client_is_unusual_category")) {
             behavior.setClientIsUnusualCategory(Boolean.TRUE.equals(signals.get("client_is_unusual_category")));
@@ -529,7 +559,6 @@ public class TransactionScoringService {
                 .build();
     }
 
-   
     public ScoringResult scoreSingleTransaction(UUID transactionUuid, UUID modelUuid) {
         try {
             FraudAlert alert = scoreTransaction(transactionUuid, modelUuid);

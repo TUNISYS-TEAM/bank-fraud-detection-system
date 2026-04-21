@@ -1,173 +1,43 @@
+#!/usr/bin/env python3
 """
-Analyse un fichier de données (CSV/Parquet) pour en extraire :
-- Types de colonnes
-- Statistiques (min, max, moyenne, écart-type, quantiles)
-- Suggestions de features et colonne cible
-- Taux de fraude, doublons, valeurs manquantes
-- Aperçu des premières lignes
+Wrapper script for dataset analysis.
+Maintains the same interface for the Java backend but uses shared_ml logic.
 """
 
-from __future__ import annotations
-
-import logging
+import json
 import sys
+import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
-import pandas as pd
+# On tente d'importer la logique du package shared_ml
+try:
+    from shared_ml.preprocessing.analysis import analyze_dataset_file
+except ImportError:
+    # Fallback au cas ou le package n'est pas encore installe (utile en dev/docker)
+    import sys
+    sys.path.append(str(Path(__file__).parent.parent / "src"))
+    from shared_ml.preprocessing.analysis import analyze_dataset_file
 
-# Configuration du logging pour envoyer les logs vers stderr
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
-    stream=sys.stderr  # Important : les logs vont sur stderr, pas sur stdout
-)
-logger = logging.getLogger(__name__)
+def main():
+    parser = argparse.ArgumentParser(description="Analyse un dataset et retourne du JSON")
+    parser.add_argument("file_path", nargs="?", default=None, help="Chemin vers le fichier CSV ou Parquet (positionnel)")
+    parser.add_argument("--dataset-path", dest="dataset_path", default=None, help="Chemin vers le fichier CSV ou Parquet (nommé)")
+    parser.add_argument("--max-rows", type=int, default=10000, help="Nombre max de lignes a analyser")
+    args = parser.parse_args()
 
+    # Accept both positional and named --dataset-path (Java backend uses --dataset-path)
+    path = args.dataset_path or args.file_path
+    if not path:
+        parser.error("Vous devez fournir un chemin de fichier (positionnel ou --dataset-path)")
 
-def analyze_dataset_file(
-    file_path: Union[str, Path],
-    sample_rows: int = 5,
-    max_rows: Optional[int] = 10000,
-) -> Dict[str, Any]:
-    """
-    Analyse un fichier de données et retourne un dictionnaire avec :
-        - columns : liste des informations par colonne
-        - statistics : statistiques globales incluant :
-            - rowCount : nombre total de lignes
-            - columnCount : nombre de colonnes
-            - fraudRate : taux de fraude (si colonne cible détectée)
-            - duplicateCount : nombre de lignes dupliquées
-            - duplicateRate : pourcentage de doublons
-            - totalMissingValues : nombre total de valeurs manquantes
-            - memoryUsageMb : mémoire utilisée
-            - analyzedRows : nombre de lignes analysées pour les stats
-            - isPartialAnalysis : indicateur d'échantillonnage
-        - suggestedFeatures : liste des colonnes candidates
-        - suggestedTarget : colonne cible détectée
-        - sampleRows : nombre de lignes d'aperçu
-        - preview : liste des premières lignes
-    """
-    file_path = Path(file_path)
-    if not file_path.exists():
-        raise FileNotFoundError(f"Fichier introuvable : {file_path}")
+    try:
+        results = analyze_dataset_file(path, max_rows=args.max_rows)
+        # On imprime uniquement le JSON sur stdout pour que le backend puisse le parser
+        print(json.dumps(results, indent=2))
+    except Exception as e:
+        # Les erreurs vont sur stderr
+        print(f"Erreur lors de l'analyse : {str(e)}", file=sys.stderr)
+        sys.exit(1)
 
-    logger.info(f"Analyse du fichier : {file_path}")
-    
-    # Lecture du fichier (supporte CSV et Parquet)
-    if file_path.suffix.lower() == '.parquet':
-        df = pd.read_parquet(file_path)
-        logger.info(f"Fichier Parquet chargé : {len(df)} lignes")
-    else:
-        # CSV : on lit avec détection automatique du séparateur
-        df = pd.read_csv(file_path, sep=None, engine='python', on_bad_lines='warn')
-        logger.info(f"Fichier CSV chargé : {len(df)} lignes")
-
-    total_rows = len(df)
-    
-    # ==================== DÉTECTION DES DOUBLONS ====================
-    duplicate_count = df.duplicated().sum()
-    duplicate_rate = (duplicate_count / total_rows * 100) if total_rows > 0 else 0
-    
-    # ==================== VALEURS MANQUANTES ====================
-    total_missing = df.isna().sum().sum()
-    
-    # ==================== ANALYSE DES COLONNES ====================
-    
-    # Si max_rows est spécifié, on prend un échantillon pour les stats
-    if max_rows is not None and max_rows < total_rows:
-        sample_df = df.sample(n=max_rows, random_state=42)
-        analyzed_rows = max_rows
-        logger.info(f"Échantillon de {max_rows} lignes utilisé pour les statistiques")
-    else:
-        sample_df = df
-        analyzed_rows = total_rows
-
-    # Analyser les colonnes sur l'échantillon
-    columns_info = []
-    suggested_features = []
-    suggested_target = None
-    fraud_rate = 0.0
-
-    for col in sample_df.columns:
-        col_data = sample_df[col].dropna()
-        null_ratio = float(sample_df[col].isna().mean())
-        unique_count = col_data.nunique()
-
-        # Déterminer le type
-        if pd.api.types.is_numeric_dtype(col_data):
-            if unique_count == 2 and set(col_data.unique()) <= {0, 1}:
-                col_type = "BINARY"
-            else:
-                col_type = "NUMERIC"
-                suggested_features.append(col)
-        elif pd.api.types.is_datetime64_any_dtype(col_data):
-            col_type = "DATE"
-        else:
-            col_type = "CATEGORICAL"
-            suggested_features.append(col)
-
-        # Statistiques selon le type
-        stats: Dict[str, Any] = {}
-        if col_type in ("NUMERIC", "BINARY"):
-            if not col_data.empty:
-                stats = {
-                    "min": float(col_data.min()),
-                    "max": float(col_data.max()),
-                    "mean": float(col_data.mean()),
-                    "std": float(col_data.std()) if len(col_data) > 1 else None,
-                    "p25": float(col_data.quantile(0.25)),
-                    "p50": float(col_data.quantile(0.5)),
-                    "p75": float(col_data.quantile(0.75)),
-                }
-        elif col_type == "CATEGORICAL":
-            value_counts = col_data.value_counts().head(5)
-            stats = {
-                "uniqueValues": unique_count,
-                "topValues": value_counts.to_dict(),
-            }
-
-        # Détection de la colonne cible (binaire avec nom évocateur)
-        if col_type == "BINARY" and suggested_target is None:
-            lower = col.lower()
-            if any(keyword in lower for keyword in ("fraud", "target", "label", "class", "is_fraud")):
-                suggested_target = col
-                # Calculer le taux de fraude sur l'ensemble du dataset (pas seulement l'échantillon)
-                if col in df.columns:
-                    fraud_rate = float(df[col].mean()) * 100
-
-        columns_info.append({
-            "name": col,
-            "type": col_type,
-            "uniqueCount": unique_count,
-            "nullRatio": null_ratio,
-            "stats": stats,
-        })
-
-    # Statistiques globales enrichies
-    global_stats = {
-        "rowCount": total_rows,
-        "columnCount": len(sample_df.columns),
-        "fraudRate": round(fraud_rate, 2),  
-        "duplicateCount": int(duplicate_count),
-        "duplicateRate": round(duplicate_rate, 2),
-        "totalMissingValues": int(total_missing),
-        "analyzedRows": analyzed_rows,
-        "isPartialAnalysis": analyzed_rows < total_rows,
-        "memoryUsageMb": round(df.memory_usage(deep=True).sum() / (1024 * 1024), 2),
-    }
-
-    # Aperçu
-    preview = df.head(sample_rows).replace({np.nan: None}).to_dict(orient='records')
-    logger.info(f"Analyse terminée : {len(columns_info)} colonnes analysées")
-    logger.info(f"Taux de fraude: {fraud_rate}%, Doublons: {duplicate_count}, Valeurs manquantes: {total_missing}")
-
-    return {
-        "columns": columns_info,
-        "statistics": global_stats,
-        "suggestedFeatures": suggested_features,
-        "suggestedTarget": suggested_target,
-        "sampleRows": len(preview),
-        "preview": preview,
-    }
+if __name__ == "__main__":
+    main()

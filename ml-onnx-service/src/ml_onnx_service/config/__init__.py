@@ -1,7 +1,7 @@
 """Configuration subpackage for model config schemas and runtime settings."""
 
-from .model_config import ModelConfig
-from .config_schema import (
+from shared_ml.config.model_config import ModelConfig
+from shared_ml.schemas.config_schema import (
     GlobalConfig,
     LightGBMConfig,
     XGBoostConfig,

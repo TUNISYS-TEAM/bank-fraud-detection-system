@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,9 +19,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -33,7 +32,9 @@ public class DatasetAnalysisPythonService {
     private final StorageService storageService;
     private final ObjectMapper objectMapper;
 
-    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
+    @Value("${fraud.ml.onnx.container-name:fraud-ml-onnx}")
+    private String onnxContainerName;
+
     private static final long ANALYSIS_TIMEOUT_MINUTES = 5;
     private static final long CLEANING_TIMEOUT_MINUTES = 10;
 
@@ -74,19 +75,18 @@ public class DatasetAnalysisPythonService {
                 log.info(converted != null ? "File converted to UTF-8: {}" : "File already UTF-8: {}", utf8File);
             }
 
-            // 3. Prepare container directory
-            execDockerCommand("mkdir", "-p", "/app/data");
+            // 3. Prepare container directory (use /tmp to avoid local volume leak)
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work");
 
             // 4. Copy file into container
-            containerFileName = "/app/data/" + utf8File.getFileName().toString();
+            containerFileName = "/tmp/fraud-work/" + utf8File.getFileName().toString();
             execDockerCopy(utf8File, containerFileName);
             log.info("File copied to container: {}", containerFileName);
 
             // 5. Run analysis — Python already handles both CSV and Parquet
             ProcessBuilder pb = new ProcessBuilder(
-                    "docker", "exec", "fraud-ml-pipeline",
-                    "python", "-m", "ml_pipeline.cli.main",
-                    "analyze-dataset",
+                    "docker", "exec", onnxContainerName,
+                    "python", "/shared-ml/scripts/analyze_dataset.py",
                     "--dataset-path", containerFileName);
 
             pb.redirectErrorStream(true);
@@ -216,18 +216,18 @@ public class DatasetAnalysisPythonService {
                 log.info("Fichier d'analyse créé: {}", analysisFile);
             }
 
-            execDockerCommand("mkdir", "-p", "/app/data");
-            execDockerCommand("mkdir", "-p", "/app/output");
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work");
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work/output");
 
             // 4. Copy data file into container
-            containerFileName = "/app/data/" + utf8File.getFileName().toString();
+            containerFileName = "/tmp/fraud-work/" + utf8File.getFileName().toString();
             execDockerCopy(utf8File, containerFileName);
             log.info("Fichier copié dans le conteneur: {}", containerFileName);
 
             // 5. Build Python command
             List<String> pythonArgs = new ArrayList<>();
             pythonArgs.add("python");
-            pythonArgs.add("/app/scripts/csv_to_parquet_ingest.py");
+            pythonArgs.add("/shared-ml/scripts/csv_to_parquet_ingest.py");
             pythonArgs.add("--input");
             pythonArgs.add(containerFileName);
             pythonArgs.add("--dataset-id");
@@ -236,14 +236,14 @@ public class DatasetAnalysisPythonService {
             pythonArgs.add(jobId);
 
             if (analysisFile != null) {
-                containerAnalysisFile = "/app/data/" + analysisFile.getFileName().toString();
+                containerAnalysisFile = "/tmp/fraud-work/" + analysisFile.getFileName().toString();
                 execDockerCopy(analysisFile, containerAnalysisFile);
                 pythonArgs.add("--analysis-json");
                 pythonArgs.add(containerAnalysisFile);
                 log.info("Fichier d'analyse copié dans le conteneur: {}", containerAnalysisFile);
             }
 
-            ProcessBuilder pb = new ProcessBuilder("docker", "exec", "fraud-ml-pipeline");
+            ProcessBuilder pb = new ProcessBuilder("docker", "exec", onnxContainerName);
             pb.command().addAll(pythonArgs);
             pb.redirectErrorStream(true);
 
@@ -282,7 +282,7 @@ public class DatasetAnalysisPythonService {
 
             // 6. Retrieve cleaned Parquet output from container
             String cleanedFilename = "cleaned_" + datasetUuid + ".parquet";
-            containerOutputFile = "/app/output/" + cleanedFilename;
+            containerOutputFile = "/tmp/fraud-work/output/" + cleanedFilename;
 
             cleanedFile = Files.createTempFile("cleaned_", ".parquet");
             execDockerCopyFromContainer(containerOutputFile, cleanedFile);
@@ -419,7 +419,7 @@ public class DatasetAnalysisPythonService {
     // ==================== DOCKER HELPERS ====================
 
     private String execDockerCommand(String... commands) throws Exception {
-        List<String> cmd = new ArrayList<>(List.of("docker", "exec", "fraud-ml-pipeline"));
+        List<String> cmd = new ArrayList<>(List.of("docker", "exec", onnxContainerName));
         cmd.addAll(Arrays.asList(commands));
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
@@ -434,7 +434,7 @@ public class DatasetAnalysisPythonService {
     private void execDockerCopy(Path source, String destination) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
                 "docker", "cp", source.toAbsolutePath().toString(),
-                "fraud-ml-pipeline:" + destination);
+                onnxContainerName + ":" + destination);
         pb.redirectErrorStream(true);
         Process process = pb.start();
         String output = readStream(process.getInputStream());
@@ -445,7 +445,7 @@ public class DatasetAnalysisPythonService {
 
     private void execDockerCopyFromContainer(String containerPath, Path localPath) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
-                "docker", "cp", "fraud-ml-pipeline:" + containerPath,
+                "docker", "cp", onnxContainerName + ":" + containerPath,
                 localPath.toAbsolutePath().toString());
         pb.redirectErrorStream(true);
         Process process = pb.start();

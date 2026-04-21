@@ -6,9 +6,9 @@ import json
 import logging
 from pathlib import Path
 
-from ml_pipeline.pipeline.onnx_exporter import main as export_main
-from ml_pipeline.training.train_models import main as train_main
-from ml_pipeline.training.analyze_dataset import analyze_dataset_file
+from ml_onnx_service.pipeline.onnx_exporter import main as export_main
+from ml_onnx_service.training.train_models import main as train_main
+from shared_ml.preprocessing.analysis import analyze_dataset_file
 from shared_ml.preprocessing.behavioral.client_behavior import ClientBehaviorTransformer
 import pandas as pd
 
@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ---- train ----
     train_parser = subparsers.add_parser("train", help="Entraîne tous les modèles")
-    train_parser.add_argument("--config", default="src/ml_pipeline/config/model_config.json")
+    train_parser.add_argument("--config", default="src/ml_onnx_service/config/model_config.json")
     train_parser.add_argument("--data-dir", default="artifacts/exported_parquet")
     train_parser.add_argument("--out", default="artifacts/exported_models")
     train_parser.add_argument("--export-onnx", action="store_true")
@@ -528,7 +528,7 @@ def main() -> None:
 
     elif args.command == "validate":
         print("Validation CLI not fully wired yet.", file=sys.stderr)
-        print("Use ml_pipeline.training.validate_pipeline directly for now.", file=sys.stderr)
+        print("Use ml_onnx_service.training.validate_pipeline directly for now.", file=sys.stderr)
 
 
 if __name__ == "__main__":

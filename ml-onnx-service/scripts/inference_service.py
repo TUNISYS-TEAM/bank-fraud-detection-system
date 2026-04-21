@@ -1,7 +1,7 @@
 """
 CLI entry point for fraud inference with explainability.
-Production‑grade: _row_id keyed alignment, vectorized casting, deterministic SHAP,
-dimension validation, and single‑pass transform (no double transform).
+Version robuste : crée les colonnes manquantes, mappe les catégories inconnues,
+et supporte l'explicabilité SHAP.
 """
 
 import argparse
@@ -9,13 +9,13 @@ import json
 import sys
 import traceback
 import hashlib
-
 import numpy as np
 import pandas as pd
+import joblib
+import onnxruntime as ort
 
 sys.path.insert(0, '/app')
 
-from shared_ml.inference import FraudInferenceEngine
 from shared_ml.explanation import FraudExplainabilityEngine
 from shared_ml.utils.postal_codes import get_resolver
 
@@ -33,55 +33,63 @@ def map_risk_level(fraud_score: float, threshold: float) -> str:
     return "VERY_LOW"
 
 
-def stable_hash(s: str) -> int:
-    """Deterministic integer hash (MD5)."""
-    return int(hashlib.md5(s.encode()).hexdigest(), 16)
-
-
-def safe_cast_categorical(df: pd.DataFrame, inference_engine: FraudInferenceEngine) -> pd.DataFrame:
-    """
-    Convert numeric categorical columns back to string using the fitted encoder's mapping.
-    Vectorized for speed.
-    """
-    preprocessor = inference_engine.preprocessor
-    if not hasattr(preprocessor, 'named_steps'):
-        return df
-
-    onehot_step = preprocessor.named_steps.get('onehot')
-    if onehot_step is None:
-        return df
-
-    encoders = getattr(onehot_step, '_encoders', {})
-    if not encoders:
-        return df
-
-    df_casted = df.copy()
-    for col, encoder in encoders.items():
-        if col not in df_casted.columns:
-            continue
-        fitted_categories = encoder.categories_[0]
-        if pd.api.types.is_numeric_dtype(df_casted[col]):
-            mapping = {i: cat for i, cat in enumerate(fitted_categories)}
-            df_casted[col] = df_casted[col].map(mapping).fillna('Unknown')
-    return df_casted
-
-
 def main():
     parser = argparse.ArgumentParser(description="Fraud inference with explainability")
     parser.add_argument('--model-path', required=True)
     parser.add_argument('--pipeline-path', required=True)
     parser.add_argument('--input', required=True)
     parser.add_argument('--threshold', type=float, default=0.5)
+    parser.add_argument('--enable-shap', action='store_true', help="Enable SHAP explanations")
+    parser.add_argument('--background-data', help="Path to background samples .npy file (for SHAP)")
+    parser.add_argument('--feature-names', help="Path to feature names .json file (for SHAP)")
     args = parser.parse_args()
 
     try:
         with open(args.input, 'r') as f:
             input_data = json.load(f)
 
-        inference = FraudInferenceEngine(args.model_path, args.pipeline_path)
+        # Charger préprocesseur et modèle ONNX
+        preprocessor = joblib.load(args.pipeline_path)
+        ort_session = ort.InferenceSession(args.model_path)
+        input_name = ort_session.get_inputs()[0].name
+        expected_dim = ort_session.get_inputs()[0].shape[1]
+
+        # Charger le modèle XGBoost complet pour SHAP (si demandé)
+        xgb_model = None
+        explainer = None
+        if args.enable_shap:
+            # Le pipeline complet contient le classifieur XGBoost
+            full_pipeline = joblib.load(args.pipeline_path)
+            if 'classifier' in full_pipeline.named_steps:
+                xgb_model = full_pipeline.named_steps['classifier']
+            else:
+                print("WARNING: No classifier found in pipeline, SHAP disabled", file=sys.stderr)
+                args.enable_shap = False
+
+            if args.enable_shap and args.background_data and args.feature_names:
+                try:
+                    background = np.load(args.background_data)
+                    with open(args.feature_names, 'r') as f:
+                        feature_names = json.load(f)
+                    explainer = FraudExplainabilityEngine(
+                        model=xgb_model,
+                        feature_names=feature_names,
+                        background_data=background,
+                        threshold=args.threshold,
+                        config_path=None,
+                        dl_model_path=None,
+                        dl_input_dim=None
+                    )
+                    print(f"SHAP explainer initialized with {len(feature_names)} features", file=sys.stderr)
+                except Exception as e:
+                    print(f"Failed to initialize SHAP explainer: {e}", file=sys.stderr)
+                    args.enable_shap = False
+            elif args.enable_shap:
+                print("WARNING: --background-data and --feature-names required for SHAP", file=sys.stderr)
+                args.enable_shap = False
 
         # -----------------------------------------------------------------
-        # 1. Parse batch and inject _row_id BEFORE any processing
+        # 1. Parse batch et ajout de _row_id
         # -----------------------------------------------------------------
         batch = input_data.get('batch')
         if batch is None:
@@ -102,46 +110,105 @@ def main():
             transactions_for_df.append(tx)
 
         # -----------------------------------------------------------------
-        # 2. Preprocess (engine may drop/reorder rows)
+        # 2. Construire DataFrame de base
         # -----------------------------------------------------------------
-        df = inference.prepare_dataframe(
-            transactions_for_df,
-            [behavior_map[i] for i in range(len(batch))]
-        )
-
-        df = safe_cast_categorical(df, inference)
+        df = pd.DataFrame(transactions_for_df)
 
         # -----------------------------------------------------------------
-        # 3. SINGLE TRANSFORM – compute X_processed once, then get scores
-        #    directly from the underlying model (eliminates double transform)
+        # 3. Créer les colonnes manquantes attendues par le préprocesseur
         # -----------------------------------------------------------------
-        X_processed = inference.preprocessor.transform(df)
+        if 'device_id' in df.columns:
+            df['Device_Id'] = df['device_id'].astype(str).str.extract(r'(\d+)')[0].fillna(0).astype(np.float32)
+        else:
+            df['Device_Id'] = 0.0
+
+        resolver = get_resolver()
+        if 'Customer_Postal_Code' in df.columns:
+            df_temp = resolver.enrich_dataframe(df, 'Customer_Postal_Code', add_gov=False, add_deleg=False, add_region=True)
+            df['Customer_Region'] = df_temp['region'].astype('category').cat.codes.astype(np.float32)
+        else:
+            df['Customer_Region'] = 0.0
+
+        if 'Merchant_Postal_Code' in df.columns:
+            df_temp = resolver.enrich_dataframe(df, 'Merchant_Postal_Code', add_gov=False, add_deleg=False, add_region=True)
+            df['Merchant_Region'] = df_temp['region'].astype('category').cat.codes.astype(np.float32)
+        else:
+            df['Merchant_Region'] = 0.0
+
+        df['Customer_Region'] = df['Customer_Region'].astype(np.float32)
+        df['Merchant_Region'] = df['Merchant_Region'].astype(np.float32)
+        df['Device_Id'] = df['Device_Id'].astype(np.float32)
+
+        # -----------------------------------------------------------------
+        # 4. Ajouter les colonnes comportementales manquantes
+        # -----------------------------------------------------------------
+        behavioral_cols = [
+            'client_AVG_TX_Amount', 'client_AVG_TX_PerDay', 'client_amount_deviation',
+            'client_abs_amount_deviation', 'client_amount_max_ratio', 'client_amount_z_score',
+            'client_is_new_max', 'client_is_new_min', 'client_total_transactions',
+            'client_time_since_last_tx', 'client_hours_since_last_tx', 'client_total_days_since_first',
+            'client_usual_region', 'client_is_unusual_region', 'client_region_freq',
+            'client_usual_channel', 'client_is_unusual_channel', 'client_channel_freq',
+            'client_usual_category', 'client_is_unusual_category', 'client_category_freq',
+            'client_risk_score', 'amount_abs_diff', 'amount_ratio_raw', 'log_total_tx',
+            'is_unusual_region_with_history', 'is_unusual_channel_with_history', 'is_unusual_category_with_history'
+        ]
+        for col in behavioral_cols:
+            if col not in df.columns:
+                if col in ['client_usual_region', 'client_usual_channel', 'client_usual_category']:
+                    df[col] = 'Unknown'
+                else:
+                    df[col] = 0.0
+
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        df[numeric_cols] = df[numeric_cols].astype(np.float32)
+
+        # -----------------------------------------------------------------
+        # 5. Mapper les catégories inconnues pour Channel et category
+        # -----------------------------------------------------------------
+        onehot_step = None
+        for step in preprocessor.named_steps.values():
+            if hasattr(step, '_encoders') and step._encoders:
+                onehot_step = step
+                break
+        if onehot_step is not None:
+            for col in ['Channel', 'category']:
+                if col in onehot_step._encoders:
+                    known_cats = onehot_step._encoders[col].categories_[0]
+                    if col in df.columns:
+                        df[col] = df[col].apply(lambda x: x if x in known_cats else known_cats[0])
+
+        # -----------------------------------------------------------------
+        # 6. Appliquer la transformation
+        # -----------------------------------------------------------------
+        X_processed = preprocessor.transform(df)
         if hasattr(X_processed, 'toarray'):
             X_processed = X_processed.toarray()
         X_processed = np.asarray(X_processed, dtype=np.float32)
 
-        # Get raw scores without re‑transforming
-        if hasattr(inference, '_sklearn_model') and inference._sklearn_model is not None:
-            raw_scores = inference._sklearn_model.predict_proba(X_processed)[:, 1]
-        elif hasattr(inference, '_onnx_session') and inference._onnx_session is not None:
-            input_name = inference._onnx_session.get_inputs()[0].name
-            raw_scores = inference._onnx_session.run(None, {input_name: X_processed.astype(np.float32)})[0][:, 1]
+        if X_processed.shape[1] != expected_dim:
+            raise RuntimeError(f"Dimension mismatch: got {X_processed.shape[1]}, expected {expected_dim}")
+
+        # -----------------------------------------------------------------
+        # 7. Inférence ONNX
+        # -----------------------------------------------------------------
+        raw_scores = ort_session.run(None, {input_name: X_processed})[0]
+        if raw_scores.ndim == 1:
+            pass
+        elif raw_scores.shape[1] == 2:
+            raw_scores = raw_scores[:, 1]
         else:
-            # Fallback (should not be reached)
-            raw_scores = inference.predict_scores(df)
+            raw_scores = raw_scores.flatten()
 
-        # -----------------------------------------------------------------
-        # 4. Validate processed DataFrame
-        # -----------------------------------------------------------------
         if '_row_id' not in df.columns:
-            raise RuntimeError("prepare_dataframe did not preserve '_row_id' column")
+            raise RuntimeError("DataFrame does not contain '_row_id' column after preprocessing")
         if not df['_row_id'].is_unique:
-            raise RuntimeError("Duplicate _row_id values found – pipeline expansion detected")
+            raise RuntimeError("Duplicate _row_id values found")
         if len(raw_scores) != len(df):
-            raise RuntimeError(f"Length mismatch: raw_scores {len(raw_scores)} vs df {len(df)}")
+            raise RuntimeError(f"Length mismatch: {len(raw_scores)} vs {len(df)}")
 
         # -----------------------------------------------------------------
-        # 5. Build keyed mappings (row_id -> score, features)
+        # 8. Mappage scores et features
         # -----------------------------------------------------------------
         score_map = {}
         features_map = {}
@@ -151,43 +218,7 @@ def main():
             features_map[row_id] = X_processed[idx]
 
         # -----------------------------------------------------------------
-        # 6. Dimension validation
-        # -----------------------------------------------------------------
-        expected_dim = None
-        if hasattr(inference, '_sklearn_model') and inference._sklearn_model is not None:
-            expected_dim = inference._sklearn_model.n_features_in_
-        elif hasattr(inference, '_onnx_session') and inference._onnx_session is not None:
-            input_shape = inference._onnx_session.get_inputs()[0].shape
-            if len(input_shape) >= 2:
-                expected_dim = input_shape[1]
-                if isinstance(expected_dim, str):
-                    expected_dim = None
-        if expected_dim is not None and X_processed.shape[1] != expected_dim:
-            raise ValueError(f"Dimension mismatch: model expects {expected_dim}, got {X_processed.shape[1]}")
-
-        # -----------------------------------------------------------------
-        # 7. Explainability engine (SHAP)
-        # -----------------------------------------------------------------
-        model_for_shap = inference.get_model_for_shap()
-        explainer = None
-        if model_for_shap is not None:
-            n_background = min(100, len(X_processed))
-            if len(X_processed) > 1:
-                indices = np.linspace(0, len(X_processed) - 1, n_background, dtype=int)
-            else:
-                indices = np.zeros(n_background, dtype=int)
-            background = X_processed[indices]
-            explainer = FraudExplainabilityEngine(
-                model_for_shap,
-                inference.get_feature_names(),
-                background_data=background,
-                threshold=args.threshold
-            )
-
-        resolver = get_resolver()
-
-        # -----------------------------------------------------------------
-        # 8. Process each original transaction using _row_id as key
+        # 9. Traitement de chaque transaction
         # -----------------------------------------------------------------
         results = []
         for row_id in range(len(batch)):
@@ -208,34 +239,39 @@ def main():
                 continue
 
             risk = map_risk_level(fraud_score, args.threshold)
+            alert_type = "BEHAVIORAL"
+            fraud_reason_json = {
+                "risk_level": risk,
+                "fraud_score": round(fraud_score, 4),
+                "summary": f"{risk} : Transaction avec score de fraude {fraud_score:.3f}",
+                "contributions": []
+            }
 
-            # Deterministic SHAP sampling
-            tx_id = tx.get('transaction_id', str(row_id))
-            use_shap = (explainer is not None and
-                        fraud_score >= (args.threshold * 0.5) and
-                        (fraud_score >= (args.threshold * 0.8) or (stable_hash(tx_id) % 5 == 0)))
+            # SHAP explanation if enabled
+            if explainer and row_id in features_map:
+                try:
+                    # Prepare transaction data for explainer
+                    transaction_data = {
+                        'TX_Amount': tx.get('TX_Amount', tx.get('amount', 0)),
+                        'TX_Time': tx.get('TX_Time', tx.get('transaction_date', None)),
+                        'Channel': tx.get('Channel', tx.get('channel', 'Unknown')),
+                        'category': tx.get('category', tx.get('merchant_category', 'Unknown')),
+                        'Customer_Postal_Code': tx.get('Customer_Postal_Code', tx.get('postal_code_client', ''))
+                    }
+                    # Behavior data already contains computed stats
+                    behavior_data = behavior.copy()
+                    explanation = explainer.explain_fraud(
+                        features=features_map[row_id],
+                        fraud_score=fraud_score,
+                        transaction_data=transaction_data,
+                        behavior_data=behavior_data
+                    )
+                    fraud_reason_json = explanation['fraud_reason_json']
+                    alert_type = explanation.get('alert_type', alert_type)
+                except Exception as e:
+                    print(f"Explainability failed for row {row_id}: {e}", file=sys.stderr)
 
-            if use_shap:
-                features = features_map[row_id]
-                transaction_data = {
-                    'TX_Amount': float(tx.get('TX_Amount', tx.get('amount', 0))),
-                    'Channel': tx.get('Channel', tx.get('channel', 'Unknown')),
-                    'category': tx.get('category', tx.get('merchant_category', 'Unknown')),
-                    'TX_Time': tx.get('TX_Time', tx.get('transaction_date', tx.get('created_at'))),
-                }
-                explanation = explainer.explain_fraud(features, fraud_score, transaction_data, behavior)
-                alert_type = explanation['alert_type']
-                fraud_reason_json = explanation['fraud_reason_json']
-            else:
-                alert_type = "BEHAVIORAL"
-                fraud_reason_json = {
-                    "risk_level": risk,
-                    "fraud_score": round(fraud_score, 4),
-                    "summary": f"{risk} : Transaction avec score de fraude {fraud_score:.3f}",
-                    "contributions": []
-                }
-
-            # Stateless behavioural signals (read‑only)
+            # Behavioral signals (stateless)
             postal_code = tx.get('postal_code_client', tx.get('Customer_Postal_Code', ''))
             client_region = resolver.get_region(postal_code) if postal_code else 'Unknown'
 
@@ -283,7 +319,7 @@ def main():
             })
 
         # -----------------------------------------------------------------
-        # 9. Output JSON
+        # 10. Sortie JSON
         # -----------------------------------------------------------------
         if is_single:
             print(json.dumps(results[0], default=str, ensure_ascii=False))

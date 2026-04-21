@@ -1,2 +1,19 @@
+# Données temporaires (volumes Docker - fichiers uploadés/enrichis/nettoyés)
 data/
 output/
+
+# Artifacts générés (modèles, exports)
+artifacts/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Environnement
+.env
+.venv/

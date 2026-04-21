@@ -6,6 +6,7 @@ spring:
       enabled: true
       file-size-threshold: 2KB
       location: ${java.io.tmpdir}
+
   kafka:
     bootstrap-servers: localhost:9092
     producer:
@@ -20,7 +21,7 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
-        spring.json.type.mapping:  notification:com.fraud.backend.data.event.NotificationEvent
+        spring.json.type.mapping: notification:com.fraud.backend.data.event.NotificationEvent
     listener:
       auto-startup: true
 
@@ -71,7 +72,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8180/realms/fraud-detection
+          issuer-uri: http://localhost:8180/realms/fraud_detection
   
   task:
     scheduling:
@@ -85,9 +86,9 @@ session:
 
 keycloak:
   server-url: http://localhost:8180
-  realm: fraud-detection
+  realm: fraud_detection
   client-id: fraud-backend
-  client-secret: oiu3VjC2bZrhRNEBp3EElF0nzw5l43DF
+  client-secret: MSRhrjmmkOussmIfSh6L5lnk348Z2lOW
   admin-username: admin
   admin-password: admin
 
@@ -111,7 +112,7 @@ server:
         max-age: 3600
 
 ml-pipeline:
-  base-url: http://ml-pipeline:8888
+  base-url: http://localhost:8888
 
 # Cookie settings
 app:
@@ -125,7 +126,7 @@ ml:
   onnx:
     model-dir: src/main/resources/models   
 
-# Fraud Detection Backfill Configuration - ADD THIS
+# Fraud Detection Backfill Configuration 
 fraud:
   backfill:
     batch-size: 200
@@ -133,11 +134,19 @@ fraud:
   scoring:
     fraud-threshold: 0.75
     batch-size: 100
+  ml:
+    onnx:
+      container-name: fraud-ml-onnx
+    hybrid:
+      container-name: fraud-ml-hybrid
+
   inference:
-    container-name: fraud-ml-pipeline
-    use-mock: false
-    timeout-seconds: 60
-    max-concurrent: 5
+    container-name: fraud-ml-onnx
+
+  hybrid:
+    service-url: http://localhost:8001
+  training:
+    storage-path: /app/artifacts/exported_models
  
 logging:
   level:

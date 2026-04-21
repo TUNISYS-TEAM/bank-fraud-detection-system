@@ -7,10 +7,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from ml_pipeline.models.model_factory import ModelFactory
-from ml_pipeline.models.ensemble.ensemble import compare_models
-from ml_pipeline.pipeline.onnx_exporter import ONNXExporter
-from ml_pipeline.utils.logging_config import setup_logging
+from ml_onnx_service.models.model_factory import ModelFactory
+from ml_onnx_service.models.ensemble.ensemble import compare_models
+from ml_onnx_service.pipeline.onnx_exporter import ONNXExporter
+from ml_onnx_service.config import ModelConfig
+from shared_ml.utils.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
 

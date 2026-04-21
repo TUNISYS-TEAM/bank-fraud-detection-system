@@ -109,7 +109,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     },
     {
       type: 'HYBRID_ENSEMBLE',
-      name: 'Hybride Ensemble',
+      name: 'Ensemble',
       description: 'Supervisé + Anomaly Detection',
       icon: 'layers',
       color: 'indigo',
@@ -181,7 +181,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   // Hybrid Ensemble configuration (matches ensemble config in model_config.json)
   hybridConfig: ModelConfig = {
-    modelName: 'Hybride Ensemble',
+    modelName: 'Ensemble',
     modelType: 'HYBRID_ENSEMBLE',
     hyperparameters: {
       strategy: 'weighted',
@@ -356,7 +356,11 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       'RANDOM_FOREST': 'RF',
       'XGBOOST': 'XGB',
       'LIGHTGBM': 'LGBM',
-      'BALANCED_RANDOM_FOREST': 'BRF'
+      'BALANCED_RANDOM_FOREST': 'BRF',
+      'ECOD': 'ECOD',
+      'COPOD': 'COPOD',
+      'AUTOENCODER': 'AE',
+      'HYBRID_ENSEMBLE': 'ENS'
     };
 
 
@@ -789,12 +793,20 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         this.trainingProgress = 100;
 
         if (isTest) {
-          // If it's a test, open the details modal immediately with the results
-          // Since it's not saved, we use the response directly
-          const modelData = this.transformModelDataForModal(response);
+          // Enrich the response with original request hyperparameters so user-chosen
+          // values (like and_high_conf_threshold, strategy) are always displayed correctly
+          // and also persisted to DB when the user saves this test result.
+          const enrichedResponse = {
+            ...response,
+            hyperparameters: {
+              ...hyperparameters,           // original user-chosen values
+              ...(response.hyperparameters || {}), // server response overrides only what it explicitly returns
+            }
+          };
+          this.lastTrainingResult = enrichedResponse; // keep enriched version for save
+          const modelData = this.transformModelDataForModal(enrichedResponse);
           this.selectedModelForDetails = modelData;
           this.showModelDetailsModal = true;
-          // No need to poll or load history for test runs
         } else {
           if (response.status === 'PENDING' || response.status === 'TRAINING') {
             this.pollTrainingStatus(response.modelUuid);
@@ -976,30 +988,52 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
   // Helper method to transform model data for the modal
   private transformModelDataForModal(model: any): any {
-    // If the model already has the complete structure we need, return it
-    if (model.metrics && model.confusionMatrix && model.thresholds && model.modelType && model.featureImportance) {
-      return model;
-    }
+    // Force transformation to ensure 'UNKNOWN' names are handled and type mapping is applied
 
-    // Extract data from nested structures
+
+    // Infer data from nested structures
     const hyperparameters = model.hyperparameters || {};
     const trainingResults = hyperparameters._trainingResults || {};
     const trainingMetadata = hyperparameters._trainingMetadata || {};
 
     // Infer model type if missing (especially for test runs)
-    let modelType = model.modelType;
+    let modelType = (model.modelType && model.modelType !== 'UNKNOWN' && model.modelType !== 'unknown') ? model.modelType : null;
+    
+    // Infer model name first as it helps with modelType inference
+    let modelName = model.modelName || model.jobName || hyperparameters.model_name || null;
+    if (modelName === 'UNKNOWN' || modelName === 'unknown') modelName = null;
+
     if (!modelType) {
-      const nameToCheck = (model.modelName || model.jobName || '').toUpperCase();
+      const nameToCheck = (modelName || '').toUpperCase();
       if (nameToCheck.includes('XGB')) modelType = 'XGBOOST';
       else if (nameToCheck.includes('LGBM') || nameToCheck.includes('LIGHTGBM')) modelType = 'LIGHTGBM';
       else if (nameToCheck.includes('BRF') || nameToCheck.includes('BALANCED')) modelType = 'BALANCED_RANDOM_FOREST';
       else if (nameToCheck.includes('RF') || nameToCheck.includes('RANDOM')) modelType = 'RANDOM_FOREST';
+      else if (nameToCheck.includes('ECOD')) modelType = 'ECOD';
+      else if (nameToCheck.includes('COPOD')) modelType = 'COPOD';
+      else if (nameToCheck.includes('AUTOENCODER') || nameToCheck.startsWith('AE')) modelType = 'AUTOENCODER';
+      else if (nameToCheck.includes('HYBRID') || nameToCheck.startsWith('ENS')) modelType = 'HYBRID_ENSEMBLE';
     }
 
-
-    // Infer model name
-    const modelName = model.modelName || model.jobName ||
-      (modelType ? `${modelType} Model` : 'Machine Learning Model');
+    // Best effort for final model name
+    let finalModelName = modelName;
+    if (!finalModelName) {
+      if (modelType === 'AUTOENCODER') finalModelName = 'Autoencoder';
+      else if (modelType === 'HYBRID_ENSEMBLE') finalModelName = 'Hybride Ensemble';
+      else if (modelType) {
+        const typeMap: Record<string, string> = {
+          'RANDOM_FOREST': 'Random Forest',
+          'XGBOOST': 'XGBoost',
+          'LIGHTGBM': 'LightGBM',
+          'BALANCED_RANDOM_FOREST': 'Balanced Random Forest',
+          'ECOD': 'ECOD',
+          'COPOD': 'COPOD'
+        };
+        finalModelName = typeMap[modelType] || modelType;
+      } else {
+        finalModelName = 'Modèle ML';
+      }
+    }
 
     // Get metrics from various possible locations
     const metrics = model.metrics || trainingResults.metrics || {};
@@ -1029,7 +1063,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     return {
       modelUuid: model.modelUuid,
-      modelName: modelName,
+      modelName: finalModelName,
       modelType: modelType,
       version: model.version,
       status: model.status || 'COMPLETED',
@@ -1067,13 +1101,13 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       },
 
       // Features
+      selectedFeatures: selectedOriginalFeatures,
       selected_original_features: selectedOriginalFeatures,
+      featureImportance: model.featureImportance || trainingResults.featureImportance || {},
+      
       hyperparameters_used: {
+        ...hyperparameters,
         all_features: allFeatures,
-        n_estimators: hyperparameters.n_estimators || hyperparameters.num_boost_round || 100,
-        max_depth: hyperparameters.max_depth !== undefined ? hyperparameters.max_depth : (modelType === 'LIGHTGBM' ? -1 : 10),
-        num_leaves: hyperparameters.num_leaves || 31,
-        learning_rate: hyperparameters.learning_rate || 0.1
       }
     };
   }

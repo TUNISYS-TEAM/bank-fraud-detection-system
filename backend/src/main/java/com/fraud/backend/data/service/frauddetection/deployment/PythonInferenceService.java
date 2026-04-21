@@ -35,7 +35,7 @@ public class PythonInferenceService implements InferenceService {
     private final TransactionRepository transactionRepository;
     private final ClientBehaviorRepository clientBehaviorRepository;
 
-    @Value("${fraud.inference.container-name:fraud-ml-pipeline}")
+    @Value("${fraud.inference.container-name:fraud-ml-onnx}")
     private String containerName;
 
     @Value("${fraud.inference.use-mock:false}")
@@ -149,7 +149,7 @@ public class PythonInferenceService implements InferenceService {
             double threshold = getModelThreshold(model);
             ProcessBuilder pb = new ProcessBuilder(
                     "docker", "exec", containerName,
-                    "python", "/app/scripts/inference_service.py",
+                    "python", "scripts/inference_service.py",
                     "--model-path", containerModelPath,
                     "--pipeline-path", containerPipelinePath,
                     "--input", containerInputPath,
@@ -251,7 +251,7 @@ public class PythonInferenceService implements InferenceService {
             ProcessBuilder pb;
             List<String> command = new ArrayList<>(Arrays.asList(
                     "docker", "exec", containerName,
-                    "python", "/app/scripts/inference_service.py",
+                    "python", "scripts/inference_service.py",
                     "--pipeline-path", containerPipelinePath,
                     "--input", containerInputPath,
                     "--threshold", String.valueOf(threshold)

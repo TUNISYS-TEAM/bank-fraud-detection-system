@@ -326,4 +326,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
                      """)
        Page<UUID> findUnscoredTransactionUuidsByManagerId(@Param("managerId") Long managerId, Pageable pageable);
 
+       List<Transaction> findByAccountId(Long accountId);
+
 }

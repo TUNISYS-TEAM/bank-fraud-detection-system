@@ -38,7 +38,7 @@ public class SimulationService {
     private final UserService userService;
     private final ObjectMapper objectMapper;
 
-    @Value("${fraud.inference.container-name:fraud-ml-pipeline}")
+    @Value("${fraud.inference.container-name:fraud-ml-onnx}")
     private String containerName;
 
     public SimulationResponse runSimulation(SimulationRequest request) {
@@ -82,7 +82,7 @@ public class SimulationService {
     private List<Map<String, Object>> generateTransactions(SimulationRequest request) throws Exception {
         List<String> command = new ArrayList<>(List.of(
                 "docker", "exec", containerName,
-                "python", "/app/scripts/generate_sample_data.py",
+                "python", "/shared-ml/scripts/generate_sample_data.py",
                 "--output-format", "json",
                 "--n-transactions", String.valueOf(request.getTransactionCount() != null ? request.getTransactionCount() : 1000),
                 "--fraud-ratio", String.valueOf(request.getFraudRatio() != null ? request.getFraudRatio() : 0.05),

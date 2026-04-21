@@ -10,7 +10,7 @@ from shared_ml.pipeline.fraud_pipeline import (
     build_all_pipelines,
     REQUIRED_INPUT_COLS,
 )
-from .data_split import temporal_split, save_split_report
+from shared_ml.evaluation.data_split import temporal_split, save_split_report
 from .onnx_exporter import ONNXExporter
 
 __all__ = [

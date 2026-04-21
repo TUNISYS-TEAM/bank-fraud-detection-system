@@ -8,7 +8,7 @@ import numpy as np
 from scipy.optimize import minimize
 from sklearn.metrics import fbeta_score
 
-from ml_pipeline.models.base_model import FraudBaseModel
+from shared_ml.models.base_model import FraudBaseModel
 
 logger = logging.getLogger(__name__)
 

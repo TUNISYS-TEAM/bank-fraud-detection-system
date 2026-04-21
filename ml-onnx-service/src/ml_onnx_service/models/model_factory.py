@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from shared_ml.config.model_config import ModelConfig
 
-from ml_pipeline.models.supervised.lightgbm_model import LightGBMFraudModel
-from ml_pipeline.models.supervised.tree_models import (
+from ml_onnx_service.models.supervised.lightgbm_model import LightGBMFraudModel
+from ml_onnx_service.models.supervised.tree_models import (
     CatBoostFraudModel,
     RandomForestFraudModel,
     XGBoostFraudModel,

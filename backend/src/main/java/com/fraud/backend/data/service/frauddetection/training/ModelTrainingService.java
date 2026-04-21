@@ -30,6 +30,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.BufferedReader;
@@ -53,60 +54,12 @@ public class ModelTrainingService {
     private final StorageService storageService;
     private final ObjectMapper objectMapper;
 
-    // -------------------------------------------------------------------------
-    // Helper to determine which container to use for a training command
-    // -------------------------------------------------------------------------
-    private String getContainerForCommand(String cliCommand) {
-        if (cliCommand == null) return "fraud-ml-pipeline";
-        // ONNX-based models → fraud-ml-pipeline
-        if (cliCommand.contains("train-random-forest") ||
-            cliCommand.contains("train-xgboost") ||
-            cliCommand.contains("train-lightgbm") ||
-            cliCommand.contains("train-balanced-random-forest")) {
-            return "fraud-ml-pipeline";
-        }
-        // Hybrid / specialized models → fraud-ml-hybrid
-        return "fraud-ml-hybrid";
-    }
+    @Value("${fraud.ml.onnx.container-name:fraud-ml-onnx}")
+    private String onnxContainerName;
 
-    // -------------------------------------------------------------------------
-    // Docker interaction methods (accept container name)
-    // -------------------------------------------------------------------------
-    private void execDockerCopy(Path source, String destination, String containerName) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder("docker", "cp", source.toAbsolutePath().toString(), containerName + ":" + destination);
-        Process process = pb.start();
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new RuntimeException("Docker copy failed");
-        }
-    }
+    @Value("${fraud.ml.hybrid.container-name:fraud-ml-hybrid}")
+    private String hybridContainerName;
 
-    private void execDockerCopyFromContainer(String containerPath, Path localPath, String containerName) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-                "docker", "cp",
-                containerName + ":" + containerPath,
-                localPath.toAbsolutePath().toString());
-        Process process = pb.start();
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new RuntimeException("Docker copy from container failed");
-        }
-    }
-
-    private void execDockerCommand(String containerName, String... commands) throws Exception {
-        List<String> cmd = new ArrayList<>(List.of("docker", "exec", containerName));
-        cmd.addAll(Arrays.asList(commands));
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        Process process = pb.start();
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new RuntimeException("Docker command failed");
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Existing helper methods (unchanged)
-    // -------------------------------------------------------------------------
     private AppUser getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
@@ -214,7 +167,9 @@ public class ModelTrainingService {
                 .thresholds(thresholds)
                 .hyperparameters(model.getHyperparameters())
                 .featureImportance(model.getFeatureImportance())
-                .selectedFeatures(model.getHyperparameters() != null ? (List<String>) model.getHyperparameters().get("selected_original_features") : null)
+                .selectedFeatures(model.getHyperparameters() != null
+                        ? (List<String>) model.getHyperparameters().get("selected_original_features")
+                        : null)
                 .trainingRows(trainingRows)
                 .testRows(testRows)
                 .fraudRate(fraudRate)
@@ -236,8 +191,9 @@ public class ModelTrainingService {
     }
 
     public ModelSummaryResponse toSummaryResponse(ModelML model) {
-        if (model == null) return null;
-        
+        if (model == null)
+            return null;
+
         return ModelSummaryResponse.builder()
                 .modelUuid(model.getModelUuid())
                 .modelName(model.getModelName())
@@ -246,8 +202,9 @@ public class ModelTrainingService {
                 .status(model.getStatus())
                 .createdAt(model.getCreatedAt())
                 .createdByEmail(model.getCreatedBy() != null ? model.getCreatedBy().getEmail() : null)
-                .createdByName(model.getCreatedBy() != null ? 
-                    model.getCreatedBy().getFirstName() + " " + model.getCreatedBy().getLastName() : null)
+                .createdByName(model.getCreatedBy() != null
+                        ? model.getCreatedBy().getFirstName() + " " + model.getCreatedBy().getLastName()
+                        : null)
                 .auc(model.getAuc())
                 .precision(model.getPrecision())
                 .recall(model.getRecall())
@@ -333,6 +290,8 @@ public class ModelTrainingService {
             }
         }
 
+        // Supprimer d'abord l'historique de dérive et les commentaires pour éviter les
+        // erreurs de clé étrangère (FK constraints)
         modelDeploymentHistoryRepository.deleteByModel(model);
 
         List<Comment> comments = commentRepository.findByModelId(model.getId());
@@ -353,7 +312,6 @@ public class ModelTrainingService {
         modelMLRepository.save(model);
     }
 
-    // -------------------- Training entry points --------------------
     @Transactional
     public TrainingJobResponse trainRandomForest(TrainingJobRequest request) throws Exception {
         log.info("Starting Random Forest training for dataset: {}", request.getDatasetUuid());
@@ -395,8 +353,8 @@ public class ModelTrainingService {
                     hyperparameters,
                     request.getTestSize(),
                     request.getRandomSeed(),
-                    true
-            );
+                    true,
+                    false);
         }
 
         ModelML model = getOrCreateModel(request, hyperparameters, currentUser);
@@ -409,6 +367,7 @@ public class ModelTrainingService {
                 hyperparameters,
                 request.getTestSize(),
                 request.getRandomSeed(),
+                false,
                 false);
 
         updateModelWithResults(model, response);
@@ -451,8 +410,8 @@ public class ModelTrainingService {
                     hyperparameters,
                     request.getTestSize(),
                     request.getRandomSeed(),
-                    true
-            );
+                    true,
+                    true);
         }
 
         ModelML model = getOrCreateModel(request, hyperparameters, currentUser, "HYBRID_ENSEMBLE");
@@ -466,26 +425,31 @@ public class ModelTrainingService {
                 hyperparameters,
                 request.getTestSize(),
                 request.getRandomSeed(),
-                false
-        );
+                false,
+                true);
 
         updateModelWithResults(model, response);
         return response;
     }
 
+    @Transactional
     public TrainingJobResponse trainAutoencoder(TrainingJobRequest request) throws Exception {
-        return trainSpecializedModel(request, "train-autoencoder", "AUTOENCODER");
+        return trainSpecializedModel(request, "train-autoencoder", "AUTOENCODER", "Autoencoder-");
     }
 
+    @Transactional
     public TrainingJobResponse trainECOD(TrainingJobRequest request) throws Exception {
-        return trainSpecializedModel(request, "train-ecod", "ECOD");
+        return trainSpecializedModel(request, "train-ecod", "ECOD", "ECOD-");
     }
 
+    @Transactional
     public TrainingJobResponse trainCOPOD(TrainingJobRequest request) throws Exception {
-        return trainSpecializedModel(request, "train-copod", "COPOD");
+        return trainSpecializedModel(request, "train-copod", "COPOD", "COPOD-");
     }
 
-    private TrainingJobResponse trainSpecializedModel(TrainingJobRequest request, String command, String modelType) throws Exception {
+    @Transactional
+    protected TrainingJobResponse trainSpecializedModel(TrainingJobRequest request, String command, String modelType,
+            String prefix) throws Exception {
         log.info("Starting {} training for dataset: {}", modelType, request.getDatasetUuid());
 
         AppUser currentUser = getCurrentUser();
@@ -518,8 +482,8 @@ public class ModelTrainingService {
                     hyperparameters,
                     request.getTestSize(),
                     request.getRandomSeed(),
-                    true
-            );
+                    true,
+                    true);
         }
 
         ModelML model = getOrCreateModel(request, hyperparameters, currentUser, modelType);
@@ -533,8 +497,8 @@ public class ModelTrainingService {
                 hyperparameters,
                 request.getTestSize(),
                 request.getRandomSeed(),
-                false
-        );
+                false,
+                true);
 
         updateModelWithResults(model, response);
         return response;
@@ -579,8 +543,8 @@ public class ModelTrainingService {
                     hyperparameters,
                     request.getTestSize(),
                     request.getRandomSeed(),
-                    true
-            );
+                    true,
+                    false);
         }
 
         ModelML model = getOrCreateModel(request, hyperparameters, currentUser, "XGBOOST");
@@ -593,6 +557,7 @@ public class ModelTrainingService {
                 hyperparameters,
                 request.getTestSize(),
                 request.getRandomSeed(),
+                false,
                 false);
 
         updateModelWithResults(model, response);
@@ -638,8 +603,8 @@ public class ModelTrainingService {
                     hyperparameters,
                     request.getTestSize(),
                     request.getRandomSeed(),
-                    true
-            );
+                    true,
+                    false);
         }
 
         ModelML model = getOrCreateModel(request, hyperparameters, currentUser, "LIGHTGBM");
@@ -652,6 +617,7 @@ public class ModelTrainingService {
                 hyperparameters,
                 request.getTestSize(),
                 request.getRandomSeed(),
+                false,
                 false);
 
         updateModelWithResults(model, response);
@@ -699,8 +665,8 @@ public class ModelTrainingService {
                     hyperparameters,
                     request.getTestSize(),
                     request.getRandomSeed(),
-                    true
-            );
+                    true,
+                    false);
         }
 
         ModelML model = getOrCreateModel(request, hyperparameters, currentUser, "BALANCED_RANDOM_FOREST");
@@ -713,15 +679,13 @@ public class ModelTrainingService {
                 hyperparameters,
                 request.getTestSize(),
                 request.getRandomSeed(),
+                false,
                 false);
 
         updateModelWithResults(model, response);
         return response;
     }
 
-    // -------------------------------------------------------------------------
-    // Model creation helpers
-    // -------------------------------------------------------------------------
     private ModelML getOrCreateModel(TrainingJobRequest request, Map<String, Object> hyperparameters, AppUser creator) {
         return getOrCreateModel(request, hyperparameters, creator, "RANDOM_FOREST");
     }
@@ -732,6 +696,8 @@ public class ModelTrainingService {
             ModelML existingModel = modelMLRepository.findByModelUuid(request.getModelUuid())
                     .orElseThrow(() -> new IllegalArgumentException("Model not found: " + request.getModelUuid()));
 
+            // Critical: Update model type and hyperparameters if they've changed since the
+            // draft was created
             existingModel.setModelType(modelType);
             existingModel.setModelName(request.getJobName());
             existingModel.setHyperparameters(hyperparameters);
@@ -757,21 +723,18 @@ public class ModelTrainingService {
         return "1.0." + System.currentTimeMillis();
     }
 
-    // -------------------------------------------------------------------------
-    // Core training launcher (with dynamic container selection)
-    // -------------------------------------------------------------------------
     private TrainingJobResponse launchTraining(
             String cliCommand,
             String datasetPath,
             UUID datasetId,
             UUID modelId,
             Map<String, Object> hyperparameters,
-            Double testSize,
-            Integer randomSeed,
-            boolean isTest) throws Exception {
-
-        String containerName = getContainerForCommand(cliCommand);
-        log.info("Executing command on container '{}': {}", containerName, cliCommand);
+            double testSize,
+            int randomSeed,
+            boolean isTest,
+            boolean isHybrid) throws Exception {
+        log.info("Launching {} training via Docker", isHybrid ? "Hybrid" : "ONNX");
+        String currentContainerName = isHybrid ? hybridContainerName : onnxContainerName;
 
         Path tempDataset = null;
         Path tempHyperparams = null;
@@ -794,19 +757,39 @@ public class ModelTrainingService {
             tempHyperparams = Files.createTempFile("hyperparams_", ".json");
             objectMapper.writeValue(tempHyperparams.toFile(), hyperparameters);
 
-            containerDatasetPath = "/app/data/" + tempDataset.getFileName();
-            containerHyperparamsPath = "/app/data/" + tempHyperparams.getFileName();
+            containerDatasetPath = "/tmp/fraud-work/" + tempDataset.getFileName();
+            containerHyperparamsPath = "/tmp/fraud-work/" + tempHyperparams.getFileName();
 
-            execDockerCopy(tempDataset, containerDatasetPath, containerName);
-            execDockerCopy(tempHyperparams, containerHyperparamsPath, containerName);
+            // S'assurer que toute l'arborescence nécessaire existe dans le conteneur (utiliser /tmp pour éviter les fuites de volume)
+            execDockerCommand(currentContainerName, "mkdir", "-p",
+                    "/tmp/fraud-work",
+                    "/tmp/fraud-work/artifacts/exported_models",
+                    "/tmp/fraud-work/artifacts/exported_onnx",
+                    "/tmp/fraud-work/artifacts/exported_parquet",
+                    "/tmp/fraud-work/artifacts/reports",
+                    "/tmp/fraud-work/artifacts/logs",
+                    "/tmp/fraud-work/output");
+
+            execDockerCopy(currentContainerName, tempDataset, containerDatasetPath);
+            execDockerCopy(currentContainerName, tempHyperparams, containerHyperparamsPath);
 
             UUID jobUuid = UUID.randomUUID();
             String timestamp = String.valueOf(System.currentTimeMillis());
 
-            List<String> command = new ArrayList<>(List.of(
-                    "docker", "exec", containerName,
-                    "python", "-m", "ml_pipeline.cli.main",
-                    cliCommand,
+            List<String> commandList = new ArrayList<>(List.of("docker", "exec", currentContainerName, "python"));
+
+            if (isHybrid) {
+                // Command format: python scripts/train_hybrid_ensemble.py
+                String scriptPath = "scripts/" + cliCommand.replace("-", "_") + ".py";
+                commandList.add(scriptPath);
+            } else {
+                // Command format: python -m ml_onnx_service.cli.main train-random-forest
+                commandList.add("-m");
+                commandList.add("ml_onnx_service.cli.main");
+                commandList.add(cliCommand);
+            }
+
+            commandList.addAll(List.of(
                     "--dataset-path", containerDatasetPath,
                     "--dataset-id", datasetId.toString(),
                     "--job-id", jobUuid.toString(),
@@ -815,9 +798,9 @@ public class ModelTrainingService {
                     "--test-size", String.valueOf(testSize),
                     "--random-seed", String.valueOf(randomSeed)));
 
-            log.info("Executing command: {}", String.join(" ", command));
+            log.info("Executing command: {}", String.join(" ", commandList));
 
-            ProcessBuilder pb = new ProcessBuilder(command);
+            ProcessBuilder pb = new ProcessBuilder(commandList);
             pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process process = pb.start();
 
@@ -858,7 +841,7 @@ public class ModelTrainingService {
                 throw new RuntimeException("No valid JSON output from training script");
             }
 
-            TrainingJobResponse response = buildTrainingResponse(root, datasetId, modelId, jobUuid, cliCommand);
+            TrainingJobResponse response = buildTrainingResponse(root, datasetId, modelId, jobUuid);
 
             JsonNode modelPathNode = root.get("model_path");
             if (modelPathNode == null || modelPathNode.isNull() || modelPathNode.asText().isBlank()) {
@@ -871,8 +854,8 @@ public class ModelTrainingService {
             // Create explicit file paths (no random suffix)
             Path tempDir = Path.of(System.getProperty("java.io.tmpdir"));
             tempModel = tempDir.resolve(baseFilename + ".joblib");
-            Files.deleteIfExists(tempModel);
-            execDockerCopyFromContainer(containerModelPath, tempModel, containerName);
+            Files.deleteIfExists(tempModel); // Clean up if exists
+            execDockerCopyFromContainer(currentContainerName, containerModelPath, tempModel);
 
             String tempFolder = isTest ? "models/temp/" + jobUuid + "/" : "models/trained/" + datasetId + "/";
 
@@ -890,9 +873,10 @@ public class ModelTrainingService {
                 containerPipelinePath = pipelinePathNode.asText();
                 tempPipeline = Files.createTempFile("pipeline_", ".joblib");
                 try {
-                    execDockerCopyFromContainer(containerPipelinePath, tempPipeline, containerName);
-                    String pipelineKey = (isTest ? "models/temp/" + jobUuid + "/" : "models/pipelines/" + datasetId + "/") 
-                                       + tempPipeline.getFileName();
+                    execDockerCopyFromContainer(currentContainerName, containerPipelinePath, tempPipeline);
+                    String pipelineKey = (isTest ? "models/temp/" + jobUuid + "/"
+                            : "models/pipelines/" + datasetId + "/")
+                            + tempPipeline.getFileName();
                     try (var in = Files.newInputStream(tempPipeline)) {
                         storageService.upload(pipelineKey, in, Files.size(tempPipeline), "application/octet-stream");
                     }
@@ -910,9 +894,9 @@ public class ModelTrainingService {
                 tempOnnx = tempDir.resolve(baseFilename + ".onnx");
                 Files.deleteIfExists(tempOnnx);
                 try {
-                    execDockerCopyFromContainer(containerOnnxPath, tempOnnx, containerName);
-                    String onnxKey = (isTest ? "models/temp/" + jobUuid + "/" : "models/onnx/" + datasetId + "/") 
-                                   + tempOnnx.getFileName();
+                    execDockerCopyFromContainer(currentContainerName, containerOnnxPath, tempOnnx);
+                    String onnxKey = (isTest ? "models/temp/" + jobUuid + "/" : "models/onnx/" + datasetId + "/")
+                            + tempOnnx.getFileName();
                     try (var in = Files.newInputStream(tempOnnx)) {
                         storageService.upload(onnxKey, in, Files.size(tempOnnx), "application/octet-stream");
                     }
@@ -927,43 +911,81 @@ public class ModelTrainingService {
 
         } finally {
             // Clean up all temp files on host
-            if (tempDataset != null) Files.deleteIfExists(tempDataset);
-            if (tempHyperparams != null) Files.deleteIfExists(tempHyperparams);
-            if (tempModel != null) Files.deleteIfExists(tempModel);
-            if (tempPipeline != null) Files.deleteIfExists(tempPipeline);
-            if (tempOnnx != null) Files.deleteIfExists(tempOnnx);
+            if (tempDataset != null)
+                Files.deleteIfExists(tempDataset);
+            if (tempHyperparams != null)
+                Files.deleteIfExists(tempHyperparams);
+            if (tempModel != null)
+                Files.deleteIfExists(tempModel);
+            if (tempPipeline != null)
+                Files.deleteIfExists(tempPipeline);
+            if (tempOnnx != null)
+                Files.deleteIfExists(tempOnnx);
 
             // Clean up all files in container
             if (containerDatasetPath != null) {
-                try { execDockerCommand(containerName, "rm", "-f", containerDatasetPath); } catch (Exception e) {}
+                try {
+                    execDockerCommand(currentContainerName, "rm", "-f", containerDatasetPath);
+                } catch (Exception e) {
+                }
             }
             if (containerHyperparamsPath != null) {
-                try { execDockerCommand(containerName, "rm", "-f", containerHyperparamsPath); } catch (Exception e) {}
+                try {
+                    execDockerCommand(currentContainerName, "rm", "-f", containerHyperparamsPath);
+                } catch (Exception e) {
+                }
             }
             if (containerModelPath != null) {
-                try { 
-                    execDockerCommand(containerName, "rm", "-f", containerModelPath);
-                    execDockerCommand(containerName, "rm", "-f", containerModelPath + ".meta.json");
-                } catch (Exception e) {}
+                try {
+                    execDockerCommand(currentContainerName, "rm", "-f", containerModelPath);
+                    execDockerCommand(currentContainerName, "rm", "-f", containerModelPath + ".meta.json");
+                } catch (Exception e) {
+                }
             }
             if (containerPipelinePath != null) {
-                try { 
-                    execDockerCommand(containerName, "rm", "-f", containerPipelinePath);
-                    execDockerCommand(containerName, "rm", "-f", containerPipelinePath + ".meta.json");
-                } catch (Exception e) {}
+                try {
+                    execDockerCommand(currentContainerName, "rm", "-f", containerPipelinePath);
+                    execDockerCommand(currentContainerName, "rm", "-f", containerPipelinePath + ".meta.json");
+                } catch (Exception e) {
+                }
             }
             if (containerOnnxPath != null) {
-                try { 
-                    execDockerCommand(containerName, "rm", "-f", containerOnnxPath);
-                } catch (Exception e) {}
+                try {
+                    execDockerCommand(currentContainerName, "rm", "-f", containerOnnxPath);
+                } catch (Exception e) {
+                }
             }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Response building helpers
-    // -------------------------------------------------------------------------
-    private TrainingJobResponse buildTrainingResponse(JsonNode root, UUID datasetId, UUID modelId, UUID jobUuid, String cliCommand) {
+    private void execDockerCopyFromContainer(String containerName, String containerPath, Path localPath)
+            throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(
+                "docker", "cp",
+                containerName + ":" + containerPath,
+                localPath.toAbsolutePath().toString());
+        Process process = pb.start();
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Docker copy from container failed");
+        }
+    }
+
+    private String inferModelTypeFromJobName(String jobName) {
+        if (jobName == null) return "UNKNOWN";
+        String name = jobName.toUpperCase();
+        if (name.contains("XGB")) return "XGBOOST";
+        if (name.contains("LGBM") || name.contains("LIGHTGBM")) return "LIGHTGBM";
+        if (name.contains("BRF") || name.contains("BALANCED")) return "BALANCED_RANDOM_FOREST";
+        if (name.contains("RF") || name.contains("RANDOM")) return "RANDOM_FOREST";
+        if (name.contains("ECOD")) return "ECOD";
+        if (name.contains("COPOD")) return "COPOD";
+        if (name.contains("AE ") || name.contains("AUTOENCODER")) return "AUTOENCODER";
+        if (name.contains("ENS ") || name.contains("ENS V") || name.contains("HYBRID") || name.contains("HYB ")) return "HYBRID_ENSEMBLE";
+        return "UNKNOWN";
+    }
+
+    private TrainingJobResponse buildTrainingResponse(JsonNode root, UUID datasetId, UUID modelId, UUID jobUuid) {
         JsonNode metrics = root.get("metrics");
         JsonNode confusionMatrix = root.get("confusion_matrix");
         JsonNode trainingStats = root.get("training_stats");
@@ -974,17 +996,20 @@ public class ModelTrainingService {
 
         Map<String, Object> metricsMap = new HashMap<>();
         if (metrics != null) {
-            metricsMap = objectMapper.convertValue(metrics, new TypeReference<Map<String, Object>>() {});
+            metricsMap = objectMapper.convertValue(metrics, new TypeReference<Map<String, Object>>() {
+            });
         }
 
         Map<String, Object> confusionMap = new HashMap<>();
         if (confusionMatrix != null) {
-            confusionMap = objectMapper.convertValue(confusionMatrix, new TypeReference<Map<String, Object>>() {});
+            confusionMap = objectMapper.convertValue(confusionMatrix, new TypeReference<Map<String, Object>>() {
+            });
         }
 
         Map<String, Object> hyperparamsMap = new HashMap<>();
         if (hyperparametersUsed != null) {
-            hyperparamsMap = objectMapper.convertValue(hyperparametersUsed, new TypeReference<Map<String, Object>>() {});
+            hyperparamsMap = objectMapper.convertValue(hyperparametersUsed, new TypeReference<Map<String, Object>>() {
+            });
         }
 
         List<String> selectedFeaturesList = new ArrayList<>();
@@ -996,16 +1021,19 @@ public class ModelTrainingService {
 
         Map<String, Object> featureImportanceMap = new HashMap<>();
         if (featureImportance != null) {
-            featureImportanceMap = objectMapper.convertValue(featureImportance, new TypeReference<Map<String, Object>>() {});
+            featureImportanceMap = objectMapper.convertValue(featureImportance,
+                    new TypeReference<Map<String, Object>>() {
+                    });
         }
 
         Map<String, Object> thresholdsMap = new HashMap<>();
         if (thresholds != null) {
-            thresholdsMap = objectMapper.convertValue(thresholds, new TypeReference<Map<String, Object>>() {});
+            thresholdsMap = objectMapper.convertValue(thresholds, new TypeReference<Map<String, Object>>() {
+            });
         }
 
         String modelName = root.has("model_name") ? root.get("model_name").asText() : "Machine Learning Training";
-        String modelType = detectModelTypeFromCommandAndName(cliCommand, modelName);
+        String modelType = inferModelTypeFromJobName(modelName);
 
         TrainingJobResponse response = TrainingJobResponse.builder()
                 .jobUuid(jobUuid)
@@ -1020,12 +1048,19 @@ public class ModelTrainingService {
                 .thresholds(thresholdsMap)
                 .featureImportance(featureImportanceMap)
                 .selectedFeatures(selectedFeaturesList)
-                .modelPath(root.has("model_path") && !root.get("model_path").isNull() ? root.get("model_path").asText() : null)
-                .pipelinePath(root.has("pipeline_path") && !root.get("pipeline_path").isNull() ? root.get("pipeline_path").asText() : null)
-                .onnxPath(root.has("onnx_path") && !root.get("onnx_path").isNull() ? root.get("onnx_path").asText() : null)
+                .modelPath(
+                        root.has("model_path") && !root.get("model_path").isNull() ? root.get("model_path").asText()
+                                : null)
+                .pipelinePath(root.has("pipeline_path") && !root.get("pipeline_path").isNull()
+                        ? root.get("pipeline_path").asText()
+                        : null)
+                .onnxPath(
+                        root.has("onnx_path") && !root.get("onnx_path").isNull() ? root.get("onnx_path").asText()
+                                : null)
                 .startedAt(root.has("start_time") ? LocalDateTime.parse(root.get("start_time").asText()) : null)
                 .completedAt(root.has("end_time") ? LocalDateTime.parse(root.get("end_time").asText()) : null)
-                .durationSeconds(root.has("duration_seconds") ? (int) Math.round(root.get("duration_seconds").asDouble()) : null)
+                .durationSeconds(
+                        root.has("duration_seconds") ? (int) Math.round(root.get("duration_seconds").asDouble()) : null)
                 .build();
 
         if (trainingStats != null) {
@@ -1041,54 +1076,41 @@ public class ModelTrainingService {
         return response;
     }
 
-    private String detectModelTypeFromCommandAndName(String cliCommand, String modelName) {
-        // Priority: command overrides name-based detection
-        if (cliCommand != null) {
-            if (cliCommand.contains("train-ecod")) return "ECOD";
-            if (cliCommand.contains("train-copod")) return "COPOD";
-            if (cliCommand.contains("train-autoencoder")) return "AUTOENCODER";
-            if (cliCommand.contains("train-random-forest")) return "RANDOM_FOREST";
-            if (cliCommand.contains("train-xgboost")) return "XGBOOST";
-            if (cliCommand.contains("train-lightgbm")) return "LIGHTGBM";
-            if (cliCommand.contains("train-balanced-random-forest")) return "BALANCED_RANDOM_FOREST";
-            if (cliCommand.contains("train-hybrid-ensemble")) return "HYBRID_ENSEMBLE";
-        }
-        // Fallback to name-based detection
-        if (modelName.startsWith("XGB")) return "XGBOOST";
-        if (modelName.startsWith("RF") || modelName.contains("Random Forest")) {
-            if (modelName.contains("Balanced")) return "BALANCED_RANDOM_FOREST";
-            return "RANDOM_FOREST";
-        }
-        if (modelName.startsWith("LGBM") || modelName.contains("LightGBM")) return "LIGHTGBM";
-        if (modelName.startsWith("BRF")) return "BALANCED_RANDOM_FOREST";
-        if (modelName.startsWith("HYBRID") || modelName.contains("Hybrid")) return "HYBRID_ENSEMBLE";
-        if (modelName.startsWith("AUTOENCODER")) return "AUTOENCODER";
-        if (modelName.startsWith("ECOD")) return "ECOD";
-        if (modelName.startsWith("COPOD")) return "COPOD";
-        return "UNKNOWN";
-    }
-
     private void updateModelWithResults(ModelML model, TrainingJobResponse response) {
+        // Update model type and name in case they were changed during training (e.g.
+        // Draft RF -> Train XGB)
         if (response.getJobName() != null && !response.getJobName().isBlank()) {
             model.setModelName(response.getJobName());
         }
-        
-        if (response.getModelType() != null && !"UNKNOWN".equals(response.getModelType())) {
-            model.setModelType(response.getModelType());
+
+        // 1. Classification and Engine Assignment based on Model Name
+        if (model.getModelName().startsWith("XGB")) {
+            model.setModelType("XGBOOST");
+        } else if (model.getModelName().startsWith("RF") || model.getModelName().contains("Random Forest")) {
+            if (model.getModelName().contains("Balanced") || "BALANCED_RANDOM_FOREST".equals(model.getModelType())) {
+                model.setModelType("BALANCED_RANDOM_FOREST");
+            } else {
+                model.setModelType("RANDOM_FOREST");
+            }
+        } else if (model.getModelName().startsWith("LGBM") || model.getModelName().contains("LightGBM")) {
+            model.setModelType("LIGHTGBM");
+        } else if (model.getModelName().startsWith("BRF")) {
+            model.setModelType("BALANCED_RANDOM_FOREST");
+        } else if (model.getModelName().startsWith("Hybrid") || model.getModelName().startsWith("ENS")) {
+            model.setModelType("HYBRID_ENSEMBLE");
+            model.setInferenceEngine(InferenceEngine.HYBRID_SERVICE);
+        } else if (model.getModelName().startsWith("AUTOENCODER") || model.getModelName().startsWith("AE")) {
+            model.setModelType("AUTOENCODER");
+            model.setInferenceEngine(InferenceEngine.HYBRID_SERVICE);
+        } else if (model.getModelName().startsWith("ECOD")) {
+            model.setModelType("ECOD");
+            model.setInferenceEngine(InferenceEngine.HYBRID_SERVICE);
+        } else if (model.getModelName().startsWith("COPOD")) {
+            model.setModelType("COPOD");
+            model.setInferenceEngine(InferenceEngine.HYBRID_SERVICE);
         }
 
-        if (model.getModelType() != null) {
-            switch (model.getModelType()) {
-                case "HYBRID_ENSEMBLE":
-                case "AUTOENCODER":
-                case "ECOD":
-                case "COPOD":
-                    model.setInferenceEngine(InferenceEngine.HYBRID_SERVICE);
-                    break;
-                default:
-                    model.setInferenceEngine(InferenceEngine.ONNX_LOCAL);
-            }
-        } else {
+        if (model.getInferenceEngine() == null) {
             model.setInferenceEngine(InferenceEngine.ONNX_LOCAL);
         }
 
@@ -1105,17 +1127,22 @@ public class ModelTrainingService {
 
         Map<String, Object> finalHyperparams = new HashMap<>();
 
+        // Start with initial hyperparameters (preserves features, metadata, etc.)
         if (model.getHyperparameters() != null) {
             finalHyperparams.putAll(model.getHyperparameters());
         }
 
+        // Python as source of truth for REAL hyperparameters used (overwrites initial
+        // ones)
         if (response.getHyperparameters() != null) {
             finalHyperparams.putAll(response.getHyperparameters());
         }
 
+        // Add training results summary
         Map<String, Object> trainingResults = new HashMap<>();
         trainingResults.put("jobUuid", response.getJobUuid().toString());
-        trainingResults.put("completedAt", response.getCompletedAt() != null ? response.getCompletedAt().toString() : LocalDateTime.now().toString());
+        trainingResults.put("completedAt", response.getCompletedAt() != null ? response.getCompletedAt().toString()
+                : LocalDateTime.now().toString());
         trainingResults.put("durationSeconds", response.getDurationSeconds());
         trainingResults.put("metrics", response.getMetrics());
         trainingResults.put("confusionMatrix", response.getConfusionMatrix());
@@ -1144,9 +1171,12 @@ public class ModelTrainingService {
         Map<String, Object> thresholds = new HashMap<>();
 
         if (model.getHyperparameters() != null && model.getHyperparameters().containsKey("_trainingResults")) {
-            Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters().get("_trainingResults");
+            Map<String, Object> trainingResults = (Map<String, Object>) model.getHyperparameters()
+                    .get("_trainingResults");
             if (trainingResults.containsKey("confusionMatrix")) {
-                confusionMatrix = objectMapper.convertValue(trainingResults.get("confusionMatrix"), new TypeReference<Map<String, Long>>() {});
+                confusionMatrix = objectMapper.convertValue(trainingResults.get("confusionMatrix"),
+                        new TypeReference<Map<String, Long>>() {
+                        });
             }
             if (trainingResults.containsKey("onnxPath")) {
                 onnxPath = (String) trainingResults.get("onnxPath");
@@ -1158,7 +1188,9 @@ public class ModelTrainingService {
 
         Map<String, Double> importance = new HashMap<>();
         if (model.getFeatureImportance() != null) {
-            importance = objectMapper.convertValue(model.getFeatureImportance(), new TypeReference<Map<String, Double>>() {});
+            importance = objectMapper.convertValue(model.getFeatureImportance(),
+                    new TypeReference<Map<String, Double>>() {
+                    });
         }
 
         List<String> topFeatures = importance.entrySet().stream()
@@ -1185,7 +1217,9 @@ public class ModelTrainingService {
                 .truePositives(confusionMatrix.getOrDefault("true_positives", 0L))
                 .featureImportance(importance)
                 .topFeatures(topFeatures)
-                .selectedFeatures(model.getHyperparameters() != null ? (List<String>) model.getHyperparameters().get("selected_original_features") : null)
+                .selectedFeatures(model.getHyperparameters() != null
+                        ? (List<String>) model.getHyperparameters().get("selected_original_features")
+                        : null)
                 .onnxPath(onnxPath)
                 .thresholds(thresholds)
                 .hyperparameters(model.getHyperparameters())
@@ -1197,6 +1231,27 @@ public class ModelTrainingService {
 
         response.calculateDerivedMetrics();
         return response;
+    }
+
+    private void execDockerCopy(String containerName, Path source, String destination) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("docker", "cp", source.toAbsolutePath().toString(),
+                containerName + ":" + destination);
+        Process process = pb.start();
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Docker copy failed");
+        }
+    }
+
+    private void execDockerCommand(String containerName, String... commands) throws Exception {
+        List<String> cmd = new ArrayList<>(List.of("docker", "exec", containerName));
+        cmd.addAll(Arrays.asList(commands));
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        Process process = pb.start();
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Docker command failed");
+        }
     }
 
     private JsonNode extractJsonFromOutput(String output) {
@@ -1279,6 +1334,7 @@ public class ModelTrainingService {
 
         // 1. Define permanent paths
         String datasetId = dataset.getDatasetUuid().toString();
+        // Extract filename from temp path
         String modelKey = testResult.getModelPath();
         String modelFilename = modelKey.substring(modelKey.lastIndexOf("/") + 1);
         String permanentModelPath = "models/trained/" + datasetId + "/" + modelFilename;
@@ -1305,7 +1361,8 @@ public class ModelTrainingService {
             storageService.delete(onnxKey);
         }
 
-        // 3. Prepare hyperparameters with training results
+        // 3. Prepare hyperparameters with training results (consistent with
+        // updateModelWithResults)
         Map<String, Object> finalHyperparams = new HashMap<>();
         if (testResult.getHyperparameters() != null) {
             finalHyperparams.putAll(testResult.getHyperparameters());
@@ -1328,27 +1385,23 @@ public class ModelTrainingService {
 
         finalHyperparams.put("_trainingResults", trainingResults);
 
-        // Determine inference engine based on model type
-        InferenceEngine inferenceEngine = InferenceEngine.ONNX_LOCAL;
-        if (testResult.getModelType() != null) {
-            switch (testResult.getModelType()) {
-                case "HYBRID_ENSEMBLE":
-                case "AUTOENCODER":
-                case "ECOD":
-                case "COPOD":
-                    inferenceEngine = InferenceEngine.HYBRID_SERVICE;
-                    break;
-                default:
-                    inferenceEngine = InferenceEngine.ONNX_LOCAL;
-            }
+        // 4. Determine model type and inference engine
+        String modelType = testResult.getModelType();
+        if (modelType == null || "UNKNOWN".equals(modelType)) {
+            modelType = inferModelTypeFromJobName(testResult.getJobName());
         }
 
-        // 4. Create ModelML entity
+        InferenceEngine engine = InferenceEngine.ONNX_LOCAL;
+        if (List.of("ECOD", "COPOD", "AUTOENCODER", "HYBRID_ENSEMBLE").contains(modelType)) {
+            engine = InferenceEngine.HYBRID_SERVICE;
+        }
+
+        // 5. Create ModelML entity
         ModelML model = ModelML.builder()
                 .modelUuid(UUID.randomUUID())
                 .modelName(testResult.getJobName())
-                .modelType(testResult.getModelType() != null ? testResult.getModelType() : "UNKNOWN")
-                .version("1.0")
+                .modelType(modelType)
+                .version("1.0") // Default for new models
                 .status("Draft")
                 .hyperparameters(finalHyperparams)
                 .featureImportance(testResult.getFeatureImportance())
@@ -1356,7 +1409,7 @@ public class ModelTrainingService {
                 .precision(testResult.getPrecision())
                 .recall(testResult.getRecall())
                 .f1Score(testResult.getF1Score())
-                .inferenceEngine(inferenceEngine)
+                .inferenceEngine(engine)
                 .createdBy(currentUser)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -1364,16 +1417,16 @@ public class ModelTrainingService {
 
         modelMLRepository.save(model);
 
-        log.info("Test training finalized and saved as model: {} with type {} and inference engine {}",
-                model.getModelUuid(), model.getModelType(), model.getInferenceEngine());
+        log.info("Test training finalized and saved as model: {}", model.getModelUuid());
 
+        // Update response with permanent paths and new model UUID
         testResult.setModelUuid(model.getModelUuid());
         testResult.setModelPath(permanentModelPath);
         testResult.setPipelinePath(permanentPipelinePath);
         testResult.setOnnxPath(permanentOnnxPath);
         testResult.setStatus("COMPLETED");
-        testResult.setModelType(model.getModelType());
 
         return testResult;
     }
+
 }

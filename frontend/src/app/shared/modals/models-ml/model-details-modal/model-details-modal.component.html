@@ -9,12 +9,12 @@
                     [ngClass]="modelResult?.modelType === 'XGBOOST' ? 'bg-orange-100 text-orange-600' : 
                                modelResult?.modelType === 'RANDOM_FOREST' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'">
                     <i-feather [name]="modelResult?.modelType === 'XGBOOST' ? 'trending-up' : 
-                                       modelResult?.modelType === 'RANDOM_FOREST' ? 'git-merge' : 'zap'" 
+                                       modelResult?.modelType === 'RANDOM_FOREST' ? 'git-merge' : 'zap'"
                         class="w-6 h-6">
                     </i-feather>
                 </div>
                 <div>
-                    <h2 class="text-2xl font-bold text-gray-900">Détails du Modèle</h2>
+                    <h2 class="text-2xl font-bold text-gray-900">{{ modelResult?.modelName && modelResult?.modelName !== 'UNKNOWN' ? modelResult?.modelName : 'Autoencoder' }}</h2>
                     <p class="text-sm text-gray-500">
                         <span class="font-bold text-gray-900">{{ getModelFullTypeName() }}</span>
                         <span class="font-bold text-gray-400 ml-2">{{ getModelVersion() }}</span>
@@ -192,39 +192,146 @@
                 <div class="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl p-6 border border-indigo-100">
                     <h3 class="text-lg font-bold text-indigo-900 mb-4">Hyperparamètres</h3>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                            <p class="text-xs text-indigo-700 font-bold">
-                                {{ (modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM') ? "nb d'itération" : "n_estimators" }}
-                            </p>
-                            <p class="text-xl font-black text-indigo-900">
-                                {{ getHyperparameterValue('n_estimators') !== null ? getHyperparameterValue('n_estimators') : '—' }}
-                            </p>
+                        <!-- Tree-based models (RF, XGB, LGBM, BRF) -->
+                        @if (modelResult?.modelType === 'XGBOOST' || 
+                             modelResult?.modelType === 'LIGHTGBM' || 
+                             modelResult?.modelType === 'RANDOM_FOREST' || 
+                             modelResult?.modelType === 'BALANCED_RANDOM_FOREST') {
+                        <div class="col-span-2 md:col-span-4 flex flex-wrap justify-center gap-8 md:gap-32">
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">
+                                    {{ (modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM') ? "nb d'itération" : "n_estimators" }}
+                                </p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('n_estimators') !== null ? getHyperparameterValue('n_estimators') : '—' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">
+                                    {{ modelResult?.modelType === 'LIGHTGBM' ? "num_leaves" : "max_depth" }}
+                                </p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue(modelResult?.modelType === 'LIGHTGBM' ? 'num_leaves' : 'max_depth') !== null ?
+                                    getHyperparameterValue(modelResult?.modelType === 'LIGHTGBM' ? 'num_leaves' : 'max_depth') : '—' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">
+                                    {{ (modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM') ? "learning rate" : "min_samples_split" }}
+                                </p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue(modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM' ? 'learning_rate' : 'min_samples_split') !== null ?
+                                    getHyperparameterValue(modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM' ? 'learning_rate' : 'min_samples_split') : '—' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Seuil</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('detection_threshold') !== null ?
+                                    formatPercent(getHyperparameterValue('detection_threshold')) : '—' }}
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-xs text-indigo-700 font-bold">
-                                {{ modelResult?.modelType === 'LIGHTGBM' ? "num_leaves" : "max_depth" }}
-                            </p>
-                            <p class="text-xl font-black text-indigo-900">
-                                {{ getHyperparameterValue(modelResult?.modelType === 'LIGHTGBM' ? 'num_leaves' : 'max_depth') !== null ? 
-                                   getHyperparameterValue(modelResult?.modelType === 'LIGHTGBM' ? 'num_leaves' : 'max_depth') : '—' }}
-                            </p>
+                        }
+
+                        <!-- Anomaly models (ECOD, COPOD) -->
+                        @if (modelResult?.modelType === 'ECOD' || modelResult?.modelType === 'COPOD') {
+                        <div class="col-span-2 md:col-span-4 flex flex-wrap justify-center gap-8 md:gap-32">
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Taux de Contamination</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('contamination') !== null ?
+                                    getHyperparameterValue('contamination') : '0.05' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Seuil Final</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('detection_threshold') !== null ?
+                                    formatPercent(getHyperparameterValue('detection_threshold')) : '—' }}
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-xs text-indigo-700 font-bold">
-                                {{ (modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM') ? "learning rate" : "min_samples_split" }}
-                            </p>
-                            <p class="text-xl font-black text-indigo-900">
-                                {{ getHyperparameterValue(modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM' ? 'learning_rate' : 'min_samples_split') !== null ? 
-                                   getHyperparameterValue(modelResult?.modelType === 'XGBOOST' || modelResult?.modelType === 'LIGHTGBM' ? 'learning_rate' : 'min_samples_split') : '—' }}
-                            </p>
+                        }
+
+                        <!-- Neural Models (Autoencoder) -->
+                        @if (modelResult?.modelType === 'AUTOENCODER' || isAutoencoder()) {
+                        <div class="col-span-2 md:col-span-4 flex flex-wrap justify-center gap-8 md:gap-24">
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Dimension d'Encodage</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('encoding_dim') || '32' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Époques</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('epochs') || '20' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Taille de Batch</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('batch_size') || '1024' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Seuil</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('detection_threshold') !== null ?
+                                    formatPercent(getHyperparameterValue('detection_threshold')) : '—' }}
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-xs text-indigo-700 font-bold">Seuil</p>
+                        }
+
+                        <!-- Ensemble Models -->
+                        @if (modelResult?.modelType === 'HYBRID_ENSEMBLE') {
+                        <div class="col-span-2 md:col-span-4 flex flex-wrap justify-center gap-8 md:gap-24">
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Stratégie</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('strategy') === 'weighted' ? 'Pondéré' :
+                                       getHyperparameterValue('strategy') === 'and' ? 'Intersection (AND)' :
+                                       getHyperparameterValue('strategy') === 'or_boost' ? 'Union Boostée' :
+                                       getHyperparameterValue('strategy') || 'Pondéré' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Seuil Haute Confiance Appliqué</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('and_high_conf_threshold') !== null ?
+                                    formatPercent(getHyperparameterValue('and_high_conf_threshold')) : '—' }}
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Seuil Final</p>
+                                <p class="text-xl font-black text-indigo-900">
+                                    {{ getHyperparameterValue('detection_threshold') !== null ?
+                                    formatPercent(getHyperparameterValue('detection_threshold')) : '50.0%' }}
+                                </p>
+                            </div>
+                        </div>
+                        }
+
+                        <!-- Common: Threshold (only for models that don't have a specific header block above) -->
+                        @if (modelResult?.modelType !== 'HYBRID_ENSEMBLE' && 
+                             modelResult?.modelType !== 'ECOD' && 
+                             modelResult?.modelType !== 'COPOD' && 
+                             modelResult?.modelType !== 'AUTOENCODER' && 
+                             !isAutoencoder() &&
+                             modelResult?.modelType !== 'XGBOOST' && 
+                             modelResult?.modelType !== 'LIGHTGBM' && 
+                             modelResult?.modelType !== 'RANDOM_FOREST' && 
+                             modelResult?.modelType !== 'BALANCED_RANDOM_FOREST') {
+                        <div class="text-center">
+                            <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider">Seuil</p>
                             <p class="text-xl font-black text-indigo-900">
                                 {{ getHyperparameterValue('detection_threshold') !== null ?
-                                   formatPercent(getHyperparameterValue('detection_threshold')) : '—' }}
+                                formatPercent(getHyperparameterValue('detection_threshold')) : '—' }}
                             </p>
                         </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -260,23 +367,31 @@
                     <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-5 shadow-sm">
                         <p class="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-1">Seuil F-Beta</p>
                         <p class="text-2xl font-black text-indigo-900 mb-2">
-                           {{ formatPercent(modelResult?.thresholds?.fbeta || 0) }}
+                            {{ formatPercent(modelResult?.thresholds?.fbeta || 0) }}
                         </p>
-                        <p class="text-[10px] text-gray-500 font-medium">Maximise l'équilibre entre fraude détectée (Rappel) et faux positifs (Précision), avec un score F-beta de {{ (modelResult?.thresholds?.fbeta_score !== undefined ? modelResult.thresholds.fbeta_score : 0) | number:'1.2-2' }}</p>
+                        <p class="text-[10px] text-gray-500 font-medium">Maximise l'équilibre entre fraude détectée
+                            (Rappel) et faux positifs (Précision), avec un score F-beta de {{
+                            (modelResult?.thresholds?.fbeta_score !== undefined ? modelResult.thresholds.fbeta_score :
+                            0) | number:'1.2-2' }}</p>
                     </div>
                     <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-5 shadow-sm">
-                        <p class="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Seuil Optimisé (Coût)</p>
+                        <p class="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Seuil Optimisé
+                            (Coût)</p>
                         <p class="text-2xl font-black text-emerald-900 mb-2">
                             {{ formatPercent(modelResult?.thresholds?.cost || 0) }}
                         </p>
-                        <p class="text-[10px] text-gray-500 font-medium">Minimise la perte financière totale (fraude non détectée + coût d'investigation des faux positifs). Coût min: {{ formatNumber(modelResult?.thresholds?.min_cost || 0) }}€</p>
+                        <p class="text-[10px] text-gray-500 font-medium">Minimise la perte financière totale (fraude non
+                            détectée + coût d'investigation des faux positifs). Coût min: {{
+                            formatNumber(modelResult?.thresholds?.min_cost || 0) }}€</p>
                     </div>
                     <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm">
-                        <p class="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Seuil Final Appliqué</p>
+                        <p class="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Seuil Final Appliqué
+                        </p>
                         <p class="text-2xl font-black text-blue-900 mb-2">
                             {{ formatPercent(modelResult?.thresholds?.final || 0) }}
                         </p>
-                        <p class="text-[10px] text-gray-500 font-medium">C'est ce seuil qui a été utilisé pour calculer la matrice de confusion et les métriques de performance finales affichées.</p>
+                        <p class="text-[10px] text-gray-500 font-medium">C'est ce seuil qui a été utilisé pour calculer
+                            la matrice de confusion et les métriques de performance finales affichées.</p>
                     </div>
                 </div>
 
@@ -288,19 +403,23 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <p class="text-sm font-bold text-blue-800 mb-2">Seuil bas (0.2 - 0.4)</p>
-                            <p class="text-sm text-gray-600">Détecte plus de fraudes (rappel élevé) mais génère plus de faux positifs. Idéal pour l'investigation manuelle.</p>
+                            <p class="text-sm text-gray-600">Détecte plus de fraudes (rappel élevé) mais génère plus de
+                                faux positifs. Idéal pour l'investigation manuelle.</p>
                         </div>
                         <div>
                             <p class="text-sm font-bold text-blue-800 mb-2">Seuil moyen (0.4 - 0.6)</p>
-                            <p class="text-sm text-gray-600">Bon équilibre entre rappel et précision. Recommandé pour un usage général.</p>
+                            <p class="text-sm text-gray-600">Bon équilibre entre rappel et précision. Recommandé pour un
+                                usage général.</p>
                         </div>
                         <div>
                             <p class="text-sm font-bold text-blue-800 mb-2">Seuil élevé (0.6 - 0.8)</p>
-                            <p class="text-sm text-gray-600">Haute précision, peu de faux positifs. Idéal pour les alertes automatiques avec action immédiate.</p>
+                            <p class="text-sm text-gray-600">Haute précision, peu de faux positifs. Idéal pour les
+                                alertes automatiques avec action immédiate.</p>
                         </div>
                         <div>
                             <p class="text-sm font-bold text-blue-800 mb-2">Seuil très élevé (>0.8)</p>
-                            <p class="text-sm text-gray-600">Détecte uniquement les cas presque certains. Peu de fraudes détectées mais très fiable.</p>
+                            <p class="text-sm text-gray-600">Détecte uniquement les cas presque certains. Peu de fraudes
+                                détectées mais très fiable.</p>
                         </div>
                     </div>
                 </div>
@@ -321,8 +440,10 @@
                     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                         @for (feature of getOriginalFeatures(); track feature) {
                         <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex items-center gap-2">
-                            <svg class="w-4 h-4 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            <svg class="w-4 h-4 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
                             </svg>
                             <span class="text-sm font-medium text-indigo-900 break-words">{{ feature }}</span>
                         </div>
@@ -330,8 +451,10 @@
                     </div>
                     } @else {
                     <div class="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                        <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <p class="text-gray-500 font-medium">Aucune feature originale sélectionnée</p>
                         <p class="text-sm text-gray-400 mt-1">Les features sont sélectionnées lors de l'entraînement</p>
@@ -351,8 +474,10 @@
                     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                         @for (feature of getClientFeatures(); track feature) {
                         <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center gap-2">
-                            <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             <span class="text-sm font-medium text-emerald-900 break-words">{{ feature }}</span>
                         </div>
@@ -360,11 +485,14 @@
                     </div>
                     } @else {
                     <div class="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                        <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                         </svg>
                         <p class="text-gray-500 font-medium">Aucune feature comportementale disponible</p>
-                        <p class="text-sm text-gray-400 mt-1">Les features client_* seront ajoutées automatiquement lors de l'enrichissement</p>
+                        <p class="text-sm text-gray-400 mt-1">Les features client_* seront ajoutées automatiquement lors
+                            de l'enrichissement</p>
                     </div>
                     }
                 </div>
