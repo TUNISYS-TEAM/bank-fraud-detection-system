@@ -1,4 +1,4 @@
-from predictors.hotspot_predictor import HotspotPredictor
+from app.predictors.hotspot_predictor import HotspotPredictor
 
 hotspot_predictor = HotspotPredictor()
 

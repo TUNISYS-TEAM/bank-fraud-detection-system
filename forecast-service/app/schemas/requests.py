@@ -9,4 +9,4 @@ class OverviewZoneRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     horizon_days: Optional[int] = 7
-    regions: Optional[List[str]] = None
+    postalCodes: Optional[List[str]] = None

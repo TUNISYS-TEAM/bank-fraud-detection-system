@@ -10,5 +10,7 @@ import java.util.List;
 public class TrainingDataResponse {
     private LocalDateTime windowStart;
     private LocalDateTime windowEnd;
+    private int transactionCount;
+    private long fraudCount;
     private List<TrainingTransaction> transactions;
 }

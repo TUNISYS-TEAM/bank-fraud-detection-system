@@ -332,4 +332,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
        @Query("SELECT t FROM Transaction t WHERE t.transactionDate BETWEEN :start AND :end")
        List<Transaction> findAllByTransactionDateBetween(@Param("start") LocalDateTime start,
                      @Param("end") LocalDateTime end);
+
+       @EntityGraph(attributePaths = { "account", "account.client", "dataset" })
+       @Query("SELECT t FROM Transaction t WHERE t.postalCodeClient = :postalCode AND t.transactionDate BETWEEN :start AND :end")
+       List<Transaction> findAllByPostalCodeClientAndTransactionDateBetween(
+                     @Param("postalCode") String postalCode,
+                     @Param("start") LocalDateTime start,
+                     @Param("end") LocalDateTime end);
 }

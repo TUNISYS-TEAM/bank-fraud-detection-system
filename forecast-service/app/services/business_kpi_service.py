@@ -1,4 +1,4 @@
-from predictors.revenue_impact_predictor import RevenueImpactPredictor
+from app.predictors.revenue_impact_predictor import RevenueImpactPredictor
 
 revenue_predictor = RevenueImpactPredictor()
 
