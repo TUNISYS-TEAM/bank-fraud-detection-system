@@ -80,7 +80,7 @@ export class DatasetService {
     private readonly apiUrl = `${environment.apiUrl}/datasets`;
     private readonly userUrl = `${environment.apiUrl}/users`;
 
-    list(params: { q?: string; status?: DatasetStatus; type?: DatasetType; visibility?: boolean; managerId?: number; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
+    list(params: { q?: string; status?: DatasetStatus; types?: DatasetType | DatasetType[]; type?: DatasetType; visibility?: boolean; managerId?: number; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
         const teamContext = this.authService.getTeamContext();
         let httpParams = new HttpParams();
         
@@ -89,6 +89,17 @@ export class DatasetService {
         if (params.q) httpParams = httpParams.set('q', params.q);
         if (params.status) httpParams = httpParams.set('status', params.status);
         if (params.type) httpParams = httpParams.set('type', params.type);
+        
+        if (params.types) {
+            if (Array.isArray(params.types)) {
+                params.types.forEach(t => {
+                    httpParams = httpParams.append('types', t);
+                });
+            } else {
+                httpParams = httpParams.set('types', params.types);
+            }
+        }
+        
         if (params.visibility !== undefined) httpParams = httpParams.set('visibility', params.visibility.toString());
         if (finalManagerId !== undefined) httpParams = httpParams.set('managerId', finalManagerId.toString());
         if (params.page !== undefined) httpParams = httpParams.set('page', params.page.toString());

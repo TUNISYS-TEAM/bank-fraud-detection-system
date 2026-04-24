@@ -6,7 +6,6 @@ import com.fraud.backend.data.entity.frauddetection.ModelML;
 import com.fraud.backend.data.enums.InferenceEngine;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
@@ -18,7 +17,6 @@ import java.util.UUID;
  * Routeur central qui oriente les requêtes d'inférence vers le bon service
  * en fonction du moteur défini pour le modèle.
  */
-@Slf4j
 @Service
 @Primary
 @RequiredArgsConstructor
@@ -33,11 +31,9 @@ public class InferenceRoutingService implements InferenceService {
                 .orElseThrow(() -> new IllegalArgumentException("Modèle non trouvé : " + modelUuid));
 
         if (model.getInferenceEngine() == InferenceEngine.HYBRID_SERVICE) {
-            log.info("Routing inference for model {} to HYBRID_SERVICE", modelUuid);
             return hybridRestService;
         }
 
-        log.info("Routing inference for model {} to ONNX_LOCAL service", modelUuid);
         return onnxLocalService;
     }
 
@@ -53,7 +49,7 @@ public class InferenceRoutingService implements InferenceService {
 
     @Override
     public double getModelThreshold(ModelML model) {
-        return onnxLocalService.getModelThreshold(model);
+        return resolveService(model.getModelUuid()).getModelThreshold(model);
     }
 
     @Override

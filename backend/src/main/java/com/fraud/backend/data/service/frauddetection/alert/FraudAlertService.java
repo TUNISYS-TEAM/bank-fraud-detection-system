@@ -209,7 +209,7 @@ public class FraudAlertService {
 
     public List<Map<String, Object>> getRiskDistribution(LocalDateTime startDate, LocalDateTime endDate) {
         if (startDate == null) {
-            startDate = LocalDateTime.now().minusDays(6).withHour(0).withMinute(0).withSecond(0);
+            startDate = LocalDateTime.now().minusDays(7).withHour(0).withMinute(0).withSecond(0);
         }
         if (endDate == null) {
             endDate = LocalDateTime.now();
@@ -361,8 +361,7 @@ public class FraudAlertService {
                 .orElseThrow(() -> new RuntimeException("Analyste non trouvé: " + request.getAnalystId()));
 
         // Verify analyst belongs to this manager's team
-        if ("MANAGER".equals(role)
-                && (analyst.getManager() == null || !analyst.getManager().getId().equals(currentUser.getId()))) {
+        if ("MANAGER".equals(role) && (analyst.getManager() == null || !analyst.getManager().getId().equals(currentUser.getId()))) {
             throw new IllegalStateException("Cet analyste n'appartient pas à votre équipe");
         }
 

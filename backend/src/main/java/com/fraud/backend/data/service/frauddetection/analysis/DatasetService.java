@@ -116,15 +116,25 @@ public class DatasetService {
 
     // ==================== PUBLIC CRUD ====================
 
-    public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, Boolean visibility, Long managerId, Pageable pageable) {
+    public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, List<DatasetType> types, Boolean visibility, Long managerId, Pageable pageable) {
         if (managerId != null) {
+            if (types != null && !types.isEmpty()) {
+                return datasetRepository.findByAssignedManagerIdAndTypeIn(managerId, types, pageable);
+            }
             if (type != null) {
-                if (visibility != null) {
-                    return datasetRepository.findByTypeAndAssignedManagerId(type, managerId, pageable);
-                }
                 return datasetRepository.findByTypeAndAssignedManagerId(type, managerId, pageable);
             }
             return datasetRepository.findByAssignedManagerId(managerId, pageable);
+        }
+
+        if (types != null && !types.isEmpty()) {
+            if (q != null && !q.isBlank()) {
+                return datasetRepository.findByDatasetNameOrCodeAndTypeIn(q.trim(), types, pageable);
+            }
+            if (visibility != null) {
+                return datasetRepository.findByVisibilityAndTypeIn(visibility, types, pageable);
+            }
+            return datasetRepository.findByTypeIn(types, pageable);
         }
 
         if (status != null && type != null) {

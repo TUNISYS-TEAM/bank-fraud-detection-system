@@ -43,6 +43,7 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
         self._encoders: dict[str, OneHotEncoder] = {}
         self._encoded_names: list[str] = []
         self.feature_names_in_: list[str] = []
+        self._passthrough_names_: list[str] = []
 
     def fit(self, X: pd.DataFrame, y=None) -> "SafeOneHotEncoder":
         cols = list(self.categorical_cols)
@@ -70,10 +71,15 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
                 [f"{col}__{cat}" for cat in enc.categories_[0]]
             )
 
+        self._passthrough_names_ = [
+            c for c in self.feature_names_in_ if c not in self._encoders
+        ]
+
         logger.info(
-            "SafeOneHotEncoder.fit — %d columns encoded → %d OHE features",
+            "SafeOneHotEncoder.fit — %d columns encoded → %d OHE features, %d passthrough",
             len(self._encoders),
             len(self._encoded_names),
+            len(self._passthrough_names_),
         )
         return self
 
@@ -81,8 +87,33 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
         check_is_fitted(self, "_encoders")
 
         X = X.copy()
-        non_cat = [c for c in X.columns if c not in self._encoders]
-        result = X[non_cat].copy()
+
+        passthrough_cols = [c for c in self._passthrough_names_ if c in X.columns]
+        missing_passthrough = [c for c in self._passthrough_names_ if c not in X.columns]
+
+        if missing_passthrough:
+            logger.warning(
+                "SafeOneHotEncoder.transform: %d passthrough columns missing: %s",
+                len(missing_passthrough),
+                missing_passthrough[:10],
+            )
+            for col in missing_passthrough:
+                X[col] = np.float32(0)
+
+        result = X[self._passthrough_names_].copy()
+
+        extra_cols = [
+            c for c in X.columns
+            if c not in self.feature_names_in_ and c not in self._encoders
+        ]
+        if extra_cols:
+            logger.warning(
+                "SafeOneHotEncoder.transform: %d new passthrough columns not seen in fit "
+                "(appended at end): %s",
+                len(extra_cols),
+                extra_cols[:10],
+            )
+            result = pd.concat([result, X[extra_cols].copy()], axis=1)
 
         for col, enc in self._encoders.items():
             feat_names = [f"{col}__{cat}" for cat in enc.categories_[0]]
@@ -122,5 +153,4 @@ class SafeOneHotEncoder(BaseEstimator, TransformerMixin):
 
     def get_feature_names_out(self, input_features=None) -> list[str]:
         check_is_fitted(self, "_encoders")
-        non_cat = [c for c in self.feature_names_in_ if c not in self._encoders]
-        return non_cat + self._encoded_names
+        return list(self._passthrough_names_) + list(self._encoded_names)

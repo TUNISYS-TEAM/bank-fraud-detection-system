@@ -1,8 +1,5 @@
 """
 Train an ECOD (Empirical Cumulative Distribution-based Outlier Detection) model.
-Unsupervised anomaly detection – with dynamic thresholding and cost-sensitive evaluation.
-Uses shared_ml components for preprocessing, splitting, and thresholding.
-Includes temporal features, feature selection, and optimal thresholding.
 """
 
 from __future__ import annotations
@@ -12,7 +9,7 @@ import json
 import logging
 import sys
 import time
-import re
+import warnings
 from pathlib import Path
 from datetime import datetime
 
@@ -51,44 +48,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+warnings.filterwarnings(
+    "ignore",
+    message="Precision loss occurred in moment calculation due to catastrophic cancellation.*",
+    category=RuntimeWarning,
+)
 
-# ------------------------------------------------------------------------------
-# Helper for ID columns (not yet in shared_ml)
-# ------------------------------------------------------------------------------
-def extract_numeric_from_id(value):
-    if pd.isna(value):
-        return 0
-    try:
-        if isinstance(value, (int, float)):
-            return float(value)
-        s = str(value)
-        if '-' in s:
-            parts = s.split('-')
-            if len(parts) > 1 and parts[1].replace('.', '', 1).isdigit():
-                return float(parts[1])
-        numbers = re.findall(r'\d+', s)
-        if numbers:
-            return float(numbers[0])
-        return 0
-    except Exception:
-        return 0
+EXCLUDED_FEATURE_NAMES = {
+    "Account_Id",
+    "Device_Id",
+    "transaction_id",
+    "client_id",
+    "device_id",
+    "account_id",
+}
 
 
-def process_id_columns(df):
-    """Extract numeric IDs – safe per-split operation."""
-    df_processed = df.copy()
-    id_columns = ['Account_Id', 'Device_Id']
-    for col in id_columns:
-        if col in df_processed.columns:
-            df_processed[col] = df_processed[col].apply(extract_numeric_from_id).astype(np.float32)
-    return df_processed
-
-
-# ------------------------------------------------------------------------------
-# JSON serialization helper
-# ------------------------------------------------------------------------------
 def make_json_safe(obj):
-    """Convert numpy/pandas numeric types to Python native types."""
     if isinstance(obj, (np.integer, np.int64, np.int32)):
         return int(obj)
     elif isinstance(obj, (np.floating, np.float64, np.float32)):
@@ -103,9 +79,6 @@ def make_json_safe(obj):
         return obj
 
 
-# ------------------------------------------------------------------------------
-# Hyperparameter loader
-# ------------------------------------------------------------------------------
 def load_hyperparameters(hyperparam_arg: str) -> dict:
     try:
         return json.loads(hyperparam_arg)
@@ -117,9 +90,81 @@ def load_hyperparameters(hyperparam_arg: str) -> dict:
             raise ValueError(f"Could not load hyperparameters from '{hyperparam_arg}': {e}")
 
 
-# ------------------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------------------
+def precision_at_k(y_true: np.ndarray, scores: np.ndarray, k: int) -> float:
+    y_true = np.asarray(y_true)
+    scores = np.asarray(scores)
+    n = len(y_true)
+    if n == 0:
+        return 0.0
+    k = max(1, min(int(k), n))
+    top_idx = np.argsort(scores)[::-1][:k]
+    return float(np.mean(y_true[top_idx]))
+
+
+def recall_at_k(y_true: np.ndarray, scores: np.ndarray, k: int) -> float:
+    y_true = np.asarray(y_true)
+    scores = np.asarray(scores)
+    positives = int(np.sum(y_true))
+    if positives == 0:
+        return 0.0
+    n = len(y_true)
+    if n == 0:
+        return 0.0
+    k = max(1, min(int(k), n))
+    top_idx = np.argsort(scores)[::-1][:k]
+    hits = int(np.sum(y_true[top_idx]))
+    return float(hits / positives)
+
+
+def top_n_detection(y_true: np.ndarray, scores: np.ndarray, n: int) -> dict:
+    y_true = np.asarray(y_true)
+    scores = np.asarray(scores)
+    total = len(y_true)
+    if total == 0:
+        return {"n": 0, "hits": 0, "precision": 0.0, "recall": 0.0}
+
+    n = max(1, min(int(n), total))
+    top_idx = np.argsort(scores)[::-1][:n]
+    hits = int(np.sum(y_true[top_idx]))
+    positives = int(np.sum(y_true))
+
+    return {
+        "n": n,
+        "hits": hits,
+        "precision": float(hits / n),
+        "recall": float(hits / positives) if positives > 0 else 0.0,
+    }
+
+
+def compute_fast_feature_importance(model, X_val_proc: np.ndarray, feature_names: list[str] | None) -> dict:
+    from scipy.stats import spearmanr
+
+    X = np.asarray(X_val_proc, dtype=np.float32)
+    if X.ndim != 2 or X.shape[0] < 5 or X.shape[1] == 0:
+        return {}
+
+    scores = np.asarray(model.predict_proba(X)).reshape(-1)
+
+    importances = {}
+    for j in range(X.shape[1]):
+        col = X[:, j]
+        if np.unique(col).size < 2 or np.unique(scores).size < 2:
+            corr = 0.0
+        else:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                corr_val, _ = spearmanr(col, scores)
+                corr = abs(float(corr_val)) if not np.isnan(corr_val) else 0.0
+
+        fname = str(feature_names[j]) if feature_names is not None and j < len(feature_names) else f"feature_{j}"
+        importances[fname] = corr
+
+    total = float(sum(importances.values()))
+    if total > 0:
+        importances = {k: float(v / total) for k, v in importances.items()}
+    return importances
+
+
 def main():
     parser = argparse.ArgumentParser(description='Train ECOD for bank fraud detection')
     parser.add_argument('--dataset-path', required=True)
@@ -144,7 +189,6 @@ def main():
 
         model_name = hp.get('model_name', 'ECOD')
         selected_original_features = hp.get('selected_original_features', [])
-        all_features = hp.get('all_features', [])
 
         if not selected_original_features:
             raise ValueError("No original features selected for training")
@@ -153,7 +197,6 @@ def main():
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset not found: {dataset_path}")
 
-        # Load data
         if dataset_path.suffix.lower() == '.parquet':
             df = pd.read_parquet(dataset_path)
         else:
@@ -163,6 +206,9 @@ def main():
             logger.warning("Duplicate column names detected. Keeping first occurrence.")
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
+        if 'fraud' not in df.columns:
+            raise ValueError("Target column 'fraud' not found in dataset")
+
         if 'TX_Time' in df.columns:
             df['TX_Time'] = pd.to_datetime(df['TX_Time'], errors='coerce')
             before = len(df)
@@ -170,10 +216,12 @@ def main():
             if len(df) < before:
                 logger.warning("Dropped %d rows with invalid TX_Time", before - len(df))
 
-        # Keep only available features
-        available_features = [f for f in selected_original_features if f in df.columns]
+        available_features = [
+            f for f in selected_original_features
+            if f in df.columns and f not in EXCLUDED_FEATURE_NAMES
+        ]
         if not available_features:
-            raise ValueError("None of the selected features are available in the dataset")
+            raise ValueError("None of the selected features are available in the dataset after excluding IDs")
 
         feature_cols_for_split = available_features.copy()
         if 'TX_Time' not in feature_cols_for_split and 'TX_Time' in df.columns:
@@ -184,62 +232,46 @@ def main():
         df_processed = X.copy()
         df_processed['fraud'] = y
 
-        # Identify categorical columns (non-numeric, non-datetime)
-        excluded_cols = ['TX_Time', 'fraud', 'Account_Id', 'Device_Id']
+        excluded_cols = ['TX_Time', 'fraud']
         categorical_cols = df_processed.select_dtypes(exclude=[np.number, 'datetime64[ns]']).columns.tolist()
         categorical_cols = [c for c in categorical_cols if c not in excluded_cols]
         logger.info("Identified categorical columns: %s", categorical_cols)
+        logger.info("Selected original features used for ECOD: %s", available_features)
 
-        # ========== STEP 1: TEMPORAL SPLIT ==========
         if 'TX_Time' not in df_processed.columns:
             raise ValueError("TX_Time column missing")
+
         df_train, df_val, df_test = temporal_split(
             df_processed, time_col='TX_Time', train_ratio=0.7, val_ratio=0.15
         )
 
-        # ========== STEP 2: PER‑SPLIT PREPROCESSING ==========
         logger.info("Applying per-split preprocessing...")
 
-        # ID columns
-        df_train = process_id_columns(df_train)
-        df_val = process_id_columns(df_val)
-        df_test = process_id_columns(df_test)
-
-        # Customer postal codes
         customer_region_categories = process_customer_postal_fit(df_train)
         df_train = process_customer_postal_transform(df_train, customer_region_categories)
         df_val = process_customer_postal_transform(df_val, customer_region_categories)
         df_test = process_customer_postal_transform(df_test, customer_region_categories)
 
-        # Merchant postal codes (if present)
         if 'Merchant_Postal_Code' in df_processed.columns:
             merchant_region_categories = process_merchant_postal_fit(df_train)
             df_train = process_merchant_postal_transform(df_train, merchant_region_categories)
             df_val = process_merchant_postal_transform(df_val, merchant_region_categories)
             df_test = process_merchant_postal_transform(df_test, merchant_region_categories)
 
-        # Separate features and target (keep TX_Time for temporal transformer)
-        X_train = df_train.drop('fraud', axis=1)   # garde TX_Time
+        X_train = df_train.drop('fraud', axis=1)
         X_val = df_val.drop('fraud', axis=1)
         X_test = df_test.drop('fraud', axis=1)
         y_train = df_train['fraud'].values
         y_val = df_val['fraud'].values
         y_test = df_test['fraud'].values
 
-        # Ensure numeric (just in case)
-        for X_set in [X_train, X_val, X_test]:
-            for col in X_set.columns:
-                if X_set[col].dtype == 'object':
-                    X_set[col] = pd.to_numeric(X_set[col], errors='coerce').fillna(0)
-
         logger.info("Train: %d rows (fraud rate %.4f)", len(X_train), y_train.mean())
         logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
         logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
 
-        # ========== STEP 3: PREPROCESSING PIPELINE (temporal + one-hot + selector + scaling) ==========
         preprocessor = Pipeline([
-            ('temporal', TemporalFeatureTransformer()),
             ('onehot', SafeOneHotEncoder(categorical_cols=categorical_cols, include_raw_cats=True)),
+            ('temporal', TemporalFeatureTransformer()),
             ('selector', TreeFeatureSelector()),
             ('scaler', SafeScaler(scaler_type='robust'))
         ])
@@ -248,14 +280,40 @@ def main():
         X_val_proc = preprocessor.transform(X_val)
         X_test_proc = preprocessor.transform(X_test)
 
-        # Drop TX_Time if still present (not needed for ECOD)
-        if 'TX_Time' in X_train_proc.columns:
+        preprocessor._customer_region_categories_ = list(customer_region_categories)
+        if 'Merchant_Postal_Code' in df_processed.columns:
+            preprocessor._merchant_region_categories_ = list(merchant_region_categories)
+
+        if hasattr(X_train_proc, 'columns') and 'TX_Time' in X_train_proc.columns:
             X_train_proc = X_train_proc.drop('TX_Time', axis=1)
             X_val_proc = X_val_proc.drop('TX_Time', axis=1)
             X_test_proc = X_test_proc.drop('TX_Time', axis=1)
 
-        # ========== STEP 4: ECOD MODEL ==========
-        contamination = hp.get('contamination', 0.05)
+        feature_names = None
+        try:
+            selector = preprocessor.named_steps.get('selector')
+            if selector is not None and hasattr(selector, 'get_feature_names_out'):
+                feature_names = list(selector.get_feature_names_out())
+                logger.info("Selected transformed feature count: %d", len(feature_names))
+        except Exception as e:
+            logger.warning("Could not extract selected feature names from selector: %s", e)
+
+        if hasattr(X_train_proc, 'toarray'):
+            X_train_proc = X_train_proc.toarray().astype(np.float32)
+            X_val_proc = X_val_proc.toarray().astype(np.float32)
+            X_test_proc = X_test_proc.toarray().astype(np.float32)
+
+        X_train_proc = np.asarray(X_train_proc, dtype=np.float32)
+        X_val_proc = np.asarray(X_val_proc, dtype=np.float32)
+        X_test_proc = np.asarray(X_test_proc, dtype=np.float32)
+
+        logger.info(
+            "Data processed: Train=%s, Val=%s, Test=%s (%d features)",
+            X_train_proc.shape, X_val_proc.shape, X_test_proc.shape, X_train_proc.shape[1]
+        )
+
+        default_contamination = max(0.001, min(0.02, float(y_train.mean())))
+        contamination = float(hp.get('contamination', default_contamination))
         threshold_metric = hp.get('threshold_metric', 'fbeta')
         beta = hp.get('beta', 2.0)
 
@@ -265,100 +323,152 @@ def main():
             beta=beta
         )
 
-        logger.info("Fitting ECOD...")
+        logger.info("Fitting ECOD anomaly scorer...")
         train_start = time.time()
-        model.fit(X_train_proc, y_train, X_val_proc, y_val)
+        model.fit(X_train_proc)
         train_time = time.time() - train_start
-
         final_model = model
 
-        # ========== STEP 5: THRESHOLD CALCULATIONS ==========
-        y_val_proba_raw = final_model.predict_proba(X_val_proc)
-        # Handle case where predict_proba returns a 1D array (probability of positive class)
-        if y_val_proba_raw.ndim == 1:
-            y_val_proba = y_val_proba_raw
-        else:
-            y_val_proba = y_val_proba_raw[:, 1]
+        feature_importance = compute_fast_feature_importance(
+            model=final_model,
+            X_val_proc=X_val_proc,
+            feature_names=feature_names,
+        )
+        logger.info("Computed fast correlation-based feature importance for %d features", len(feature_importance))
 
-        # PR-based (max F1)
-        precision_vals, recall_vals, thresholds_pr = precision_recall_curve(y_val, y_val_proba)
+        logger.info("Computing VAL scores...")
+        val_score_start = time.time()
+        y_val_raw, y_val_score_norm = final_model.predict_score_and_proba(X_val_proc)
+        logger.info("VAL scoring took %.1fs", time.time() - val_score_start)
+
+        logger.info(
+            "VAL RAW SCORE stats: min=%.6f max=%.6f mean=%.6f p95=%.6f",
+            float(np.min(y_val_raw)),
+            float(np.max(y_val_raw)),
+            float(np.mean(y_val_raw)),
+            float(np.percentile(y_val_raw, 95)),
+        )
+        logger.info(
+            "VAL NORM SCORE stats: min=%.6f max=%.6f mean=%.6f p95=%.6f",
+            float(np.min(y_val_score_norm)),
+            float(np.max(y_val_score_norm)),
+            float(np.mean(y_val_score_norm)),
+            float(np.percentile(y_val_score_norm, 95)),
+        )
+
+        precision_vals, recall_vals, thresholds_pr = precision_recall_curve(y_val, y_val_score_norm)
         f1_scores = 2 * precision_vals[:-1] * recall_vals[:-1] / (precision_vals[:-1] + recall_vals[:-1] + 1e-9)
-        best_idx = np.argmax(f1_scores)
-        pr_threshold = thresholds_pr[best_idx]
-        best_f1 = f1_scores[best_idx]
-        logger.info("PR‑based threshold (max F1): %.4f (F1=%.4f)", pr_threshold, best_f1)
 
-        # F-beta (β=2.0)
-        fbeta_threshold, fbeta_score_val = find_threshold_by_fbeta(y_val, y_val_proba, beta=2.0)
-        logger.info("F-beta (β=2.0): threshold=%.4f, score=%.4f", fbeta_threshold, fbeta_score_val)
+        if len(thresholds_pr) == 0:
+            pr_threshold = 0.5
+            best_f1 = 0.0
+        else:
+            best_idx = int(np.argmax(f1_scores))
+            pr_threshold = float(thresholds_pr[best_idx])
+            best_f1 = float(f1_scores[best_idx])
 
-        # Cost-based
-        cost_threshold, min_cost = find_threshold_by_cost(y_val, y_val_proba, cost_fp=1.0, cost_fn=10.0)
-        logger.info("Cost-based: threshold=%.4f, min_cost=%.0f", cost_threshold, min_cost)
+        logger.info("PR-based normalized-score threshold (max F1): %.4f (F1=%.4f)", pr_threshold, best_f1)
 
-        # User threshold from UI (if provided, otherwise use F-beta)
+        fbeta_threshold, fbeta_score_val = find_threshold_by_fbeta(y_val, y_val_score_norm, beta=beta)
+        logger.info("F-beta normalized-score threshold (β=%.1f): %.4f (score=%.4f)", beta, fbeta_threshold, fbeta_score_val)
+
+        cost_threshold, min_cost = find_threshold_by_cost(
+            y_val,
+            y_val_score_norm,
+            cost_fp=1.0,
+            cost_fn=10.0
+        )
+        logger.info("Cost-based normalized-score threshold: %.4f (min_cost=%.0f)", cost_threshold, min_cost)
+
         user_threshold = hp.get('detection_threshold')
         if user_threshold is not None:
             final_threshold = float(user_threshold)
-            logger.info("Using user‑supplied threshold from UI: %.4f", final_threshold)
-            max_prob = y_val_proba.max()
-            if final_threshold > max_prob:
-                logger.warning(
-                    "User threshold %.4f > max validation probability %.4f → will detect nothing.",
-                    final_threshold, max_prob
-                )
+            logger.info("Using UI normalized-score threshold: %.4f", final_threshold)
         else:
-            final_threshold = fbeta_threshold
-            logger.info("No UI threshold, using F-beta threshold: %.4f", final_threshold)
+            if threshold_metric == 'cost':
+                final_threshold = float(cost_threshold)
+                logger.info("No UI threshold, using cost-based normalized-score threshold: %.4f", final_threshold)
+            elif threshold_metric == 'pr':
+                final_threshold = float(pr_threshold)
+                logger.info("No UI threshold, using PR-based normalized-score threshold: %.4f", final_threshold)
+            else:
+                final_threshold = float(fbeta_threshold)
+                logger.info("No UI threshold, using F-beta normalized-score threshold: %.4f", final_threshold)
 
-        # ========== STEP 6: TEST EVALUATION ==========
-        y_test_proba_raw = final_model.predict_proba(X_test_proc)
-        if y_test_proba_raw.ndim == 1:
-            y_test_proba = y_test_proba_raw
-        else:
-            y_test_proba = y_test_proba_raw[:, 1]
+        final_model.threshold_ = float(final_threshold)
 
-        y_test_pred = (y_test_proba >= final_threshold).astype(int)
+        test_score_start = time.time()
+        y_test_raw, y_test_score_norm = final_model.predict_score_and_proba(X_test_proc)
+        y_test_pred = (y_test_score_norm >= final_threshold).astype(int)
+        logger.info("TEST scoring took %.1fs", time.time() - test_score_start)
 
         accuracy = accuracy_score(y_test, y_test_pred)
         precision = precision_score(y_test, y_test_pred, zero_division=0)
         recall = recall_score(y_test, y_test_pred, zero_division=0)
         f1 = f1_score(y_test, y_test_pred, zero_division=0)
-        auc_roc = roc_auc_score(y_test, y_test_proba)
-        pr_auc = average_precision_score(y_test, y_test_proba)
+        auc_roc = roc_auc_score(y_test, y_test_score_norm)
+        pr_auc = average_precision_score(y_test, y_test_score_norm)
         cm = confusion_matrix(y_test, y_test_pred)
 
-        logger.info("Test metrics with threshold %.4f:", final_threshold)
-        logger.info("  Accuracy:  %.4f", accuracy)
-        logger.info("  Precision: %.4f", precision)
-        logger.info("  Recall:    %.4f", recall)
-        logger.info("  F1:        %.4f", f1)
-        logger.info("  AUC-ROC:   %.4f", auc_roc)
-        logger.info("  PR-AUC:    %.4f", pr_auc)
+        k1 = max(1, int(round(len(y_test) * 0.01)))
+        k5 = max(1, int(round(len(y_test) * 0.05)))
+        k10 = max(1, int(round(len(y_test) * 0.10)))
+        positives = int(np.sum(y_test))
+        top_n = max(1, positives)
 
-        # ========== STEP 7: SAVE ARTIFACTS ==========
+        p_at_1pct = precision_at_k(y_test, y_test_score_norm, k1)
+        r_at_1pct = recall_at_k(y_test, y_test_score_norm, k1)
+        p_at_5pct = precision_at_k(y_test, y_test_score_norm, k5)
+        r_at_5pct = recall_at_k(y_test, y_test_score_norm, k5)
+        p_at_10pct = precision_at_k(y_test, y_test_score_norm, k10)
+        r_at_10pct = recall_at_k(y_test, y_test_score_norm, k10)
+        top_n_stats = top_n_detection(y_test, y_test_score_norm, top_n)
+
+        logger.info("Test metrics with normalized-score threshold %.4f:", final_threshold)
+        logger.info("  Accuracy:      %.4f", accuracy)
+        logger.info("  Precision:     %.4f", precision)
+        logger.info("  Recall:        %.4f", recall)
+        logger.info("  F1:            %.4f", f1)
+        logger.info("  AUC-ROC:       %.4f", auc_roc)
+        logger.info("  PR-AUC:        %.4f", pr_auc)
+
         timestamp = args.timestamp
         output_models_dir = Path("/tmp/fraud-work/output/models")
         output_pipelines_dir = Path("/tmp/fraud-work/output/pipelines")
         output_models_dir.mkdir(parents=True, exist_ok=True)
         output_pipelines_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save preprocessor
         pipeline_path = output_pipelines_dir / f"pipeline_{timestamp}.joblib"
         joblib.dump(preprocessor, pipeline_path)
         logger.info("Preprocessor saved to %s", pipeline_path)
 
-        # Save model
+        ecod_inner = final_model._model
+        if hasattr(ecod_inner, 'decision_scores_'):
+            del ecod_inner.decision_scores_
+        if hasattr(ecod_inner, 'labels_'):
+            del ecod_inner.labels_
+        if hasattr(ecod_inner, 'X_train_') and ecod_inner.X_train_ is not None:
+            original_size = ecod_inner.X_train_.nbytes
+            ecod_inner.X_train_ = ecod_inner.X_train_.astype(np.float32)
+            logger.info(
+                "X_train_ converted float64->float32: %d MB -> %d MB",
+                original_size // (1024 * 1024),
+                ecod_inner.X_train_.nbytes // (1024 * 1024),
+            )
+        for attr in ('O_', 'U_'):
+            if hasattr(ecod_inner, attr):
+                arr = getattr(ecod_inner, attr)
+                if arr is not None and hasattr(arr, 'astype'):
+                    setattr(ecod_inner, attr, np.asarray(arr).astype(np.float32))
+
         base_filename = f"trained_model_{timestamp}"
         model_path = output_models_dir / f"{base_filename}.joblib"
         temp_model_path = output_models_dir / f"{base_filename}.tmp"
+
         try:
-            joblib.dump(final_model, temp_model_path)
+            joblib.dump(final_model, temp_model_path, compress=('gzip', 3))
             temp_model_path.rename(model_path)
             logger.info("Model saved to %s (%d bytes)", model_path, model_path.stat().st_size)
-        except Exception as e:
-            logger.error("Failed to save model: %s", e)
-            raise
         finally:
             if temp_model_path.exists():
                 temp_model_path.unlink()
@@ -366,7 +476,6 @@ def main():
         ended_at = datetime.now()
         total_duration = time.time() - overall_start
 
-        # Build result
         result_raw = {
             'status': 'COMPLETED',
             'job_id': args.job_id,
@@ -374,7 +483,14 @@ def main():
             'model_name': model_name,
             'model_path': str(model_path),
             'pipeline_path': str(pipeline_path),
-            'selected_original_features': selected_original_features,
+            'selected_original_features': available_features,
+            'training_mode': {
+                'scoring': 'unsupervised_ecod',
+                'threshold_selection': 'supervised_on_validation_normalized_score_scale',
+                'uses_labels_for_scoring': False,
+                'uses_labels_for_threshold': True,
+                'ui_threshold_used_directly': user_threshold is not None,
+            },
             'hyperparameters_used': {
                 'contamination': contamination,
                 'threshold_metric': threshold_metric,
@@ -387,7 +503,18 @@ def main():
                 'f1_score': float(f1),
                 'auc_roc': float(auc_roc),
                 'pr_auc': float(pr_auc),
-                'avg_fraud_score': float(y_test_proba.mean()),
+                'avg_anomaly_score': float(y_test_score_norm.mean()),
+                'avg_raw_anomaly_score': float(y_test_raw.mean()),
+            },
+            'feature_importance': feature_importance,
+            'ranking_metrics': {
+                'precision_at_1pct': float(p_at_1pct),
+                'recall_at_1pct': float(r_at_1pct),
+                'precision_at_5pct': float(p_at_5pct),
+                'recall_at_5pct': float(r_at_5pct),
+                'precision_at_10pct': float(p_at_10pct),
+                'recall_at_10pct': float(r_at_10pct),
+                'top_n_detection': top_n_stats,
             },
             'confusion_matrix': {
                 'true_negatives': int(cm[0, 0]),
@@ -403,6 +530,7 @@ def main():
                 'cost': float(cost_threshold),
                 'min_cost': float(min_cost),
                 'final': float(final_threshold),
+                'val_raw_p95_debug': float(np.percentile(y_val_raw, 95)),
             },
             'training_stats': {
                 'train_rows': int(len(X_train)),
@@ -410,6 +538,8 @@ def main():
                 'test_rows': int(len(X_test)),
                 'fraud_rate_test': float(y_test.mean()),
                 'train_time_seconds': float(train_time),
+                'input_dim': int(X_train_proc.shape[1]),
+                'test_positive_count': int(positives),
             },
             'start_time': started_at.isoformat(),
             'end_time': ended_at.isoformat(),

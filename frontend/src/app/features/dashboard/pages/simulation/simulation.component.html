@@ -527,14 +527,12 @@
                       <p class="text-sm font-bold text-slate-700">{{ model.modelType }}</p>
                     </div>
                     <div>
-                      <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Seuil de
-                        Decision</label>
-                      <p class="text-sm font-bold text-slate-700">0.5 (Par Défaut)</p>
+                      <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Seuil de Decision</label>
+                      <p class="text-sm font-bold text-slate-700">{{ model.threshold ? (model.threshold | number:'1.2-2') : '0.5 (Par Défaut)' }}</p>
                     </div>
                     <div>
-                      <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Dernière
-                        Validation</label>
-                      <p class="text-sm font-bold text-slate-700">09 Avril 2026</p>
+                      <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Dernière Validation</label>
+                      <p class="text-sm font-bold text-slate-700">{{ model.createdAt | date:'dd MMMM yyyy' }}</p>
                     </div>
                   </div>
                   <div class="space-y-4">

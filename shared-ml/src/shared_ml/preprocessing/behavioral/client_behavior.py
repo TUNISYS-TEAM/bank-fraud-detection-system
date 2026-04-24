@@ -49,27 +49,23 @@ def _empty_state(max_time_diffs: int = _TIME_DIFFS_CAP) -> dict:
         "cumsum": 0.0,
         "max_amount": 0.0,
         "min_amount": np.inf,
-        "last_time_ns": None,          # nanosecondes (int)
-        "first_time_ns": None,          # nanosecondes (int)
-        "gap_deque": deque(maxlen=max_time_diffs),   # stocke les gaps récents en secondes
-        "gap_sum": 0.0,                  # somme des gaps dans la deque
-        "gap_sum_sq": 0.0,                # somme des carrés des gaps
+        "last_time_ns": None,
+        "first_time_ns": None,
+        "gap_deque": deque(maxlen=max_time_diffs),
+        "gap_sum": 0.0,
+        "gap_sum_sq": 0.0,
         "region_counter": Counter(),
         "channel_counter": Counter(),
         "category_counter": Counter(),
     }
 
 
-# ---------------------------------------------------------------------------
-# Vectorized per-account feature computation (optimisée)
-# ---------------------------------------------------------------------------
-
 def _compute_account_features_vectorized(
-    amounts: np.ndarray,       # float64, shape (N,)
-    times_ns: np.ndarray,      # int64 nanoseconds, shape (N,)
-    regions: np.ndarray,       # object, shape (N,)
-    channels: np.ndarray,      # object, shape (N,)
-    categories: np.ndarray,    # object, shape (N,)
+    amounts: np.ndarray,
+    times_ns: np.ndarray,
+    regions: np.ndarray,
+    channels: np.ndarray,
+    categories: np.ndarray,
     init_state: dict,
     smoothing_days: float,
     default_gap_sec: float,
@@ -82,7 +78,6 @@ def _compute_account_features_vectorized(
     """
     N = len(amounts)
 
-    # ---- Output arrays ----
     out_avg            = np.zeros(N, dtype=np.float32)
     out_avg_per_day    = np.zeros(N, dtype=np.float32)
     out_dev            = np.zeros(N, dtype=np.float32)
@@ -92,8 +87,9 @@ def _compute_account_features_vectorized(
     out_is_new_max     = np.zeros(N, dtype=np.int8)
     out_is_new_min     = np.zeros(N, dtype=np.int8)
     out_cnt            = np.zeros(N, dtype=np.int32)
-    out_raw_gap        = np.zeros(N, dtype=np.float32)
-    out_norm_gap       = np.zeros(N, dtype=np.float32)
+    out_raw_gap_sec    = np.zeros(N, dtype=np.float32)
+    out_gap_hours      = np.zeros(N, dtype=np.float32)
+    out_gap_z_score    = np.zeros(N, dtype=np.float32)
     out_total_days     = np.zeros(N, dtype=np.float32)
     out_usual_reg      = np.empty(N, dtype=object)
     out_is_unu_reg     = np.zeros(N, dtype=np.int8)
@@ -106,7 +102,6 @@ def _compute_account_features_vectorized(
     out_cat_freq       = np.zeros(N, dtype=np.float32)
     out_risk           = np.zeros(N, dtype=np.float32)
 
-    # ---- Seed from initial state ----
     cnt      = init_state["cumcount"]
     cumsum   = init_state["cumsum"]
     wf_n     = init_state["wf_count"]
@@ -114,15 +109,13 @@ def _compute_account_features_vectorized(
     wf_M2    = init_state["wf_M2"]
     cur_max  = init_state["max_amount"]
     cur_min  = init_state["min_amount"]
-    last_ns  = init_state["last_time_ns"]   # déjà en ns ou None
-    first_ns = init_state["first_time_ns"]   # déjà en ns ou None
+    last_ns  = init_state["last_time_ns"]
+    first_ns = init_state["first_time_ns"]
 
-    # Récupération de la deque et des sommes pour les gaps
-    gap_deque   = init_state["gap_deque"]         # deque de float (secondes)
+    gap_deque   = init_state["gap_deque"]
     gap_sum     = init_state["gap_sum"]
     gap_sum_sq  = init_state["gap_sum_sq"]
 
-    # Compteurs pour les modes
     reg_ctr  = init_state["region_counter"]
     ch_ctr   = init_state["channel_counter"]
     cat_ctr  = init_state["category_counter"]
@@ -137,43 +130,46 @@ def _compute_account_features_vectorized(
         ch  = channels[i]
         cat = categories[i]
 
-        # ---- As-of stats (avant mise à jour de l'état) ----
         avg = cumsum / cnt if cnt > 0 else 0.0
 
-        dev     = (a - avg) / (avg + 1e-6) if cnt > 0 else 0.0
-        abs_dev = abs(dev)
-        mx_ratio = a / (cur_max + 1e-6) if cur_max > 0 else 1.0
+        dev        = (a - avg) / (avg + 1e-6) if cnt > 0 else 0.0
+        dev        = float(np.clip(dev, -50, 50))
+        abs_dev    = abs(dev)
+        abs_dev    = min(abs_dev, 50.0)
+        mx_ratio   = a / (cur_max + 1e-6) if cur_max > 0 else 1.0
+        mx_ratio   = float(np.clip(mx_ratio, 0, 100))
         is_new_max = int(cnt > 0 and a > cur_max)
-        mn = cur_min if cur_min != np.inf else a
+        mn         = cur_min if cur_min != np.inf else a
         is_new_min = int(cnt > 0 and a < mn)
 
-        # Welford z-score
         wf_std = float(np.sqrt(wf_M2 / wf_n)) if wf_n >= 2 else 0.0
         z = (a - wf_mean) / (wf_std + 1e-6) if wf_n > 0 else 0.0
+        z = float(np.clip(z, -10, 10))
 
-        # ---- Time gap (calcul optimisé avec deque) ----
         if last_ns is not None:
-            raw_gap = (t - last_ns) * NS_TO_SEC
+            raw_gap_sec = (t - last_ns) * NS_TO_SEC
+            raw_gap_sec = min(raw_gap_sec, 7_776_000.0)  # cap at 90 days
+            gap_hours = raw_gap_sec / 3600.0
+            gap_hours = min(gap_hours, 2160.0)  # cap at 90 days
+
             if gap_deque:
                 n = len(gap_deque)
                 mean_gap = gap_sum / n
-                # variance (population)
                 var_gap = (gap_sum_sq / n) - (mean_gap * mean_gap)
                 std_gap = np.sqrt(var_gap) if var_gap > 0 else mean_gap
-                norm_gap = (raw_gap - mean_gap) / (std_gap + 1e-6)
-                norm_gap = float(np.clip(norm_gap, -3, 3))
+                gap_z = (raw_gap_sec - mean_gap) / (std_gap + 1e-6)
+                gap_z = float(np.clip(gap_z, -3, 3))
             else:
-                norm_gap = 0.0
+                gap_z = 0.0
         else:
-            raw_gap  = default_gap_sec
-            norm_gap = 0.0
+            raw_gap_sec = min(default_gap_sec, 7_776_000.0)
+            gap_hours = raw_gap_sec / 3600.0
+            gap_z = 0.0
 
-        hours_raw   = raw_gap / 3600.0
         total_days  = (t - first_ns) * NS_TO_DAY if first_ns is not None else 0.0
+        total_days  = min(total_days, 3650.0)  # cap at ~10 years
         avg_per_day = cnt / (total_days + smoothing_days)
 
-        # ---- Modes / fréquences (inline) ----
-        # Région
         if reg_ctr:
             mode_reg, count_reg = reg_ctr.most_common(1)[0]
             total_reg = sum(reg_ctr.values())
@@ -184,7 +180,6 @@ def _compute_account_features_vectorized(
             reg_freq = 0.0
         is_unu_reg = int(cnt > 0 and reg != usual_reg)
 
-        # Canal
         if ch_ctr:
             mode_ch, count_ch = ch_ctr.most_common(1)[0]
             total_ch = sum(ch_ctr.values())
@@ -195,7 +190,6 @@ def _compute_account_features_vectorized(
             ch_freq = 0.0
         is_unu_ch = int(cnt > 0 and ch != usual_ch)
 
-        # Catégorie
         if cat_ctr:
             mode_cat, count_cat = cat_ctr.most_common(1)[0]
             total_cat = sum(cat_ctr.values())
@@ -206,7 +200,6 @@ def _compute_account_features_vectorized(
             cat_freq = 0.0
         is_unu_cat = int(cnt > 0 and cat != usual_cat)
 
-        # Risque
         risk = (
             abs_dev * 3.0
             + (5.0 if mx_ratio > 2 else 0.0)
@@ -218,12 +211,12 @@ def _compute_account_features_vectorized(
             + (2.0 if reg_freq < 0.3 else 0.0)
             + (2.0 if ch_freq < 0.3 else 0.0)
             + (2.0 if cat_freq < 0.3 else 0.0)
-            + (3.0 if hours_raw < 1 else 0.0)
-            + (1.0 if hours_raw < 24 else 0.0)
+            + (3.0 if gap_hours < 1 else 0.0)
+            + (1.0 if gap_hours < 24 else 0.0)
             + (5.0 if cnt == 0 else 0.0)
         )
+        risk = float(np.clip(risk, 0, 50))
 
-        # ---- Écriture des résultats ----
         out_avg[i]         = avg
         out_avg_per_day[i] = avg_per_day
         out_dev[i]         = dev
@@ -233,8 +226,9 @@ def _compute_account_features_vectorized(
         out_is_new_max[i]  = is_new_max
         out_is_new_min[i]  = is_new_min
         out_cnt[i]         = cnt
-        out_raw_gap[i]     = raw_gap
-        out_norm_gap[i]    = norm_gap
+        out_raw_gap_sec[i] = raw_gap_sec
+        out_gap_hours[i]   = gap_hours
+        out_gap_z_score[i] = gap_z
         out_total_days[i]  = total_days
         out_usual_reg[i]   = usual_reg
         out_is_unu_reg[i]  = is_unu_reg
@@ -247,70 +241,63 @@ def _compute_account_features_vectorized(
         out_cat_freq[i]    = cat_freq
         out_risk[i]        = risk
 
-        # ---- Mise à jour de l'état (après la transaction) ----
         if last_ns is not None:
-            # Ajout du gap dans la deque et mise à jour des sommes
             if len(gap_deque) == gap_deque.maxlen:
                 oldest = gap_deque[0]
                 gap_sum -= oldest
                 gap_sum_sq -= oldest * oldest
-            gap_deque.append(raw_gap)
-            gap_sum += raw_gap
-            gap_sum_sq += raw_gap * raw_gap
+            gap_deque.append(raw_gap_sec)
+            gap_sum += raw_gap_sec
+            gap_sum_sq += raw_gap_sec * raw_gap_sec
 
-        # Welford update
-        wf_n   += 1
-        delta   = a - wf_mean
+        wf_n += 1
+        delta = a - wf_mean
         wf_mean += delta / wf_n
-        wf_M2  += delta * (a - wf_mean)
+        wf_M2 += delta * (a - wf_mean)
 
-        cnt     += 1
-        cumsum  += a
-        cur_max  = max(cur_max, a)
+        cnt += 1
+        cumsum += a
+        cur_max = max(cur_max, a)
         if a < cur_min:
             cur_min = a
-        last_ns  = t
+        last_ns = t
         if first_ns is None:
             first_ns = t
 
-        # Mise à jour des compteurs de catégories
         reg_ctr[reg] += 1
-        ch_ctr[ch]   += 1
+        ch_ctr[ch] += 1
         cat_ctr[cat] += 1
 
     return {
-        "client_AVG_TX_Amount":      out_avg,
-        "client_AVG_TX_PerDay":      out_avg_per_day,
-        "client_amount_deviation":   out_dev,
+        "client_AVG_TX_Amount": out_avg,
+        "client_AVG_TX_PerDay": out_avg_per_day,
+        "client_amount_deviation": out_dev,
         "client_abs_amount_deviation": out_abs_dev,
-        "client_amount_max_ratio":   out_max_ratio,
-        "client_amount_z_score":     out_z_score,
-        "client_is_new_max":         out_is_new_max,
-        "client_is_new_min":         out_is_new_min,
+        "client_amount_max_ratio": out_max_ratio,
+        "client_amount_z_score": out_z_score,
+        "client_is_new_max": out_is_new_max,
+        "client_is_new_min": out_is_new_min,
         "client_total_transactions": out_cnt,
-        "client_time_since_last_tx": out_raw_gap,
-        "client_hours_since_last_tx": out_norm_gap,
+        "client_time_since_last_tx": out_raw_gap_sec,
+        "client_hours_since_last_tx": out_gap_hours,
+        "client_gap_z_score": out_gap_z_score,
         "client_total_days_since_first": out_total_days,
-        "client_usual_region":       out_usual_reg,
-        "client_is_unusual_region":  out_is_unu_reg,
-        "client_region_freq":        out_reg_freq,
-        "client_usual_channel":      out_usual_ch,
+        "client_usual_region": out_usual_reg,
+        "client_is_unusual_region": out_is_unu_reg,
+        "client_region_freq": out_reg_freq,
+        "client_usual_channel": out_usual_ch,
         "client_is_unusual_channel": out_is_unu_ch,
-        "client_channel_freq":       out_ch_freq,
-        "client_usual_category":     out_usual_cat,
+        "client_channel_freq": out_ch_freq,
+        "client_usual_category": out_usual_cat,
         "client_is_unusual_category": out_is_unu_cat,
-        "client_category_freq":      out_cat_freq,
-        "client_risk_score":         out_risk,
+        "client_category_freq": out_cat_freq,
+        "client_risk_score": out_risk,
     }
 
 
-# ---------------------------------------------------------------------------
-# Partition worker — called by Dask, processes a slice of accounts
-# ---------------------------------------------------------------------------
-
 def _process_partition(
     part_df: pd.DataFrame,
-    partition_state: dict,      # only states for accounts in this partition
+    partition_state: dict,
     smoothing_days: float,
     default_gap_sec: float,
     max_time_diffs: int,
@@ -320,11 +307,10 @@ def _process_partition(
     for account_id, grp in part_df.groupby("Account_Id", sort=False):
         grp = grp.sort_values("TX_Time")
 
-        amounts    = grp["TX_Amount"].to_numpy(dtype=np.float64)
-        # Les timestamps sont déjà des datetime, on les convertit en ns
-        times_ns   = grp["TX_Time"].astype(np.int64).to_numpy()
-        regions    = grp["region"].to_numpy(dtype=object)
-        channels   = grp["Channel"].to_numpy(dtype=object)
+        amounts = grp["TX_Amount"].to_numpy(dtype=np.float64)
+        times_ns = grp["TX_Time"].astype(np.int64).to_numpy()
+        regions = grp["region"].to_numpy(dtype=object)
+        channels = grp["Channel"].to_numpy(dtype=object)
         categories = grp["category"].to_numpy(dtype=object)
 
         init_state = partition_state.get(account_id, _empty_state(max_time_diffs))
@@ -336,18 +322,13 @@ def _process_partition(
 
         frame = pd.DataFrame(feats, index=grp.index)
         frame.insert(0, "TX_Amount", amounts.astype(np.float32))
-        frame.insert(0, "TX_Time",   grp["TX_Time"].to_numpy())
+        frame.insert(0, "TX_Time", grp["TX_Time"].to_numpy())
         result_frames.append(frame)
 
     if not result_frames:
         return pd.DataFrame()
     return pd.concat(result_frames)
 
-
-# ---------------------------------------------------------------------------
-# Partition worker for fit – computes final state for a group of accounts
-# (adapté pour utiliser les nouvelles structures)
-# ---------------------------------------------------------------------------
 
 def _fit_partition(part_df: pd.DataFrame, max_time_diffs: int) -> dict:
     """Process a partition of accounts and return their final state dictionaries."""
@@ -357,21 +338,19 @@ def _fit_partition(part_df: pd.DataFrame, max_time_diffs: int) -> dict:
         for tx in grp.itertuples(index=False):
             a = float(tx.TX_Amount)
             t = tx.TX_Time
-            t_ns = t.value  # nanosecondes
+            t_ns = t.value
 
             if state["last_time_ns"] is not None:
-                gap = (t_ns - state["last_time_ns"]) * 1e-9  # secondes
-                # Mise à jour de la deque et des sommes
-                deque = state["gap_deque"]
-                if len(deque) == deque.maxlen:
-                    oldest = deque[0]
+                gap = (t_ns - state["last_time_ns"]) * 1e-9
+                dq = state["gap_deque"]
+                if len(dq) == dq.maxlen:
+                    oldest = dq[0]
                     state["gap_sum"] -= oldest
                     state["gap_sum_sq"] -= oldest * oldest
-                deque.append(gap)
+                dq.append(gap)
                 state["gap_sum"] += gap
                 state["gap_sum_sq"] += gap * gap
 
-            # Welford update
             wf_n = state["wf_count"] + 1
             delta = a - state["wf_mean"]
             new_mean = state["wf_mean"] + delta / wf_n
@@ -396,10 +375,6 @@ def _fit_partition(part_df: pd.DataFrame, max_time_diffs: int) -> dict:
         stats[account_id] = state
     return stats
 
-
-# ---------------------------------------------------------------------------
-# Transformer (inchangé, sauf l'utilisation de max_time_diffs dans _empty_state)
-# ---------------------------------------------------------------------------
 
 class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
     def __init__(
@@ -437,7 +412,6 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
         self._validate(X, "fit")
         logger.info("ClientBehaviorTransformer.fit — %d rows", len(X))
 
-        # Region enrichment happens here — once
         Xw = X.copy()
         Xw["TX_Time"] = pd.to_datetime(Xw["TX_Time"])
         if "region" not in Xw.columns:
@@ -447,13 +421,10 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
         Xw = Xw.sort_values(["Account_Id", "TX_Time"])
 
         n_clients = Xw["Account_Id"].nunique()
-        # Ajustement du nombre de partitions
-        n_partitions = self.n_partitions or max(
-            1, min(n_clients // 500, os.cpu_count() * 4)
-        )
+        cpu_count = os.cpu_count() or 1
+        n_partitions = self.n_partitions or max(1, min(max(1, n_clients // 500), cpu_count * 4))
         logger.info("fit: using %d Dask partitions", n_partitions)
 
-        # Deterministic account → partition assignment by hash
         unique_accounts = Xw["Account_Id"].unique()
         account_to_part = {acc: hash(acc) % n_partitions for acc in unique_accounts}
         Xw["_partition"] = Xw["Account_Id"].map(account_to_part)
@@ -467,7 +438,6 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
 
         computed = dask.compute(*delayed_results, scheduler="processes")
 
-        # Merge all stats
         stats = {}
         for part_stats in computed:
             stats.update(part_stats)
@@ -508,12 +478,11 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
         Xw["category"] = Xw["category"].fillna("Unknown")
 
         n_clients = Xw["Account_Id"].nunique()
-        n_partitions = self.n_partitions or max(
-            1, min(n_clients // 500, os.cpu_count() * 4)
-        )
+        cpu_count = os.cpu_count() or 1
+        n_partitions = self.n_partitions or max(1, min(max(1, n_clients // 500), cpu_count * 4))
         logger.info(
             "transform: using %d Dask partitions across %d CPUs",
-            n_partitions, os.cpu_count()
+            n_partitions, cpu_count
         )
 
         unique_accounts = Xw["Account_Id"].unique()
@@ -572,6 +541,7 @@ class ClientBehaviorTransformer(BaseEstimator, TransformerMixin):
             "client_total_transactions",
             "client_time_since_last_tx",
             "client_hours_since_last_tx",
+            "client_gap_z_score",
             "client_total_days_since_first",
             "client_usual_region",
             "client_is_unusual_region",

@@ -20,6 +20,7 @@ public class SimulationResponse {
     private String modelName;
     private String modelType;
     private String scenario;
+    private Double threshold;
 
     // Métriques globales
     private Integer totalTransactions;

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Wrapper script for dataset analysis.
 Maintains the same interface for the Java backend but uses shared_ml logic.

@@ -260,7 +260,7 @@ def main():
             beta=beta
         )
 
-        # 🔥 CRITICAL: Filter only normal transactions for training the autoencoder
+        # CRITICAL: Filter only normal transactions for training the autoencoder
         normal_mask_train = y_train == 0
         X_train_normal = X_train_proc[normal_mask_train]
         logger.info(f"Training autoencoder on {len(X_train_normal)} normal transactions (out of {len(X_train)} total)")

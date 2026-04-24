@@ -154,6 +154,7 @@ export interface ModelSummaryResponse {
   precision?: number;
   recall?: number;
   f1Score?: number;
+  threshold?: number;
 }
 
 export interface PageResponse<T> {
@@ -195,6 +196,7 @@ export interface SimulationResponse {
   modelName: string;
   modelType: string;
   scenario: string;
+  threshold?: number;
   totalTransactions: number;
   totalFraudsInjected: number;
   totalDetected: number;

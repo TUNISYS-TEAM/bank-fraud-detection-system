@@ -34,4 +34,9 @@ public class SimulationRequest {
     private String timeDistribution; // uniform, realistic, night
 
     private Integer randomSeed;
+
+    @Builder.Default
+    private Boolean subtleFraud = true;
+
+    private Integer fraudCount;
 }

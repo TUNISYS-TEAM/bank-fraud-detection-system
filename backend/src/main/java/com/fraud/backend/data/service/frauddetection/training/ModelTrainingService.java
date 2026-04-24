@@ -209,7 +209,28 @@ public class ModelTrainingService {
                 .precision(model.getPrecision())
                 .recall(model.getRecall())
                 .f1Score(model.getF1Score())
+                .threshold(extractThreshold(model))
                 .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Double extractThreshold(ModelML model) {
+        try {
+            Map<String, Object> hp = model.getHyperparameters();
+            if (hp != null && hp.containsKey("_trainingResults")) {
+                Map<String, Object> results = (Map<String, Object>) hp.get("_trainingResults");
+                if (results.containsKey("thresholds")) {
+                    Map<String, Object> thresholds = (Map<String, Object>) results.get("thresholds");
+                    Object finalObj = thresholds.get("final");
+                    if (finalObj instanceof Number) {
+                        return ((Number) finalObj).doubleValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract threshold for model summary: {}", model.getModelUuid());
+        }
+        return null;
     }
 
     public List<TrainingJobResponse> getModelHistory() {

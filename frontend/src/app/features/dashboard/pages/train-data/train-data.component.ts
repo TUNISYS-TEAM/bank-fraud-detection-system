@@ -246,23 +246,13 @@ export class TrainDataComponent implements OnInit, OnDestroy {
     const params: any = {
       q: this.searchQuery() || undefined,
       page: this.currentPage(),
-      size: this.pageSize
+      size: this.pageSize,
+      types: [DatasetType.TRANSACTIONS_TRAIN]
     };
-
-    // If searching, we don't send type to backend to avoid it ignoring the search term,
-    // we will filter by type in the frontend (matching administration tab logic)
-    if (!this.searchQuery()) {
-      params.type = DatasetType.TRANSACTIONS_TRAIN;
-    }
 
     this.datasetService.list(params).subscribe({
       next: (response: ApiResponse<Dataset>) => {
-        let content = response.content;
-
-        // Frontend filtering by type if we couldn't send it to backend
-        if (this.searchQuery()) {
-          content = content.filter(d => d.type === DatasetType.TRANSACTIONS_TRAIN);
-        }
+        const content = response.content;
 
         // Transform to ExtendedDataset
         const extendedDatasets: ExtendedDataset[] = content.map(ds => ({
@@ -271,8 +261,8 @@ export class TrainDataComponent implements OnInit, OnDestroy {
         }));
 
         this.datasets.set(extendedDatasets);
-        this.totalElements.set(this.searchQuery() ? extendedDatasets.length : response.totalElements);
-        this.totalPages.set(this.searchQuery() ? 1 : response.totalPages);
+        this.totalElements.set(response.totalElements);
+        this.totalPages.set(response.totalPages);
         this.loading.set(false);
         this.updateExtraKpis();
 

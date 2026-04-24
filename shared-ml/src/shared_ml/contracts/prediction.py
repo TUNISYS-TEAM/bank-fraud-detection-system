@@ -6,6 +6,7 @@ class PredictRequest(BaseModel):
     model_uuid: str
     storage_path: Optional[str] = None
     pipeline_path: Optional[str] = None # Support pour les modèles avec pipeline séparé
+    threshold: Optional[float] = None   # Threshold from Java backend
     transaction: Dict[str, Any]
     has_existing_behavior: bool = False
     existing_behavior: Optional[Dict[str, Any]] = None
@@ -20,6 +21,7 @@ class BatchPredictRequest(BaseModel):
     model_uuid: str
     storage_path: Optional[str] = None
     pipeline_path: Optional[str] = None # Support batch
+    threshold: Optional[float] = None   # Threshold from Java backend
     batch: List[BatchPredictItem]
 
 class PredictResponse(BaseModel):

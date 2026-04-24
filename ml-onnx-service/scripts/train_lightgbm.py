@@ -1,6 +1,6 @@
 """
 Train a LightGBM model for bank fraud detection.
-No data leakage – per‑split preprocessing, dynamic thresholding, ONNX export.
+No data leakage – per-split preprocessing, dynamic thresholding, ONNX export.
 Uses shared_ml components for splitting, postal codes, one-hot encoding, scaling,
 temporal features, feature selection, and optimal thresholding.
 """
@@ -35,7 +35,6 @@ from shared_ml.evaluation.thresholding import (
     find_threshold_by_cost,
 )
 from shared_ml.preprocessing.encoders import SafeOneHotEncoder
-from shared_ml.preprocessing.scalers import SafeScaler
 from shared_ml.preprocessing.encoders.feature_selectors import TreeFeatureSelector
 from shared_ml.preprocessing.behavioral import TemporalFeatureTransformer
 from shared_ml.utils.postal_codes import (
@@ -211,7 +210,7 @@ def main():
             df_processed, time_col='TX_Time', train_ratio=0.7, val_ratio=0.15
         )
 
-        # ========== STEP 2: PER‑SPLIT PREPROCESSING ==========
+        # ========== STEP 2: PER-SPLIT PREPROCESSING ==========
         logger.info("Applying per-split preprocessing...")
         df_train = process_id_columns(df_train)
         df_val = process_id_columns(df_val)
@@ -231,14 +230,14 @@ def main():
             df_test = process_merchant_postal_transform(df_test, merchant_region_categories)
 
         # Separate features and target (keep TX_Time for temporal transformer)
-        X_train = df_train.drop('fraud', axis=1)   # garde TX_Time
+        X_train = df_train.drop('fraud', axis=1)
         X_val = df_val.drop('fraud', axis=1)
         X_test = df_test.drop('fraud', axis=1)
         y_train = df_train['fraud'].values
         y_val = df_val['fraud'].values
         y_test = df_test['fraud'].values
 
-        # Ensure numeric (just in case)
+        # Kept as requested
         for X_set in [X_train, X_val, X_test]:
             for col in X_set.columns:
                 if X_set[col].dtype == 'object':
@@ -248,20 +247,19 @@ def main():
         logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
         logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
 
-        # ========== STEP 3: PREPROCESSING PIPELINE (temporal + one-hot + selector + scaling) ==========
+        # ========== STEP 3: PREPROCESSING PIPELINE (aligned with RF) ==========
         preprocessor = Pipeline([
-            ('temporal', TemporalFeatureTransformer()),
             ('onehot', SafeOneHotEncoder(categorical_cols=categorical_cols, include_raw_cats=True)),
+            ('temporal', TemporalFeatureTransformer()),
             ('selector', TreeFeatureSelector()),
-            ('scaler', SafeScaler(scaler_type='robust'))
         ])
 
         X_train_proc = preprocessor.fit_transform(X_train)
         X_val_proc = preprocessor.transform(X_val)
         X_test_proc = preprocessor.transform(X_test)
 
-        # Drop TX_Time if still present (not needed for LightGBM)
-        if 'TX_Time' in X_train_proc.columns:
+        # Drop TX_Time if still present (defensive only)
+        if hasattr(X_train_proc, 'columns') and 'TX_Time' in X_train_proc.columns:
             X_train_proc = X_train_proc.drop('TX_Time', axis=1)
             X_val_proc = X_val_proc.drop('TX_Time', axis=1)
             X_test_proc = X_test_proc.drop('TX_Time', axis=1)
@@ -285,12 +283,26 @@ def main():
             'n_jobs': -1,
             'verbosity': -1,
             'scale_pos_weight': scale_pos_weight,
-            'n_estimators': hp.get('n_estimators', 200),
-            'learning_rate': hp.get('learning_rate', 0.1),
+
+            # Hyperparamètres principaux
+            'n_estimators': hp.get('n_estimators', 300),
+            'learning_rate': hp.get('learning_rate', 0.05),
             'num_leaves': hp.get('num_leaves', 31),
             'max_depth': hp.get('max_depth', -1),
             'min_child_samples': hp.get('min_child_samples', 20),
-            'early_stopping_rounds': 20,
+
+            # Priorité 1 : robustesse / généralisation
+            'feature_fraction': hp.get('feature_fraction', 0.8),
+            'bagging_fraction': hp.get('bagging_fraction', 0.8),
+            'bagging_freq': hp.get('bagging_freq', 1),
+            'lambda_l1': hp.get('lambda_l1', 0.0),
+            'lambda_l2': hp.get('lambda_l2', 0.0),
+
+            # Stabilité supplémentaire
+            'min_split_gain': hp.get('min_split_gain', 0.0),
+
+            # Early stopping
+            'early_stopping_rounds': hp.get('early_stopping_rounds', 20),
         }
         logger.info("Training LightGBM with params: %s", lgbm_params)
 
@@ -302,10 +314,14 @@ def main():
             eval_metric='auc'
         )
         train_time = time.time() - train_start
-        logger.info("Base training complete in %.1f seconds, best iteration: %d",
-                    train_time, lgbm_model.best_iteration_)
+        logger.info(
+            "Base training complete in %.1f seconds, best iteration: %d",
+            train_time,
+            lgbm_model.best_iteration_
+        )
 
-        # No calibration – LightGBM already provides reasonably calibrated probabilities
+        # No post-hoc calibration applied.
+        # Probabilities are the raw outputs of LightGBM.
         final_model = lgbm_model
 
         # ========== STEP 5: THRESHOLDS ==========
@@ -318,7 +334,7 @@ def main():
         best_idx = np.argmax(f1_scores)
         pr_threshold = thresholds_pr[best_idx]
         best_f1 = f1_scores[best_idx]
-        logger.info("PR‑based threshold (max F1): %.4f (F1=%.4f)", pr_threshold, best_f1)
+        logger.info("PR-based threshold (max F1): %.4f (F1=%.4f)", pr_threshold, best_f1)
 
         fbeta_threshold, fbeta_score_val = find_threshold_by_fbeta(y_val, y_val_proba, beta=2.0)
         logger.info("F-beta (β=2.0): threshold=%.4f, score=%.4f", fbeta_threshold, fbeta_score_val)
@@ -329,10 +345,12 @@ def main():
         user_threshold = hp.get('detection_threshold')
         if user_threshold is not None:
             final_threshold = float(user_threshold)
-            logger.info("Using user‑supplied threshold from UI: %.4f", final_threshold)
+            logger.info("Using user-supplied threshold from UI: %.4f", final_threshold)
             if final_threshold > max_prob:
-                logger.warning("User threshold %.4f > max validation prob %.4f → will detect nothing.",
-                               final_threshold, max_prob)
+                logger.warning(
+                    "User threshold %.4f > max validation prob %.4f → will detect nothing.",
+                    final_threshold, max_prob
+                )
         else:
             final_threshold = fbeta_threshold
             logger.info("No UI threshold, using F-beta threshold: %.4f", final_threshold)
@@ -350,8 +368,10 @@ def main():
         cm = confusion_matrix(y_test, y_test_pred)
 
         logger.info("Test metrics with threshold %.4f:", final_threshold)
-        logger.info("  Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, AUC-ROC: %.4f, PR-AUC: %.4f",
-                    accuracy, precision, recall, f1, auc_roc, pr_auc)
+        logger.info(
+            "  Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, AUC-ROC: %.4f, PR-AUC: %.4f",
+            accuracy, precision, recall, f1, auc_roc, pr_auc
+        )
 
         # Feature importance
         importances = lgbm_model.feature_importances_

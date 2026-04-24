@@ -19,16 +19,19 @@ class HybridEnsembleBundle:
         self.threshold = threshold
         self.copod_min = None
         self.copod_max = None
+        self.copod_normalizer = None  # Nouveau : support pour RankNormalizer
         self.name = "HYBRID_ENSEMBLE"
         
         # Attributs pour l'explicabilité SHAP
         self.full_pipeline = full_pipeline          # Pipeline complet avec classifieur XGBoost
         self.background_data = background_data      # Échantillons background pour SHAP
         self.model_uuid = model_uuid                # Identifiant du modèle
+        self.metadata = {}                          # Métadonnées additionnelles
 
-    def set_copod_normalization(self, min_val, max_val):
+    def set_copod_normalization(self, min_val, max_val, normalizer=None):
         self.copod_min = min_val
         self.copod_max = max_val
+        self.copod_normalizer = normalizer
 
     def predict_proba(self, X):
         """Logique de prédiction centralisée pour assurer la cohérence."""
@@ -40,7 +43,12 @@ class HybridEnsembleBundle:
         xgb_score = self.xgb_model.predict_proba(X_trans)[:, 1]
         
         copod_raw = self.copod_model.decision_function(X_trans)
-        if self.copod_min is not None and self.copod_max is not None:
+        
+        if self.copod_normalizer is not None:
+            # Utilisation du RankNormalizer (plus stable)
+            copod_score = self.copod_normalizer.transform(copod_raw)
+        elif self.copod_min is not None and self.copod_max is not None:
+            # Fallback Min-Max
             copod_score = (copod_raw - self.copod_min) / (self.copod_max - self.copod_min + 1e-6)
             copod_score = np.clip(copod_score, 0, 1)
         else:

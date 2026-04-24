@@ -23,7 +23,8 @@ async def predict(
         metadata = {
             "model_path": request.storage_path,
             "pipeline_path": request.pipeline_path,
-            "model_uuid": model_uuid
+            "model_uuid": model_uuid,
+            "threshold": getattr(request, "threshold", None),
         }
         artifact_bundle = registry.get_model(model_uuid, metadata)
 
@@ -65,8 +66,15 @@ async def predict_batch(
         metadata = {
             "model_path": request.storage_path,
             "pipeline_path": request.pipeline_path,
-            "model_uuid": model_uuid
+            "model_uuid": model_uuid,
+            "threshold": getattr(request, "threshold", None),
         }
+        
+        logger.info(
+            "Batch request received | model_uuid=%s | request.threshold=%s",
+            model_uuid,
+            getattr(request, "threshold", None),
+        )
         artifact_bundle = registry.get_model(model_uuid, metadata)
 
         transactions = [item.transaction.dict() if hasattr(item.transaction, 'dict') else item.transaction

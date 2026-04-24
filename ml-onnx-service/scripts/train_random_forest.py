@@ -36,7 +36,6 @@ from shared_ml.evaluation.thresholding import (
 from shared_ml.preprocessing.behavioral.temporal_features import TemporalFeatureTransformer
 from shared_ml.preprocessing.encoders.categorical_encoder import SafeOneHotEncoder
 from shared_ml.preprocessing.encoders.feature_selectors import TreeFeatureSelector
-from shared_ml.preprocessing.scalers.monetary_scaler import SafeScaler
 from shared_ml.utils.postal_codes import (
     process_customer_postal_fit,
     process_customer_postal_transform,
@@ -120,7 +119,6 @@ def create_preprocessing_pipeline(categorical_columns: list[str]) -> Pipeline:
         ('onehot', SafeOneHotEncoder(categorical_cols=categorical_columns, include_raw_cats=True)),
         ('temporal', TemporalFeatureTransformer()),
         ('selector', TreeFeatureSelector()),
-        ('scaler', SafeScaler(scaler_type='robust'))
     ])
 
 

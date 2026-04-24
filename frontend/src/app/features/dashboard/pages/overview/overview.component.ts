@@ -165,6 +165,8 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private fraudEvolutionChart: echarts.ECharts | null = null;
   private riskDistributionChart: echarts.ECharts | null = null;
+  hasRiskData = signal(false);
+
 
   systemStats = computed(() => {
     const model = this.stats()?.activeModel;
@@ -451,10 +453,15 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.overviewService.getRiskDistribution().subscribe({
       next: (data) => {
-        setTimeout(() => this.initRiskDistributionChart(data), 100);
+        const hasData = data && data.length > 0;
+        this.hasRiskData.set(hasData);
+        if (hasData) {
+          setTimeout(() => this.initRiskDistributionChart(data), 100);
+        }
         this.isLoadingCharts.set(false);
       },
       error: () => {
+        this.hasRiskData.set(false);
         this.isLoadingCharts.set(false);
       },
     });
@@ -1331,6 +1338,36 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     window.addEventListener('resize', () => {
       this.fraudMapChart?.resize();
     });
+
+    // Zoom on double click for hotspots (Toggle)
+    this.fraudMapChart.on('dblclick', (params: any) => {
+      if (!this.fraudMapChart) return;
+      const option = this.fraudMapChart.getOption() as any;
+      const currentZoom = (option.geo && option.geo[0]) ? option.geo[0].zoom : 1;
+
+      // Si déjà zoomé (proche de 5), on fait un zoom arrière
+      if (currentZoom > 2) {
+        this.fraudMapChart.setOption({
+          geo: {
+            center: [9.5, 34.0],
+            zoom: 1.1,
+            top: 80
+          }
+        });
+      } else {
+        // Sinon, on fait un zoom avant sur le point cliqué
+        if (params.componentType === 'series' && params.seriesType === 'scatter') {
+          const [lon, lat] = params.value;
+          this.fraudMapChart.setOption({
+            geo: {
+              center: [lon, lat],
+              zoom: 5,
+              top: 80
+            }
+          });
+        }
+      }
+    });
   }
 
   private updateFraudMapChart(): void {
@@ -1363,6 +1400,10 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
       geo: {
         map: 'tunisia',
         roam: true,
+        scaleLimit: { min: 1, max: 12 },
+        center: [9.5, 34.0],
+        zoom: 1.1,
+        top: 80, // Laisse de la place pour les titres
         label: { show: false },
         itemStyle: {
           areaColor: '#e2e8f0',

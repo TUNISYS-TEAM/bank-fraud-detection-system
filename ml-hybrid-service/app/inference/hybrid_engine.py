@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, List, Optional
@@ -5,12 +7,124 @@ import logging
 from app.models.bundles import HybridEnsembleBundle
 
 from shared_ml.explanation import FraudExplainabilityEngine
-from shared_ml.utils.postal_codes import get_resolver
+from shared_ml.utils.postal_codes import (
+    ALL_REGIONS,
+    process_customer_postal_transform,
+    process_merchant_postal_transform,
+)
 
 logger = logging.getLogger(__name__)
 
+_CHANNEL_ALIASES = {
+    "Online": "En_Ligne",
+    "ATM": "GAB",
+    "POS": "TPE",
+}
+
+_CATEGORICAL_CLEAN_COLS = [
+    "Channel",
+    "region",
+    "Customer_Region",
+    "client_usual_channel",
+    "client_usual_region",
+]
+
+
+def _clean_cat_value(value: Any, col: Optional[str] = None) -> str:
+    if pd.isna(value):
+        return "Unknown"
+
+    s = str(value).strip()
+
+    if col not in ("category", "client_usual_category"):
+        if len(s) >= 2 and (
+            (s[0] == "'" and s[-1] == "'") or
+            (s[0] == '"' and s[-1] == '"')
+        ):
+            s = s[1:-1].strip()
+
+        if len(s) >= 2 and (
+            (s[0] == "'" and s[-1] == "'") or
+            (s[0] == '"' and s[-1] == '"')
+        ):
+            s = s[1:-1].strip()
+
+    if not s:
+        s = "Unknown"
+
+    if col in ("Channel", "client_usual_channel"):
+        s = _CHANNEL_ALIASES.get(s, s)
+
+    return s
+
+
+def _normalize_categorical_values(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    for col in _CATEGORICAL_CLEAN_COLS:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda v: _clean_cat_value(v, col))
+    return df
+
+
+def _extract_numeric_from_id(value):
+    """Same logic as train_ecod.extract_numeric_from_id."""
+    if pd.isna(value):
+        return 0
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)
+        s = str(value)
+        if '-' in s:
+            parts = s.split('-')
+            if len(parts) > 1 and parts[1].replace('.', '', 1).isdigit():
+                return float(parts[1])
+        numbers = re.findall(r'\d+', s)
+        if numbers:
+            return float(numbers[0])
+        return 0
+    except Exception:
+        return 0
+
+
+def _apply_pre_pipeline_transforms(df: pd.DataFrame, preprocessor) -> pd.DataFrame:
+    """
+    Replicate the same pre-pipeline transformations applied during training
+    (process_id_columns, postal code → region) so that the feature distribution
+    seen by the ECOD model matches training.
+    """
+    df = df.copy()
+
+    # 1. Convert ID columns to numeric (same as train_ecod.process_id_columns)
+    for col in ['Account_Id', 'Device_Id']:
+        if col in df.columns:
+            df[col] = df[col].apply(_extract_numeric_from_id).astype(np.float32)
+
+    # 2. Customer postal code → Customer_Region
+    if 'Customer_Postal_Code' in df.columns:
+        customer_cats = getattr(preprocessor, '_customer_region_categories_', None)
+        if customer_cats is None:
+            customer_cats = ALL_REGIONS
+            logger.info("Using ALL_REGIONS fallback for customer region categories")
+        try:
+            df = process_customer_postal_transform(df, customer_cats)
+        except Exception as e:
+            logger.warning("Failed to apply customer postal transform: %s", e)
+
+    # 3. Merchant postal code → Merchant_Region
+    if 'Merchant_Postal_Code' in df.columns:
+        merchant_cats = getattr(preprocessor, '_merchant_region_categories_', None)
+        if merchant_cats is not None:
+            try:
+                df = process_merchant_postal_transform(df, merchant_cats)
+            except Exception as e:
+                logger.warning("Failed to apply merchant postal transform: %s", e)
+
+    return df
+
 
 def _normalize_categories_and_behavioral(df: pd.DataFrame, preprocessor) -> pd.DataFrame:
+    df = df.copy()
+
     if 'TX_Time' not in df.columns:
         df['TX_Time'] = pd.Timestamp.now()
     df['TX_Time'] = pd.to_datetime(df['TX_Time'], errors='coerce')
@@ -20,7 +134,8 @@ def _normalize_categories_and_behavioral(df: pd.DataFrame, preprocessor) -> pd.D
         'client_AVG_TX_Amount', 'client_AVG_TX_PerDay', 'client_amount_deviation',
         'client_abs_amount_deviation', 'client_amount_max_ratio', 'client_amount_z_score',
         'client_is_new_max', 'client_is_new_min', 'client_total_transactions',
-        'client_time_since_last_tx', 'client_hours_since_last_tx', 'client_total_days_since_first',
+        'client_time_since_last_tx', 'client_hours_since_last_tx', 'client_gap_z_score',
+        'client_total_days_since_first',
         'client_usual_region', 'client_is_unusual_region', 'client_region_freq',
         'client_usual_channel', 'client_is_unusual_channel', 'client_channel_freq',
         'client_usual_category', 'client_is_unusual_category', 'client_category_freq',
@@ -33,6 +148,8 @@ def _normalize_categories_and_behavioral(df: pd.DataFrame, preprocessor) -> pd.D
                 df[col] = 'Unknown'
             else:
                 df[col] = 0.0
+
+    df = _normalize_categorical_values(df)
 
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df[numeric_cols] = df[numeric_cols].astype(np.float32)
@@ -61,20 +178,27 @@ def _align_features(df: pd.DataFrame, preprocessor) -> pd.DataFrame:
                 df[col] = 'Unknown'
             else:
                 df[col] = 0.0
-    return df[expected_input_cols]
+
+    df = df[expected_input_cols].copy()
+    df = _normalize_categorical_values(df)
+    return df
 
 
 class HybridEngine:
     _explainers_cache: Dict[str, FraudExplainabilityEngine] = {}
 
     @staticmethod
-    def predict(artifact_bundle: Dict[str, Any], features_raw: pd.DataFrame,
-                include_explanation: bool = False,
-                existing_behavior: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def predict(
+        artifact_bundle: Dict[str, Any],
+        features_raw: pd.DataFrame,
+        include_explanation: bool = False,
+        existing_behavior: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         try:
             model = artifact_bundle["model"]
             preprocessor = artifact_bundle["preprocessor"]
 
+            features_raw = _apply_pre_pipeline_transforms(features_raw, preprocessor)
             features_raw = _normalize_categories_and_behavioral(features_raw, preprocessor)
             features_raw = _align_features(features_raw, preprocessor)
 
@@ -84,9 +208,13 @@ class HybridEngine:
             X_trans = np.asarray(X_trans, dtype=np.float32)
 
             if isinstance(model, HybridEnsembleBundle):
-                result = HybridEngine._predict_hybrid(model, preprocessor, features_raw, X_trans)
+                result = HybridEngine._predict_hybrid(model, X_trans)
             elif hasattr(model, "predict_proba"):
-                result = HybridEngine._predict_standalone_anomaly(model, X_trans)
+                result = HybridEngine._predict_standalone_anomaly(
+                    model,
+                    X_trans,
+                    threshold=artifact_bundle.get("threshold"),
+                )
             else:
                 raise ValueError(f"Type de modèle non supporté : {type(model)}")
 
@@ -96,6 +224,10 @@ class HybridEngine:
             else:
                 behavior_dict = {k: v for k, v in transaction_dict.items() if k.startswith('client_')}
 
+            effective_threshold = artifact_bundle.get('threshold')
+            if effective_threshold is None:
+                effective_threshold = getattr(model, 'threshold_', 0.5)
+
             result['fraud_reason'] = HybridEngine._build_rich_fraud_reason(
                 artifact_bundle=artifact_bundle,
                 features_raw=features_raw,
@@ -103,25 +235,31 @@ class HybridEngine:
                 fraud_score=result['fraud_score'],
                 transaction_data=transaction_dict,
                 behavior_data=behavior_dict,
-                threshold=artifact_bundle.get('threshold', 0.5),
+                threshold=float(effective_threshold),
                 row_id=0,
-                include_shap=include_explanation
+                include_shap=include_explanation,
+                default_alert_type=result.get('alert_type', 'HYBRID_ENSEMBLE')
             )
             if include_explanation and 'alert_type' in result['fraud_reason']:
                 result['alert_type'] = result['fraud_reason']['alert_type']
             return result
+
         except Exception as e:
             logger.error(f"Erreur d'inférence : {e}")
             raise
 
     @staticmethod
-    def predict_batch(artifact_bundle: Dict[str, Any], features_raw: pd.DataFrame,
-                      include_explanation: bool = False,
-                      existing_behaviors: Optional[List[Optional[Dict[str, Any]]]] = None) -> List[Dict[str, Any]]:
+    def predict_batch(
+        artifact_bundle: Dict[str, Any],
+        features_raw: pd.DataFrame,
+        include_explanation: bool = False,
+        existing_behaviors: Optional[List[Optional[Dict[str, Any]]]] = None
+    ) -> List[Dict[str, Any]]:
         try:
             model = artifact_bundle["model"]
             preprocessor = artifact_bundle["preprocessor"]
 
+            features_raw = _apply_pre_pipeline_transforms(features_raw, preprocessor)
             features_raw = _normalize_categories_and_behavioral(features_raw, preprocessor)
             features_raw = _align_features(features_raw, preprocessor)
 
@@ -134,7 +272,10 @@ class HybridEngine:
                 rf_scores = model.rf_model.predict_proba(X_trans)[:, 1]
                 xgb_scores = model.xgb_model.predict_proba(X_trans)[:, 1]
                 copod_raw = model.copod_model.decision_function(X_trans)
-                if model.copod_min is not None and model.copod_max is not None:
+                
+                if hasattr(model, 'copod_normalizer') and model.copod_normalizer is not None:
+                    copod_scores = model.copod_normalizer.transform(copod_raw)
+                elif model.copod_min is not None and model.copod_max is not None:
                     copod_scores = (copod_raw - model.copod_min) / (model.copod_max - model.copod_min + 1e-6)
                     copod_scores = np.clip(copod_scores, 0, 1)
                 else:
@@ -163,22 +304,9 @@ class HybridEngine:
                         behavior_data=behavior_dict,
                         threshold=threshold,
                         row_id=0,
-                        include_shap=include_explanation and i < 5
+                        include_shap=include_explanation and i < 5,
+                        default_alert_type='HYBRID_ENSEMBLE'
                     )
-
-                    # Construction des signaux comportementaux avec seconds_since_last_tx
-                    signals = {
-                        "client_usual_region": behavior_dict.get('client_usual_region', 'Unknown'),
-                        "client_region_freq": behavior_dict.get('client_region_freq', 0.0),
-                        "client_is_unusual_region": behavior_dict.get('client_is_unusual_region', False),
-                        "client_usual_channel": behavior_dict.get('client_usual_channel', 'Unknown'),
-                        "client_channel_freq": behavior_dict.get('client_channel_freq', 0.0),
-                        "client_is_unusual_channel": behavior_dict.get('client_is_unusual_channel', False),
-                        "client_usual_category": behavior_dict.get('client_usual_category', 'Unknown'),
-                        "client_category_freq": behavior_dict.get('client_category_freq', 0.0),
-                        "client_is_unusual_category": behavior_dict.get('client_is_unusual_category', False),
-                        "seconds_since_last_tx": behavior_dict.get('client_time_since_last_tx', 0)
-                    }
 
                     batch_results.append({
                         "fraud_score": score,
@@ -186,16 +314,50 @@ class HybridEngine:
                         "alert_type": fraud_reason.get('alert_type', 'HYBRID_ENSEMBLE'),
                         "supervised_score": float((rf_scores[i] + xgb_scores[i]) / 2),
                         "anomaly_score": float(copod_scores[i]),
-                        "behavioral_signals": signals,
+                        "behavioral_signals": {
+                            "client_usual_region": behavior_dict.get('client_usual_region', 'Unknown'),
+                            "client_region_freq": behavior_dict.get('client_region_freq', 0.0),
+                            "client_is_unusual_region": behavior_dict.get('client_is_unusual_region', False),
+                            "client_usual_channel": behavior_dict.get('client_usual_channel', 'Unknown'),
+                            "client_channel_freq": behavior_dict.get('client_channel_freq', 0.0),
+                            "client_is_unusual_channel": behavior_dict.get('client_is_unusual_channel', False),
+                            "client_usual_category": behavior_dict.get('client_usual_category', 'Unknown'),
+                            "client_category_freq": behavior_dict.get('client_category_freq', 0.0),
+                            "client_is_unusual_category": behavior_dict.get('client_is_unusual_category', False),
+                            "seconds_since_last_tx": behavior_dict.get('client_time_since_last_tx', 0)
+                        },
                         "fraud_reason": fraud_reason
                     })
                 return batch_results
 
             elif hasattr(model, "predict_proba"):
                 scores = model.predict_proba(X_trans)
-                if scores.ndim == 2:
+                if getattr(scores, "ndim", 1) == 2:
                     scores = scores[:, 1]
-                threshold = getattr(model, 'threshold_', 0.5)
+
+                threshold = artifact_bundle.get('threshold')
+                if threshold is None:
+                    threshold = getattr(model, 'threshold_', None)
+                if threshold is None:
+                    threshold = 0.5
+                    logger.warning("No threshold available for standalone anomaly batch inference; fallback to 0.5")
+
+                logger.warning(
+                    "Standalone anomaly batch stats: n=%d score_min=%.6f score_max=%.6f score_mean=%.6f threshold=%.6f",
+                    len(scores),
+                    float(np.min(scores)) if len(scores) else 0.0,
+                    float(np.max(scores)) if len(scores) else 0.0,
+                    float(np.mean(scores)) if len(scores) else 0.0,
+                    float(threshold),
+                )
+
+                # Diagnostic: showing first row features to see if anything is exploded
+                if len(X_trans) > 0:
+                    first_row = X_trans[0]
+                    if hasattr(first_row, "toarray"): first_row = first_row.toarray()[0]
+                    logger.warning("DIAGNOSTIC - First row features (truncated): %s", str(first_row[:10]))
+                    logger.warning("DIAGNOSTIC - First row max value: %.6f", float(np.max(first_row)))
+
                 all_results = []
                 for i, score in enumerate(scores):
                     transaction_dict = features_raw.iloc[i].to_dict()
@@ -211,34 +373,37 @@ class HybridEngine:
                         fraud_score=float(score),
                         transaction_data=transaction_dict,
                         behavior_data=behavior_dict,
-                        threshold=threshold,
+                        threshold=float(threshold),
                         row_id=0,
-                        include_shap=include_explanation and i < 5
+                        include_shap=include_explanation and i < 5,
+                        default_alert_type=getattr(model, 'name', 'ANOMALY').upper()
                     )
-                    signals = {
-                        "client_usual_region": behavior_dict.get('client_usual_region', 'Unknown'),
-                        "client_region_freq": behavior_dict.get('client_region_freq', 0.0),
-                        "client_is_unusual_region": behavior_dict.get('client_is_unusual_region', False),
-                        "client_usual_channel": behavior_dict.get('client_usual_channel', 'Unknown'),
-                        "client_channel_freq": behavior_dict.get('client_channel_freq', 0.0),
-                        "client_is_unusual_channel": behavior_dict.get('client_is_unusual_channel', False),
-                        "client_usual_category": behavior_dict.get('client_usual_category', 'Unknown'),
-                        "client_category_freq": behavior_dict.get('client_category_freq', 0.0),
-                        "client_is_unusual_category": behavior_dict.get('client_is_unusual_category', False),
-                        "seconds_since_last_tx": behavior_dict.get('client_time_since_last_tx', 0)
-                    }
+
                     all_results.append({
                         "fraud_score": float(score),
-                        "risk_level": HybridEngine._compute_risk_level(float(score), threshold),
+                        "risk_level": HybridEngine._compute_risk_level(float(score), float(threshold)),
                         "alert_type": fraud_reason.get('alert_type', getattr(model, 'name', 'ANOMALY').upper()),
                         "supervised_score": 0.0,
                         "anomaly_score": float(score),
                         "fraud_reason": fraud_reason,
-                        "behavioral_signals": signals
+                        "behavioral_signals": {
+                            "client_usual_region": behavior_dict.get('client_usual_region', 'Unknown'),
+                            "client_region_freq": behavior_dict.get('client_region_freq', 0.0),
+                            "client_is_unusual_region": behavior_dict.get('client_is_unusual_region', False),
+                            "client_usual_channel": behavior_dict.get('client_usual_channel', 'Unknown'),
+                            "client_channel_freq": behavior_dict.get('client_channel_freq', 0.0),
+                            "client_is_unusual_channel": behavior_dict.get('client_is_unusual_channel', False),
+                            "client_usual_category": behavior_dict.get('client_usual_category', 'Unknown'),
+                            "client_category_freq": behavior_dict.get('client_category_freq', 0.0),
+                            "client_is_unusual_category": behavior_dict.get('client_is_unusual_category', False),
+                            "seconds_since_last_tx": behavior_dict.get('client_time_since_last_tx', 0)
+                        }
                     })
                 return all_results
+
             else:
                 raise ValueError(f"Type de modèle non supporté : {type(model)}")
+
         except Exception as e:
             logger.error(f"Erreur d'inférence batch : {e}")
             raise
@@ -253,174 +418,106 @@ class HybridEngine:
         behavior_data: Dict[str, Any],
         threshold: float,
         row_id: int = 0,
-        include_shap: bool = False
+        include_shap: bool = False,
+        default_alert_type: str = 'HYBRID_ENSEMBLE'
     ) -> Dict[str, Any]:
-        """Construit un fraud_reason riche (règles métier + SHAP optionnel)."""
-        risk_level = HybridEngine._compute_risk_level(fraud_score, threshold)
-        amount = float(transaction_data.get('TX_Amount', transaction_data.get('amount', 0)))
-        total_tx = int(behavior_data.get('client_total_transactions', 0))
-        avg_amount = float(behavior_data.get('client_AVG_TX_Amount', 0))
-        has_history = total_tx > 0
-        is_first = not has_history
+        """
+        Génère une explication enrichie en utilisant le moteur d'explicabilité avancé (xia_engine).
+        """
+        model_uuid = artifact_bundle.get('model_uuid', getattr(artifact_bundle.get('model'), 'model_uuid', 'default'))
 
-        # Contexte client
-        client_context = {
-            "avg_amount": avg_amount,
-            "risk_score": float(behavior_data.get('client_risk_score', 0)),
-            "has_history": has_history,
-            "is_established": int(behavior_data.get('client_total_days_since_first', 0)) > 30,
-            "total_transactions": total_tx
-        }
+        # Récupérer ou créer l'explainer
+        if model_uuid not in HybridEngine._explainers_cache:
+            # Extraire le modèle XGBoost (ou le modèle principal)
+            bundle_model = artifact_bundle.get("model")
+            if isinstance(bundle_model, HybridEnsembleBundle):
+                xgb_model = bundle_model.get_xgb_classifier()
+            else:
+                xgb_model = bundle_model  # modèle unique (ex: XGBoost, RandomForest)
 
-        # Contributions par règles métier
-        contributions = []
-        total_risk_points = 0
+            preprocessor = artifact_bundle.get("preprocessor")
 
-        if is_first:
-            contributions.append({
-                "type": "statistical",
-                "detail": "This is the client's first transaction. No behavioral profile exists.",
-                "factor": "NO_HISTORY",
-                "severity": "high",
-                "description": "First transaction - No history",
-                "impact_points": 24,
-                "factor_display": "NO_HISTORY"
-            })
-            total_risk_points += 24
+            # Récupérer les noms des features après transformation
+            feature_names = None
+            if hasattr(preprocessor, 'get_feature_names_out'):
+                try:
+                    feature_names = preprocessor.get_feature_names_out()
+                except Exception:
+                    pass
+            if feature_names is None:
+                feature_names = [f"feature_{i}" for i in range(X_trans.shape[1])]
 
-        if has_history and amount > 3 * avg_amount and avg_amount > 0:
-            contributions.append({
-                "type": "statistical",
-                "detail": f"Amount {amount:.2f} exceeds usual average {avg_amount:.2f} by factor {amount/avg_amount:.1f}",
-                "factor": "AMOUNT_OUTLIER",
-                "severity": "high",
-                "description": "Amount far above average",
-                "impact_points": 30,
-                "factor_display": "AMOUNT_OUTLIER"
-            })
-            total_risk_points += 30
+            # Données de fond (background) pour SHAP
+            background_data = artifact_bundle.get('background_data')
+            if background_data is not None and not isinstance(background_data, np.ndarray):
+                background_data = np.array(background_data)
 
-        current_region = transaction_data.get('Customer_Region', 'Unknown')
-        usual_region = behavior_data.get('client_usual_region', 'Unknown')
-        if current_region != 'Unknown' and usual_region != 'Unknown' and current_region != usual_region:
-            contributions.append({
-                "type": "statistical",
-                "detail": f"Transaction from {current_region} while client usually operates in {usual_region}",
-                "factor": "UNUSUAL_REGION",
-                "severity": "medium",
-                "description": "Unusual geographic location",
-                "impact_points": 15,
-                "factor_display": "UNUSUAL_REGION"
-            })
-            total_risk_points += 15
+            dl_model_path = artifact_bundle.get('dl_model_path')
+            dl_input_dim = artifact_bundle.get('dl_input_dim')
 
-        current_channel = transaction_data.get('Channel', 'Unknown')
-        usual_channel = behavior_data.get('client_usual_channel', 'Unknown')
-        if current_channel != 'Unknown' and usual_channel != 'Unknown' and current_channel != usual_channel:
-            contributions.append({
-                "type": "statistical",
-                "detail": f"Transaction via {current_channel} while client usually uses {usual_channel}",
-                "factor": "UNUSUAL_CHANNEL",
-                "severity": "medium",
-                "description": "Unusual transaction channel",
-                "impact_points": 10,
-                "factor_display": "UNUSUAL_CHANNEL"
-            })
-            total_risk_points += 10
+            try:
+                explainer = FraudExplainabilityEngine(
+                    model=xgb_model,
+                    feature_names=feature_names,
+                    background_data=background_data,
+                    threshold=threshold,
+                    config_path=artifact_bundle.get('explain_config_path'),
+                    dl_model_path=dl_model_path,
+                    dl_input_dim=dl_input_dim,
+                    dl_method=artifact_bundle.get('dl_method', 'integrated_gradients')
+                )
+                HybridEngine._explainers_cache[model_uuid] = explainer
+                logger.info(f"Explainability engine initialized for {model_uuid} using xai_engine")
+            except Exception as e:
+                logger.error(f"Failed to init explainer: {e}")
+                # Fallback plat et cohérent
+                actual_risk_level = HybridEngine._compute_risk_level(fraud_score, threshold)
+                return {
+                    "summary": f"{actual_risk_level}: Erreur analyseur",
+                    "risk_level": actual_risk_level,
+                    "fraud_score": round(float(fraud_score), 4),
+                    "primary_factor": "MODEL_ERROR",
+                    "total_risk_points": 0,
+                    "contributions": [],
+                    "alert_type": default_alert_type,
+                    "analysis_source": "fallback_error"
+                }
 
-        # SHAP (si demandé et disponible)
-        shap_used = False
-        if include_shap:
-            model = artifact_bundle.get("model")
-            if isinstance(model, HybridEnsembleBundle):
-                xgb_model = model.get_xgb_classifier()
-                if xgb_model is not None:
-                    model_uuid = artifact_bundle.get('model_uuid', getattr(model, 'model_uuid', 'default'))
-                    explainer = HybridEngine._get_explainer(
-                        model_uuid, xgb_model, artifact_bundle['preprocessor'],
-                        model.background_data, model.feature_names, threshold
-                    )
-                    if explainer:
-                        try:
-                            tx_data_shap = {
-                                'TX_Amount': amount,
-                                'TX_Time': transaction_data.get('TX_Time'),
-                                'Channel': current_channel,
-                                'category': transaction_data.get('category', 'Unknown'),
-                                'Customer_Postal_Code': transaction_data.get('Customer_Postal_Code', '')
-                            }
-                            explanation = explainer.explain_fraud(
-                                features=X_trans[row_id],
-                                fraud_score=fraud_score,
-                                transaction_data=tx_data_shap,
-                                behavior_data=behavior_data
-                            )
-                            fraud_reason_json = explanation['fraud_reason_json']
-                            fraud_reason_json['alert_type'] = explanation.get('alert_type', 'BEHAVIORAL')
-                            fraud_reason_json['total_risk_points'] = total_risk_points
-                            return fraud_reason_json
-                        except Exception as e:
-                            logger.warning(f"SHAP explanation failed: {e}, fallback to rule-based")
+        explainer = HybridEngine._explainers_cache[model_uuid]
 
-        # Construction finale (règles uniquement)
-        if is_first:
-            summary = f"{risk_level}: First transaction - no history available"
-            narrative = f"Client has no transaction history. First transaction of {amount:.2f}."
-        elif contributions:
-            main_factor = contributions[0]['factor_display']
-            summary = f"{risk_level}: {main_factor} detected (score {fraud_score:.3f})"
-            narrative = f"Transaction amount {amount:.2f}. " + contributions[0]['detail']
+        # Préparer le vecteur de caractéristiques pour la transaction courante
+        features_vector = X_trans[row_id] if X_trans.ndim > 1 else X_trans
+        if isinstance(features_vector, np.ndarray) and features_vector.ndim > 1:
+            features_vector = features_vector.flatten()
+
+        # Appeler l'expliqueur avancé
+        explanation = explainer.explain_fraud(
+            features=features_vector,
+            fraud_score=fraud_score,
+            transaction_data=transaction_data,
+            behavior_data=behavior_data
+        )
+
+        # --- APLATISSEMENT ET SYNCHRONISATION ---
+        # On extrait le contenu du JSON pour éviter l'imbrication qui casse le Front
+        final_reason = explanation.get("fraud_reason_json", {})
+        final_reason["alert_type"] = explanation.get("alert_type", default_alert_type)
+
+        # On force la cohérence du niveau de risque (ML score > XAI text)
+        actual_risk_level = HybridEngine._compute_risk_level(fraud_score, threshold)
+        final_reason["risk_level"] = actual_risk_level
+        final_reason["fraud_score"] = round(float(fraud_score), 4)
+
+        # Mise à jour du résumé (ex: "MOYEN : ..." -> "CRITIQUE : ...")
+        old_summary = final_reason.get("summary", "")
+        if ":" in old_summary:
+            factor_part = old_summary.split(":", 1)[1].strip()
+            final_reason["summary"] = f"{actual_risk_level}: {factor_part}"
         else:
-            summary = f"{risk_level}: Normal behavior, score {fraud_score:.3f}"
-            narrative = f"Transaction amount {amount:.2f} within usual patterns."
+            factor_display = final_reason.get("primary_factor_display", "Anomalie détectée")
+            final_reason["summary"] = f"{actual_risk_level}: {factor_display}"
 
-        primary_factor = contributions[0]['factor'] if contributions else "NORMAL"
-        primary_factor_display = contributions[0]['factor_display'] if contributions else "NORMAL"
-
-        return {
-            "summary": summary,
-            "narrative": narrative,
-            "risk_level": risk_level,
-            "fraud_score": round(fraud_score, 4),
-            "contributions": contributions,
-            "client_context": client_context,
-            "primary_factor": primary_factor,
-            "analysis_source": "statistical_rules" + ("+shap" if shap_used else ""),
-            "explainers_used": {
-                "shap": shap_used,
-                "statistical": True,
-                "deep_learning": False
-            },
-            "total_risk_points": total_risk_points,
-            "primary_factor_display": primary_factor_display,
-            "alert_type": "RULE_BASED"
-        }
-
-    @staticmethod
-    def _get_explainer(model_uuid: str, xgb_model, preprocessor,
-                       background_data: Optional[np.ndarray],
-                       feature_names: Optional[List[str]],
-                       threshold: float) -> Optional[FraudExplainabilityEngine]:
-        if model_uuid in HybridEngine._explainers_cache:
-            return HybridEngine._explainers_cache[model_uuid]
-        if background_data is None or feature_names is None:
-            return None
-        try:
-            explainer = FraudExplainabilityEngine(
-                model=xgb_model,
-                feature_names=feature_names,
-                background_data=background_data,
-                threshold=threshold,
-                config_path=None,
-                dl_model_path=None,
-                dl_input_dim=None
-            )
-            HybridEngine._explainers_cache[model_uuid] = explainer
-            logger.info(f"Explainability engine initialized for {model_uuid}")
-            return explainer
-        except Exception as e:
-            logger.error(f"Failed to init explainer: {e}")
-            return None
+        return final_reason
 
     @staticmethod
     def _compute_risk_level(score: float, threshold: float) -> str:
@@ -433,12 +530,14 @@ class HybridEngine:
         return "LOW"
 
     @staticmethod
-    def _predict_hybrid(bundle: HybridEnsembleBundle, preprocessor: Any,
-                        features_raw: pd.DataFrame, X_trans: np.ndarray) -> Dict[str, Any]:
+    def _predict_hybrid(bundle: HybridEnsembleBundle, X_trans: np.ndarray) -> Dict[str, Any]:
         rf_score = bundle.rf_model.predict_proba(X_trans)[:, 1]
         xgb_score = bundle.xgb_model.predict_proba(X_trans)[:, 1]
         copod_raw = bundle.copod_model.decision_function(X_trans)
-        if bundle.copod_min is not None and bundle.copod_max is not None:
+        
+        if hasattr(bundle, 'copod_normalizer') and bundle.copod_normalizer is not None:
+            copod_score = bundle.copod_normalizer.transform(copod_raw)
+        elif bundle.copod_min is not None and bundle.copod_max is not None:
             copod_score = (copod_raw - bundle.copod_min) / (bundle.copod_max - bundle.copod_min + 1e-6)
             copod_score = np.clip(copod_score, 0, 1)
         else:
@@ -462,16 +561,35 @@ class HybridEngine:
         }
 
     @staticmethod
-    def _predict_standalone_anomaly(model: Any, X_trans: np.ndarray) -> Dict[str, Any]:
+    def _predict_standalone_anomaly(
+        model: Any,
+        X_trans: np.ndarray,
+        threshold: Optional[float] = None
+    ) -> Dict[str, Any]:
         scores = model.predict_proba(X_trans)
-        if scores.ndim == 2:
+        if getattr(scores, "ndim", 1) == 2:
             scores = scores[:, 1]
+
         score = float(scores[0]) if len(scores) > 0 else 0.0
-        threshold = getattr(model, 'threshold_', 0.5)
+
+        effective_threshold = threshold
+        if effective_threshold is None:
+            effective_threshold = getattr(model, 'threshold_', None)
+        if effective_threshold is None:
+            effective_threshold = 0.5
+            logger.warning("No probability threshold provided for standalone anomaly model; fallback to 0.5")
+        else:
+            logger.warning("Using standalone anomaly probability threshold: %.6f", float(effective_threshold))
+
+        logger.warning(
+            "Standalone anomaly probability stats: first_score=%.6f threshold=%.6f",
+            score,
+            float(effective_threshold),
+        )
 
         return {
             "fraud_score": score,
-            "risk_level": HybridEngine._compute_risk_level(score, threshold),
+            "risk_level": HybridEngine._compute_risk_level(score, float(effective_threshold)),
             "alert_type": getattr(model, 'name', 'ANOMALY').upper(),
             "supervised_score": 0.0,
             "anomaly_score": score,

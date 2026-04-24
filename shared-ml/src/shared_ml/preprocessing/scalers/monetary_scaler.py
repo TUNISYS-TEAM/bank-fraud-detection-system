@@ -12,34 +12,51 @@ logger = logging.getLogger(__name__)
 
 _SKIP_PATTERNS = ("is_", "_spike_", "fraud", "client_is_")
 _MIN_UNIQUE = 10
+_MIN_SCALE_SPREAD = 1e-3
 
 
 class SafeScaler(BaseEstimator, TransformerMixin):
     """
     Met à l'échelle uniquement les colonnes numériques continues, en ignorant les indicateurs binaires.
 
-    Paramètres
-    ----------
-    scaler_type : {'robust', 'standard', 'minmax'}
-        'robust'   → RobustScaler (recommandé pour les données de fraude avec des valeurs aberrantes/outliers)
-        'standard' → StandardScaler
-        'minmax'   → MinMaxScaler
-    min_unique : int
-        Les colonnes avec moins de valeurs distinctes sont traitées comme binaires/catégorielles
-        et ne sont pas mises à l'échelle.
+    Protections ajoutées :
+    - exclusion des colonnes quasi constantes / quasi non dispersées
+    - nettoyage inf / -inf / NaN avant fit/transform
+    - logs explicites des colonnes ignorées
     """
 
-    def __init__(self, scaler_type: str = "robust", min_unique: int = _MIN_UNIQUE):
+    def __init__(
+        self,
+        scaler_type: str = "robust",
+        min_unique: int = _MIN_UNIQUE,
+        min_scale_spread: float = _MIN_SCALE_SPREAD,
+    ):
         self.scaler_type = scaler_type
         self.min_unique = min_unique
+        self.min_scale_spread = min_scale_spread
 
         self._scaler = _build_scaler(scaler_type)
         self._scale_cols: list[str] = []
+        self._skipped_low_spread_: dict[str, float] = {}
         self.feature_names_in_: list[str] = []
 
     def fit(self, X: pd.DataFrame, y=None) -> "SafeScaler":
+        X = X.copy()
         self.feature_names_in_ = list(X.columns)
-        self._scale_cols = _identify_scale_cols(X, self.min_unique)
+
+        X = _sanitize_numeric_frame(X)
+
+        candidate_cols = _identify_scale_cols(X, self.min_unique)
+
+        self._scale_cols = []
+        self._skipped_low_spread_ = {}
+
+        for col in candidate_cols:
+            spread = _compute_spread(X[col], self.scaler_type)
+            if not np.isfinite(spread) or spread < self.min_scale_spread:
+                self._skipped_low_spread_[col] = float(spread) if np.isfinite(spread) else float("nan")
+                continue
+            self._scale_cols.append(col)
 
         if self._scale_cols:
             self._scaler.fit(X[self._scale_cols])
@@ -52,11 +69,22 @@ class SafeScaler(BaseEstimator, TransformerMixin):
         else:
             logger.warning("SafeScaler.fit — no continuous columns found to scale")
 
+        if self._skipped_low_spread_:
+            logger.warning(
+                "SafeScaler.fit — skipped %d low-spread columns: %s",
+                len(self._skipped_low_spread_),
+                {
+                    k: round(v, 8) if np.isfinite(v) else v
+                    for k, v in list(self._skipped_low_spread_.items())[:15]
+                },
+            )
+
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         check_is_fitted(self, "_scale_cols")
         X = X.copy()
+        X = _sanitize_numeric_frame(X)
 
         cols_to_scale = []
         for col in self._scale_cols:
@@ -77,7 +105,10 @@ class SafeScaler(BaseEstimator, TransformerMixin):
             )
 
         if cols_to_scale:
-            X[cols_to_scale] = self._scaler.transform(X[cols_to_scale]).astype(np.float32)
+            scaled = self._scaler.transform(X[cols_to_scale])
+            scaled = np.nan_to_num(scaled, nan=0.0, posinf=20.0, neginf=-20.0).astype(np.float32)
+            scaled = np.clip(scaled, -20.0, 20.0)
+            X[cols_to_scale] = scaled
 
         return X
 
@@ -89,6 +120,7 @@ class SafeScaler(BaseEstimator, TransformerMixin):
         return (
             f"SafeScaler(scaler_type='{self.scaler_type}', "
             f"min_unique={self.min_unique}, "
+            f"min_scale_spread={self.min_scale_spread}, "
             f"n_scaled={len(getattr(self, '_scale_cols', []))})"
         )
 
@@ -104,6 +136,34 @@ def _build_scaler(scaler_type: str):
         f"Unknown scaler_type '{scaler_type}'. "
         f"Choose from: 'robust', 'standard', 'minmax'."
     )
+
+
+def _sanitize_numeric_frame(X: pd.DataFrame) -> pd.DataFrame:
+    X = X.copy()
+    numeric_cols = X.select_dtypes(include=[np.number]).columns
+    if len(numeric_cols) > 0:
+        X[numeric_cols] = X[numeric_cols].replace([np.inf, -np.inf], np.nan)
+        X[numeric_cols] = X[numeric_cols].fillna(0.0)
+    return X
+
+
+def _compute_spread(series: pd.Series, scaler_type: str) -> float:
+    s = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+    if s.empty:
+        return 0.0
+
+    if scaler_type == "robust":
+        q75 = s.quantile(0.75)
+        q25 = s.quantile(0.25)
+        return float(q75 - q25)
+
+    if scaler_type == "standard":
+        return float(s.std(ddof=0))
+
+    if scaler_type == "minmax":
+        return float(s.max() - s.min())
+
+    return 0.0
 
 
 def _identify_scale_cols(X: pd.DataFrame, min_unique: int) -> list[str]:

@@ -22,6 +22,7 @@ class TemporalFeatureTransformer(BaseEstimator, TransformerMixin):
         "is_first_transaction": 5.0,
         "is_weekend": 0.5,
         "is_very_recent": 2.0,
+        "is_gap_z_anomaly": 2.5,
     }
 
     _MULTIDAY_ONLY = {"is_weekend", "is_very_recent"}
@@ -49,8 +50,10 @@ class TemporalFeatureTransformer(BaseEstimator, TransformerMixin):
             self.is_multiday_,
         )
 
-        sample = X.iloc[:1].copy()
-        self._feature_names_ = list(self._transform_impl(sample).columns)
+        # Build feature names from a schema-preserving empty frame instead of a 1-row sample
+        sample = X.head(min(len(X), 10)).copy()
+        transformed = self._transform_impl(sample)
+        self._feature_names_ = list(transformed.columns)
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -131,6 +134,12 @@ class TemporalFeatureTransformer(BaseEstimator, TransformerMixin):
                 X["hours_since_last_tx_log"] = np.float32(0)
                 X["is_long_inactive"] = np.int8(0)
                 X["is_very_recent"] = np.int8(0)
+
+        # New gap anomaly features from client_behavior
+        if "client_gap_z_score" in X.columns:
+            X["gap_z_abs"] = np.abs(X["client_gap_z_score"]).astype(np.float32)
+            X["is_gap_z_anomaly"] = (np.abs(X["client_gap_z_score"]) >= 2.0).astype(np.int8)
+            X["is_gap_z_extreme"] = (np.abs(X["client_gap_z_score"]) >= 3.0).astype(np.int8)
 
         risk = np.zeros(len(X), dtype=np.float32)
         for col, weight in self.risk_score_weights.items():

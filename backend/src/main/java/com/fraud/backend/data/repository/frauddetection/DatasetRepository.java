@@ -36,6 +36,17 @@ public interface DatasetRepository extends JpaRepository<Dataset, Long> {
                         "LOWER(d.datasetCode) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
         Page<Dataset> findByDatasetNameOrCode(@Param("searchTerm") String searchTerm, Pageable pageable);
 
+        @Query("SELECT d FROM Dataset d WHERE (d.type IN :types) AND (" +
+                        "LOWER(d.datasetName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+                        "LOWER(d.datasetCode) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+        Page<Dataset> findByDatasetNameOrCodeAndTypeIn(@Param("searchTerm") String searchTerm, @Param("types") java.util.Collection<DatasetType> types, Pageable pageable);
+
+        Page<Dataset> findByTypeIn(java.util.Collection<DatasetType> types, Pageable pageable);
+
+        Page<Dataset> findByVisibilityAndTypeIn(Boolean visibility, java.util.Collection<DatasetType> types, Pageable pageable);
+
+        Page<Dataset> findByAssignedManagerIdAndTypeIn(Long managerId, java.util.Collection<DatasetType> types, Pageable pageable);
+
         @Query("SELECT COUNT(d) FROM Dataset d WHERE d.type IN :types")
         long countByTypeIn(@Param("types") java.util.Collection<DatasetType> types);
 

@@ -87,7 +87,7 @@ public class DatasetAnalysisPythonService {
             ProcessBuilder pb = new ProcessBuilder(
                     "docker", "exec", onnxContainerName,
                     "python", "/shared-ml/scripts/analyze_dataset.py",
-                    "--dataset-path", containerFileName);
+                    containerFileName);
 
             pb.redirectErrorStream(true);
             Process process = pb.start();

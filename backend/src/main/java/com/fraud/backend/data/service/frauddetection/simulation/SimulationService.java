@@ -3,19 +3,20 @@ package com.fraud.backend.data.service.frauddetection.simulation;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fraud.backend.api.dto.frauddetection.model.request.SimulationRequest;
-import com.fraud.backend.api.dto.frauddetection.model.response.SimulatedTransactionResult;
 import com.fraud.backend.api.dto.frauddetection.model.response.ModelSummaryResponse;
+import com.fraud.backend.api.dto.frauddetection.model.response.SimulatedTransactionResult;
 import com.fraud.backend.api.dto.frauddetection.model.response.SimulationResponse;
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.frauddetection.ModelML;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
+import com.fraud.backend.data.service.accessmanagement.UserService;
 import com.fraud.backend.data.service.frauddetection.deployment.InferenceService;
 import com.fraud.backend.data.service.frauddetection.training.ModelTrainingService;
-import com.fraud.backend.data.service.accessmanagement.UserService;
-import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -23,8 +24,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
-import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -49,27 +48,19 @@ public class SimulationService {
                 .orElseThrow(() -> new IllegalArgumentException("Model not found: " + request.getModelUuid()));
 
         try {
-            // 1. Generate transactions using Python script
             List<Map<String, Object>> simulatedTransactions = generateTransactions(request);
             log.info("Generated {} simulated transactions", simulatedTransactions.size());
 
-            // 2. Prepare items for batch inference
-            // Note: The generate script already generates fields like account_id, ip_address, etc.
-            // which match what PythonInferenceService expects via transactionToMap
             List<Map<String, Object>> batchItems = simulatedTransactions.stream().map(tx -> {
                 Map<String, Object> item = new HashMap<>();
                 item.put("transaction", tx);
-                // Simulation doesn't use existing behavioral data for now to keep it simple
-                // or we could mock it if needed.
                 item.put("has_existing_behavior", false);
                 return item;
             }).collect(Collectors.toList());
 
-            // 3. Run Batch Prediction
             List<Map<String, Object>> predictions = inferenceService.predictBatch(model.getModelUuid(), batchItems);
             log.info("Received {} predictions from inference service", predictions.size());
 
-            // 4. Aggregate results
             double threshold = inferenceService.getModelThreshold(model);
             return aggregateResults(model, request, simulatedTransactions, predictions, threshold, startTime);
 
@@ -80,11 +71,15 @@ public class SimulationService {
     }
 
     private List<Map<String, Object>> generateTransactions(SimulationRequest request) throws Exception {
+        int transactionCount = request.getTransactionCount() != null ? request.getTransactionCount() : 1000;
+        int clientCount = computeSimulationClientCount(transactionCount);
+
         List<String> command = new ArrayList<>(List.of(
                 "docker", "exec", containerName,
                 "python", "/shared-ml/scripts/generate_sample_data.py",
                 "--output-format", "json",
-                "--n-transactions", String.valueOf(request.getTransactionCount() != null ? request.getTransactionCount() : 1000),
+                "--n-transactions", String.valueOf(transactionCount),
+                "--n-clients", String.valueOf(clientCount),
                 "--fraud-ratio", String.valueOf(request.getFraudRatio() != null ? request.getFraudRatio() : 0.05),
                 "--scenario", request.getScenario() != null ? request.getScenario() : "mixed",
                 "--time-distribution", request.getTimeDistribution() != null ? request.getTimeDistribution() : "realistic"
@@ -98,6 +93,20 @@ public class SimulationService {
             command.add("--seed");
             command.add(String.valueOf(request.getRandomSeed()));
         }
+        if (request.getSubtleFraud() == null || request.getSubtleFraud()) {
+            command.add("--subtle-fraud");
+        }
+        if (request.getFraudCount() != null && request.getFraudCount() > 0) {
+            command.add("--fraud-count");
+            command.add(String.valueOf(request.getFraudCount()));
+        }
+
+        log.info("Simulation generator config | txCount={} | clientCount={} | scenario={} | timeDistribution={}",
+                transactionCount,
+                clientCount,
+                request.getScenario() != null ? request.getScenario() : "mixed",
+                request.getTimeDistribution() != null ? request.getTimeDistribution() : "realistic"
+        );
 
         ProcessBuilder pb = new ProcessBuilder(command);
         Process process = pb.start();
@@ -118,68 +127,108 @@ public class SimulationService {
             }
         }
 
-        boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+        boolean finished = process.waitFor(120, TimeUnit.SECONDS);
         if (!finished) {
             process.destroyForcibly();
             throw new RuntimeException("Transaction generation timed out");
         }
 
         if (process.exitValue() != 0) {
-            throw new RuntimeException("Transaction generation failed with exit code " + process.exitValue() + ". Error: " + stderr);
+            throw new RuntimeException(
+                    "Transaction generation failed with exit code "
+                            + process.exitValue()
+                            + ". Error: "
+                            + stderr
+            );
         }
 
         String jsonOutput = stdout.toString().trim();
-        return objectMapper.readValue(jsonOutput, new TypeReference<List<Map<String, Object>>>() {});
+        if (jsonOutput.isBlank()) {
+            throw new RuntimeException("Transaction generation returned empty JSON. Stderr: " + stderr);
+        }
+
+        List<Map<String, Object>> rows = objectMapper.readValue(
+                jsonOutput,
+                new TypeReference<List<Map<String, Object>>>() {}
+        );
+
+        log.info("Parsed {} generated rows from Python", rows.size());
+        return rows;
     }
 
-    private SimulationResponse aggregateResults(ModelML model, SimulationRequest request, 
-                                                List<Map<String, Object>> transactions, 
-                                                List<Map<String, Object>> predictions, 
-                                                double threshold, long startTime) {
-        
+    /**
+     * Choose a client count that gives multiple transactions per client,
+     * so behavioral features are not mostly empty/default.
+     */
+    private int computeSimulationClientCount(int transactionCount) {
+        if (transactionCount <= 0) {
+            return 50;
+        }
+
+        // Target roughly 6 to 8 transactions per client on average.
+        int suggested = Math.max(50, transactionCount / 7);
+
+        // Keep it in a sane range.
+        suggested = Math.min(suggested, 300);
+        suggested = Math.min(suggested, Math.max(50, transactionCount));
+
+        return suggested;
+    }
+
+    private SimulationResponse aggregateResults(
+            ModelML model,
+            SimulationRequest request,
+            List<Map<String, Object>> transactions,
+            List<Map<String, Object>> predictions,
+            double threshold,
+            long startTime
+    ) {
+
         int total = transactions.size();
         int injectedFrauds = 0;
         int detected = 0;
         int tp = 0, fp = 0, tn = 0, fn = 0;
-        
+
         double sumScore = 0;
         double maxScore = 0;
         double minScore = 1.0;
-        
+
         Map<String, Integer> riskDist = new HashMap<>();
         List<SimulatedTransactionResult> detailedResults = new ArrayList<>();
 
         for (int i = 0; i < total; i++) {
             Map<String, Object> tx = transactions.get(i);
             Map<String, Object> pred = predictions.get(i);
-            
+
             boolean wasInjected = ((Number) tx.get("fraud")).intValue() == 1;
             double score = ((Number) pred.get("fraud_score")).doubleValue();
             String riskLevel = (String) pred.get("risk_level");
             boolean isDetected = score >= threshold;
-            
+
             if (wasInjected) injectedFrauds++;
             if (isDetected) detected++;
-            
+
             if (isDetected && wasInjected) tp++;
-            else if (isDetected && !wasInjected) fp++;
-            else if (!isDetected && wasInjected) fn++;
+            else if (isDetected) fp++;
+            else if (wasInjected) fn++;
             else tn++;
-            
+
             sumScore += score;
             maxScore = Math.max(maxScore, score);
             minScore = Math.min(minScore, score);
-            
+
             riskDist.put(riskLevel, riskDist.getOrDefault(riskLevel, 0) + 1);
-            
-            // Add to detailed results (limit to first 100 or top 100 suspectes)
-            // Add to detailed results (all transactions for sampling)
+
+            String region = tx.get("region") != null
+                    ? String.valueOf(tx.get("region"))
+                    : (tx.get("Region") != null ? String.valueOf(tx.get("Region")) : "Unknown");
+
             detailedResults.add(SimulatedTransactionResult.builder()
                     .transactionId((String) tx.get("transaction_id"))
                     .amount(((Number) tx.get("TX_Amount")).doubleValue())
                     .channel((String) tx.get("Channel"))
                     .category((String) tx.get("category"))
-                    .region((String) tx.get("Region"))
+                    .region(region)
                     .fraudScore(score)
                     .riskLevel(riskLevel)
                     .wasInjectedFraud(wasInjected)
@@ -188,7 +237,6 @@ public class SimulationService {
                     .build());
         }
 
-        // Sort detailed results by score descending
         detailedResults.sort((a, b) -> b.getFraudScore().compareTo(a.getFraudScore()));
 
         double precision = (tp + fp) > 0 ? (double) tp / (tp + fp) : 0;
@@ -220,6 +268,7 @@ public class SimulationService {
                 .topSuspiciousTransactions(detailedResults)
                 .durationSeconds((System.currentTimeMillis() - startTime) / 1000.0)
                 .simulatedAt(LocalDateTime.now())
+                .threshold(threshold)
                 .build();
     }
 

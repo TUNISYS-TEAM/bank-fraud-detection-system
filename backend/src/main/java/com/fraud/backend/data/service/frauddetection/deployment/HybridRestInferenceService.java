@@ -50,6 +50,13 @@ public class HybridRestInferenceService implements InferenceService {
         request.put("storage_path", paths.get("modelPath"));
         request.put("pipeline_path", paths.get("pipelinePath"));
 
+        // Send the trained threshold so the Python service uses it
+        ModelML modelEntity = modelMLRepository.findByModelUuid(modelUuid)
+                .orElse(null);
+        if (modelEntity != null) {
+            request.put("threshold", getModelThreshold(modelEntity));
+        }
+
         if (existingBehavior != null) {
             request.put("existing_behavior", behaviorToMap(existingBehavior));
         }
@@ -82,6 +89,13 @@ public class HybridRestInferenceService implements InferenceService {
             Map<String, String> paths = extractArtifactPaths(modelUuid);
             request.put("storage_path", paths.get("modelPath"));
             request.put("pipeline_path", paths.get("pipelinePath"));
+
+            // Send the trained threshold so the Python service uses it
+            ModelML modelEntity = modelMLRepository.findByModelUuid(modelUuid)
+                    .orElse(null);
+            if (modelEntity != null) {
+                request.put("threshold", getModelThreshold(modelEntity));
+            }
             
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.postForObject(url, request, Map.class);

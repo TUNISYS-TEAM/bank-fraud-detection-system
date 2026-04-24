@@ -68,8 +68,8 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   filteredInbox = computed(() => {
     const q = this.searchQuery().toLowerCase();
-    return this.inbox().filter(m => 
-      m.senderName.toLowerCase().includes(q) || 
+    return this.inbox().filter(m =>
+      m.senderName.toLowerCase().includes(q) ||
       m.subject.toLowerCase().includes(q) ||
       m.content.toLowerCase().includes(q)
     );
@@ -77,8 +77,8 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   filteredSent = computed(() => {
     const q = this.searchQuery().toLowerCase();
-    return this.sent().filter(m => 
-      m.receiverName.toLowerCase().includes(q) || 
+    return this.sent().filter(m =>
+      m.receiverName.toLowerCase().includes(q) ||
       m.subject.toLowerCase().includes(q) ||
       m.content.toLowerCase().includes(q)
     );
@@ -86,8 +86,8 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   filteredArchived = computed(() => {
     const q = this.searchQuery().toLowerCase();
-    return this.archived().filter(m => 
-      m.senderName.toLowerCase().includes(q) || 
+    return this.archived().filter(m =>
+      m.senderName.toLowerCase().includes(q) ||
       m.subject.toLowerCase().includes(q) ||
       m.content.toLowerCase().includes(q)
     );
@@ -105,7 +105,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   availableManagers = signal<User[]>([]);
   analystManager = signal<User | null>(null);
-  
+
   isManager = computed(() => this.authStore.isManager());
   isAnalyst = computed(() => this.authStore.isAnalyst());
   currentUser = computed(() => this.authStore.user());
@@ -114,12 +114,13 @@ export class MessagesComponent implements OnInit, OnDestroy {
     const user = this.currentUser();
     return (user as any)?.managerId || null;
   });
-  
+
   allManagers = signal<User[]>([]);
 
   private wsSubscription: Subscription;
 
   validationComment = signal('');
+  showRejectionWarning = signal(false);
   isValidating = signal(false);
 
   constructor() {
@@ -255,7 +256,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
     if (this.currentTab() === 'inbox') list = this.filteredInbox();
     else if (this.currentTab() === 'sent') list = this.filteredSent();
     else if (this.currentTab() === 'archived') list = this.filteredArchived();
-    
+
     return list.length > 0 && this.selectedMessages().size === list.length;
   }
 
@@ -264,7 +265,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
     if (this.currentTab() === 'inbox') list = this.filteredInbox();
     else if (this.currentTab() === 'sent') list = this.filteredSent();
     else if (this.currentTab() === 'archived') list = this.filteredArchived();
-    
+
     return this.selectedMessages().size > 0 && this.selectedMessages().size < list.length;
   }
 
@@ -412,10 +413,10 @@ export class MessagesComponent implements OnInit, OnDestroy {
       next: (response) => {
         const allUsers = response.content || [];
         this.users.set(allUsers);
-        
+
         const managersList = allUsers.filter((u: User) => u.roleId === 2 && u.isActive);
         this.allManagers.set(managersList);
-        
+
         if (this.isAnalyst()) {
           const managerId = this.currentUserManagerId();
           if (managerId) {
@@ -434,12 +435,12 @@ export class MessagesComponent implements OnInit, OnDestroy {
         } else {
           this.availableManagers.set(managersList);
         }
-        
+
         this.loadingUsers.set(false);
       },
-      error: (err) => { 
-        console.error(err); 
-        this.loadingUsers.set(false); 
+      error: (err) => {
+        console.error(err);
+        this.loadingUsers.set(false);
       }
     });
   }
@@ -714,6 +715,12 @@ export class MessagesComponent implements OnInit, OnDestroy {
     }
 
     this.isValidating.set(true);
+    if (status === 'Rejected' && !this.validationComment()) {
+      this.showRejectionWarning.set(true);
+      this.isValidating.set(false);
+      return;
+    }
+    this.showRejectionWarning.set(false);
     this.messageService.validateModel({
       modelUuid: details.modelUuid,
       status: status,

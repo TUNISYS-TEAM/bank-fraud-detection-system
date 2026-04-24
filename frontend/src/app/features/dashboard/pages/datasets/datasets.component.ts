@@ -110,22 +110,20 @@ export class DatasetsComponent implements OnInit, OnDestroy {
 
   loadDatasets(): void {
     this.loading.set(true);
+    
+    const type = this.selectedType();
+    const types = !type ? this.datasetTypes() : undefined;
+
     this.datasetService.list({
       q: this.searchQuery() || undefined,
-      type: this.selectedType() || undefined,
+      type: type || undefined,
+      types: types,
       visibility: this.selectedVisibility() !== null ? this.selectedVisibility()! : undefined,
       page: this.currentPage(),
       size: this.pageSize
     }).subscribe({
       next: (response: ApiResponse<Dataset>) => {
-        let content = response.content;
-        if (this.authStore.isAdmin()) {
-          content = content.filter(
-            d => d.type !== DatasetType.TRANSACTIONS_TRAIN &&
-              d.type !== DatasetType.TRANSACTIONS_TRAIN_ENRICHED
-          );
-        }
-        this.datasets.set(content);
+        this.datasets.set(response.content);
         this.totalElements.set(response.totalElements);
         this.totalPages.set(response.totalPages);
         this.loading.set(false);

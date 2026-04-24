@@ -745,14 +745,17 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     // Combine: selected original features + ALL client behavior features
     const allFeaturesForTraining = [...selectedOriginalFeatures, ...this.allClientBehaviorFeatures];
 
+    // Remove duplicates just in case
+    const uniqueFeaturesForTraining = [...new Set(allFeaturesForTraining)];
+
     // Generate versioned model name
     const versionedModelName = this.generateVersionedModelName(config.modelType);
 
     // Build the hyperparameters object
     const hyperparameters: any = {
       ...config.hyperparameters,
-      selected_original_features: selectedOriginalFeatures,
-      all_features: allFeaturesForTraining,
+      selected_original_features: uniqueFeaturesForTraining,
+      all_features: uniqueFeaturesForTraining,
       detection_threshold: this.detectionThreshold,
       model_name: versionedModelName
     };

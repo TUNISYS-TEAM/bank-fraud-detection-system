@@ -20,4 +20,5 @@ public class ModelSummaryResponse {
     private Double precision;
     private Double recall;
     private Double f1Score;
+    private Double threshold;
 }

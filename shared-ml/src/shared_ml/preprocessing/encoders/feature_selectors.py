@@ -11,10 +11,13 @@ logger = logging.getLogger(__name__)
 _ALWAYS_DROP = frozenset({
     "TX_Time",
     "Account_Id",
+    "Device_Id",
     "_original_idx",
     "_orig_idx",
+    "_row_id",
     "fraud",
-    "Customer_Postal_Code", 
+    "Customer_Postal_Code",
+    "Merchant_Postal_Code",
 })
 
 _RAW_CATS = frozenset({"region", "Channel", "category"})
@@ -22,20 +25,20 @@ _RAW_CATS = frozenset({"region", "Channel", "category"})
 
 class TreeFeatureSelector(BaseEstimator, TransformerMixin):
     """
-    For LightGBM / XGBoost.
+    For tree-based models (RF / XGBoost / LightGBM).
     Drops IDs, datetime, target and raw categorical columns
-    (already one-hot encoded upstream).
+    already one-hot encoded upstream.
     """
 
     def __init__(self, extra_drop: list[str] | None = None):
-        self.extra_drop = extra_drop  # Garder l'original pour sklearn
+        self.extra_drop = extra_drop
         self.selected_features_: list[str] = []
 
     def fit(self, X: pd.DataFrame, y=None) -> "TreeFeatureSelector":
-        # Calculer la liste au moment de l'utilisation
         extra_drop_list = self.extra_drop or []
         drop = _ALWAYS_DROP | _RAW_CATS | set(extra_drop_list)
         self.selected_features_ = [c for c in X.columns if c not in drop]
+
         logger.info(
             "TreeFeatureSelector.fit — %d/%d features selected",
             len(self.selected_features_),
@@ -47,17 +50,20 @@ class TreeFeatureSelector(BaseEstimator, TransformerMixin):
         check_is_fitted(self, "selected_features_")
         available = [c for c in self.selected_features_ if c in X.columns]
         missing = set(self.selected_features_) - set(available)
+
         if missing:
             logger.warning(
                 "TreeFeatureSelector.transform: %d features missing: %s",
                 len(missing),
                 sorted(missing)[:10],
             )
-        return X[available]
+
+        result = X[available].copy()
+        return result
 
     def get_feature_names_out(self, input_features=None) -> list[str]:
         check_is_fitted(self, "selected_features_")
-        return self.selected_features_
+        return list(self.selected_features_)
 
 
 class CatBoostFeatureSelector(BaseEstimator, TransformerMixin):
@@ -81,6 +87,7 @@ class CatBoostFeatureSelector(BaseEstimator, TransformerMixin):
             i for i, c in enumerate(self.selected_features_)
             if c in _RAW_CATS or "usual_" in c
         ]
+
         logger.info(
             "CatBoostFeatureSelector.fit — %d features, %d categorical",
             len(self.selected_features_),
@@ -91,11 +98,11 @@ class CatBoostFeatureSelector(BaseEstimator, TransformerMixin):
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         check_is_fitted(self, "selected_features_")
         available = [c for c in self.selected_features_ if c in X.columns]
-        return X[available]
+        return X[available].copy()
 
     def get_feature_names_out(self, input_features=None) -> list[str]:
         check_is_fitted(self, "selected_features_")
-        return self.selected_features_
+        return list(self.selected_features_)
 
 
 class DLFeatureSelector(BaseEstimator, TransformerMixin):
@@ -131,15 +138,16 @@ class DLFeatureSelector(BaseEstimator, TransformerMixin):
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         check_is_fitted(self, "selected_features_")
         available = [c for c in self.selected_features_ if c in X.columns]
-        result = X[available]
+        result = X[available].copy()
 
         obj_cols = [c for c in result.columns if result[c].dtype == object]
         if obj_cols:
             raise ValueError(
                 f"DLFeatureSelector.transform: object columns in output: {obj_cols}"
             )
+
         return result
 
     def get_feature_names_out(self, input_features=None) -> list[str]:
         check_is_fitted(self, "selected_features_")
-        return self.selected_features_
+        return list(self.selected_features_)

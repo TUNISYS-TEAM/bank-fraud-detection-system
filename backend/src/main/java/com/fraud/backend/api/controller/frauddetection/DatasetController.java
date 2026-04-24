@@ -45,13 +45,14 @@ public class DatasetController {
             @RequestParam(value = "q", required = false) String q,
             @RequestParam(value = "status", required = false) DatasetStatus status,
             @RequestParam(value = "type", required = false) DatasetType type,
+            @RequestParam(value = "types", required = false) List<DatasetType> types,
             @RequestParam(value = "visibility", required = false) Boolean visibility,
             @RequestParam(value = "managerId", required = false) Long managerId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
         
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
-        return datasetService.list(q, status, type, visibility, managerId, pageable)
+        return datasetService.list(q, status, type, types, visibility, managerId, pageable)
                 .map(datasetMapper::toResponse);
     }
 
