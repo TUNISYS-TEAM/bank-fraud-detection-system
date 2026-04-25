@@ -138,7 +138,15 @@ public class DatasetAnalysisPythonService {
             featureCols.put("analyzedAt", LocalDateTime.now().toString());
 
             dataset.setFeatureColumns(featureCols);
-            dataset.setStatistics(response.getStatistics());
+            // Merge new statistics with existing ones (preserve cloned_from_uuid etc.)
+            Map<String, Object> existingStats = dataset.getStatistics();
+            Map<String, Object> newStats = response.getStatistics();
+            if (existingStats != null && newStats != null) {
+                existingStats.putAll(newStats);
+                dataset.setStatistics(existingStats);
+            } else {
+                dataset.setStatistics(newStats);
+            }
             datasetRepository.save(dataset);
 
             log.info("Analyse terminée avec succès pour le dataset: {}", dataset.getDatasetCode());

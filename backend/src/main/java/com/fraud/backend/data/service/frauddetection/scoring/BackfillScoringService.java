@@ -9,6 +9,8 @@ import com.fraud.backend.data.service.frauddetection.training.ModelProvider;
 import com.fraud.backend.data.event.ModelDeploymentEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import com.fraud.backend.data.repository.frauddetection.DatasetRepository;
+import com.fraud.backend.data.enums.datasets.DatasetType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
@@ -35,6 +37,7 @@ public class BackfillScoringService {
     private final ScoringJobService scoringJobService;
     private final ModelDeploymentHistoryRepository deploymentHistoryRepository;
     private final UserService userService;
+    private final DatasetRepository datasetRepository;
     private final MeterRegistry meterRegistry;
 
     @Value("${fraud.backfill.batch-size:100}")
@@ -58,6 +61,7 @@ public class BackfillScoringService {
             ScoringJobService scoringJobService,
             ModelDeploymentHistoryRepository deploymentHistoryRepository,
             UserService userService,
+            DatasetRepository datasetRepository,
             MeterRegistry meterRegistry,
             @Lazy BackfillScoringService self) {
         this.transactionRepository = transactionRepository;
@@ -66,32 +70,36 @@ public class BackfillScoringService {
         this.scoringJobService = scoringJobService;
         this.deploymentHistoryRepository = deploymentHistoryRepository;
         this.userService = userService;
+        this.datasetRepository = datasetRepository;
         this.meterRegistry = meterRegistry;
         this.self = self;
 
         this.batchTimer = Timer.builder("backfill.batch.processing")
                 .description("Time to process a batch of transactions")
                 .register(meterRegistry);
+        // Safe gauge registration
         AtomicLong gaugeValue = new AtomicLong(0);
         meterRegistry.gauge("backfill.active.count", gaugeValue);
         this.activeBackfillsGauge = gaugeValue;
     }
 
     // ------------------------------------------------------------------------
-    // Crash recovery
+    // Crash recovery (best effort – full recovery requires persistent job store)
     // ------------------------------------------------------------------------
 
     @PostConstruct
     public void recoverRunningJobs() {
+        // Since ScoringJobService is in‑memory, we cannot recover across restarts.
+        // We log a warning and clear any stale in‑memory state.
         if (!managerToJobId.isEmpty()) {
             log.warn("Found {} stale job references after restart. Clearing them.", managerToJobId.size());
             managerToJobId.clear();
         }
-        log.info("BackfillScoringService started.");
+        log.info("BackfillScoringService started. No persistent job recovery – jobs will restart on next model deployment.");
     }
 
     // ------------------------------------------------------------------------
-    // Event listener
+    // Event listener – no authentication dependency
     // ------------------------------------------------------------------------
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -158,7 +166,7 @@ public class BackfillScoringService {
             }
 
             if (modelProvider.getDeployedModelEntity(managerId).isEmpty()) {
-                log.info("No deployed model for manager {}.", managerId);
+                log.info("No deployed model for manager {}. Backfill will start when a model is deployed.", managerId);
                 return;
             }
 
@@ -179,6 +187,7 @@ public class BackfillScoringService {
             scoringJobService.markFailed(jobId, "Stopped by user or system");
             log.info("Stopped backfill job {} for manager {}", jobId, managerId);
         }
+        // Clean up lock map to prevent memory leak
         managerLocks.remove(managerId);
     }
 
@@ -204,7 +213,7 @@ public class BackfillScoringService {
                     jobId, model.getModelName(), totalUnscored, managerId);
 
             activeBackfillsGauge.incrementAndGet();
-            self.runBackfill(jobId, managerId);
+            self.runBackfillOptimized(jobId, managerId);
             return jobId;
         }
     }
@@ -224,20 +233,45 @@ public class BackfillScoringService {
     }
 
     // ------------------------------------------------------------------------
-    // Async core – batch processing with built-in fallback
+    // Async core – paginated, no memory explosion, fixed timer & pagination
     // ------------------------------------------------------------------------
 
     @Async
-    protected void runBackfill(UUID jobId, Long managerId) {
+    protected void runBackfillOptimized(UUID jobId, Long managerId) {
         long startTime = System.currentTimeMillis();
         long timeoutMillis = Duration.ofHours(timeoutHours).toMillis();
 
         try {
-            if (!isJobValidAndRunning(jobId, managerId)) return;
+            var jobStatus = scoringJobService.getJob(jobId);
+            if (jobStatus == null || !"RUNNING".equals(jobStatus.getStatus())) {
+                log.warn("Job {} is not RUNNING (status={}), aborting", jobId,
+                        jobStatus == null ? "null" : jobStatus.getStatus());
+                managerToJobId.remove(managerId, jobId);
+                return;
+            }
 
-            Long deploymentId = getActiveDeploymentId(managerId);
+            AppUser manager;
+            try {
+                manager = userService.getById(managerId);
+            } catch (Exception e) {
+                log.warn("Manager {} no longer exists, aborting job {}", managerId, jobId);
+                scoringJobService.markFailed(jobId, "Manager deleted");
+                managerToJobId.remove(managerId);
+                return;
+            }
+            if (!"MANAGER".equalsIgnoreCase(manager.getRole().getName())) {
+                log.warn("User {} is no longer a manager, aborting job {}", managerId, jobId);
+                scoringJobService.markFailed(jobId, "Manager role revoked");
+                managerToJobId.remove(managerId);
+                return;
+            }
+
+            Long deploymentId = deploymentHistoryRepository
+                    .findFirstByStatusAndDeployedBy_IdOrderByDeploymentDateDesc("ACTIVE", managerId)
+                    .map(com.fraud.backend.data.entity.frauddetection.ModelDeploymentHistory::getId)
+                    .orElse(null);
             if (deploymentId == null) {
-                log.warn("No active deployment for manager {} at start. Aborting job {}", managerId, jobId);
+                log.warn("No active deployment for manager {} before start. Aborting job {}", managerId, jobId);
                 scoringJobService.markFailed(jobId, "No active deployment at start");
                 managerToJobId.remove(managerId);
                 return;
@@ -263,13 +297,16 @@ public class BackfillScoringService {
                 }
 
                 // Deployment still active?
-                if (!isDeploymentActive(deploymentId)) {
+                boolean deploymentActive = deploymentHistoryRepository.findById(deploymentId)
+                        .map(d -> "ACTIVE".equals(d.getStatus()))
+                        .orElse(false);
+                if (!deploymentActive) {
                     log.warn("Deployment {} became inactive. Stopping job {}", deploymentId, jobId);
                     scoringJobService.markFailed(jobId, "Model undeployed");
                     break;
                 }
 
-                // Fetch next batch
+                // Always fetch page 0 to avoid skipping due to scoring updates
                 var txPage = transactionRepository.findUnscoredTransactionUuidsByManagerId(
                         managerId, PageRequest.of(0, batchSize));
                 if (txPage.isEmpty()) {
@@ -277,29 +314,36 @@ public class BackfillScoringService {
                 }
 
                 List<UUID> batch = txPage.getContent();
-                Timer.Sample batchSample = Timer.start(meterRegistry);
+                Timer.Sample sample = Timer.start(meterRegistry);
+                try {
+                    var results = transactionScoringService.scoreBatch(batch, model.getModelUuid());
 
-                // scoreBatch gère déjà le fallback individuel en cas d'échec
-                List<TransactionScoringService.ScoreResult> results =
-                        transactionScoringService.scoreBatch(batch, model.getModelUuid());
-
-                int batchProcessed = 0;
-                int batchAlerts = 0;
-                for (TransactionScoringService.ScoreResult result : results) {
-                    if (result.getAlert() != null) {
-                        scoringJobService.addResult(jobId, result.getAlert());
-                        batchAlerts++;
+                    int alertsInBatch = 0;
+                    for (var result : results) {
+                        if (result.getAlert() != null) {
+                            scoringJobService.addResult(jobId, result.getAlert());
+                            alertsInBatch++;
+                        }
+                        scoringJobService.incrementProcessed(jobId);
                     }
-                    scoringJobService.incrementProcessed(jobId);
-                    batchProcessed++;
+                    totalAlerts += alertsInBatch;
+                    totalProcessed += batch.size();
+
+                    long duration = sample.stop(batchTimer);
+                    log.info("batch_completed job={} txs={} alerts={} duration_ms={}",
+                            jobId, batch.size(), alertsInBatch, duration);
+
+                } catch (Exception e) {
+                    log.error("batch_failed job={}", jobId, e);
+                    // Do not increment processed count for failed transactions
+                    for (UUID uuid : batch) {
+                        scoringJobService.addError(jobId, uuid, e.getMessage());
+                    }
+                    // If scoring fails completely, we abort to avoid infinite loop
+                    log.warn("Aborting backfill job {} due to scoring failure", jobId);
+                    scoringJobService.markFailed(jobId, "Scoring failure: " + e.getMessage());
+                    break;
                 }
-
-                totalProcessed += batchProcessed;
-                totalAlerts += batchAlerts;
-
-                long batchDuration = batchSample.stop(batchTimer);
-                log.info("batch_completed job={} txs={} processed={} alerts={} duration_ms={}",
-                        jobId, batch.size(), batchProcessed, batchAlerts, batchDuration);
             }
 
             long totalDuration = System.currentTimeMillis() - startTime;
@@ -308,6 +352,14 @@ public class BackfillScoringService {
                 scoringJobService.markCompleted(jobId);
                 log.info("backfill_completed job={} manager={} total_txs={} total_alerts={} duration_ms={}",
                         jobId, managerId, totalProcessed, totalAlerts, totalDuration);
+
+                // Auto-qualify validation datasets for this manager
+                try {
+                    log.info("Auto-qualifying validation datasets for manager {}", managerId);
+                    qualifyValidationDatasets(managerId);
+                } catch (Exception e) {
+                    log.error("Failed to auto-qualify datasets for manager {}: {}", managerId, e.getMessage());
+                }
             } else {
                 log.info("backfill_stopped job={} manager={} reason={}",
                         jobId, managerId, finalStatus == null ? "job missing" : finalStatus.getErrorMessage());
@@ -315,7 +367,7 @@ public class BackfillScoringService {
 
         } catch (Exception e) {
             log.error("backfill_failed job={} manager={}", jobId, managerId, e);
-            scoringJobService.markFailed(jobId, "Unexpected error: " + e.getMessage());
+            scoringJobService.markFailed(jobId, e.getMessage());
         } finally {
             managerToJobId.remove(managerId, jobId);
             managerLocks.remove(managerId);
@@ -323,47 +375,14 @@ public class BackfillScoringService {
         }
     }
 
-    // ------------------------------------------------------------------------
-    // Helper methods
-    // ------------------------------------------------------------------------
-
-    private boolean isJobValidAndRunning(UUID jobId, Long managerId) {
-        var jobStatus = scoringJobService.getJob(jobId);
-        if (jobStatus == null || !"RUNNING".equals(jobStatus.getStatus())) {
-            log.warn("Job {} is not RUNNING (status={}), aborting", jobId,
-                    jobStatus == null ? "null" : jobStatus.getStatus());
-            managerToJobId.remove(managerId, jobId);
-            return false;
-        }
-
-        AppUser manager;
-        try {
-            manager = userService.getById(managerId);
-        } catch (Exception e) {
-            log.warn("Manager {} no longer exists, aborting job {}", managerId, jobId);
-            scoringJobService.markFailed(jobId, "Manager deleted");
-            managerToJobId.remove(managerId);
-            return false;
-        }
-        if (!"MANAGER".equalsIgnoreCase(manager.getRole().getName())) {
-            log.warn("User {} is no longer a manager, aborting job {}", managerId, jobId);
-            scoringJobService.markFailed(jobId, "Manager role revoked");
-            managerToJobId.remove(managerId);
-            return false;
-        }
-        return true;
-    }
-
-    private Long getActiveDeploymentId(Long managerId) {
-        return deploymentHistoryRepository
-                .findFirstByStatusAndDeployedBy_IdOrderByDeploymentDateDesc("ACTIVE", managerId)
-                .map(com.fraud.backend.data.entity.frauddetection.ModelDeploymentHistory::getId)
-                .orElse(null);
-    }
-
-    private boolean isDeploymentActive(Long deploymentId) {
-        return deploymentHistoryRepository.findById(deploymentId)
-                .map(d -> "ACTIVE".equals(d.getStatus()))
-                .orElse(false);
+    @Transactional
+    public void qualifyValidationDatasets(Long managerId) {
+        datasetRepository.findByTypeAndQualifiedAndVisibilityAndAssignedManagerId(
+            DatasetType.TRANSACTIONS_VAL, false, true, managerId, PageRequest.of(0, 100))
+            .forEach(ds -> {
+                log.info("Qualifying dataset: {}", ds.getDatasetUuid());
+                ds.markAsQualified();
+                datasetRepository.save(ds);
+            });
     }
 }

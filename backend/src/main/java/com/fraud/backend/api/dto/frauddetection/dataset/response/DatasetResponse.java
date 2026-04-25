@@ -23,6 +23,7 @@ public class DatasetResponse {
     private DatasetStatus status;
     private DatasetType type;
     private Boolean visibility;
+    private Boolean qualified;
     private LocalDateTime importedAt;
 
     // ==================== TEAM ASSIGNMENT ====================

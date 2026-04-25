@@ -149,6 +149,7 @@ def build_input_dataframe(batch: list[dict]) -> tuple[pd.DataFrame, dict, dict]:
         "client_usual_category": "Unknown",
         "client_is_unusual_category": 0.0,
         "client_category_freq": 0.0,
+        "client_gap_z_score": 0.0,
         "client_risk_score": 0.0,
     }
 

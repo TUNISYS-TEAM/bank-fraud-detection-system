@@ -28,6 +28,7 @@ export interface Dataset {
     type: DatasetType;
     importedAt: string;
     visibility: boolean;
+    qualified: boolean;
     assignedManagerId?: number;
     assignedManagerName?: string;
     assignedManagerEmail?: string;
@@ -80,7 +81,7 @@ export class DatasetService {
     private readonly apiUrl = `${environment.apiUrl}/datasets`;
     private readonly userUrl = `${environment.apiUrl}/users`;
 
-    list(params: { q?: string; status?: DatasetStatus; types?: DatasetType | DatasetType[]; type?: DatasetType; visibility?: boolean; managerId?: number; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
+    list(params: { q?: string; status?: DatasetStatus; types?: DatasetType | DatasetType[]; type?: DatasetType; visibility?: boolean; qualified?: boolean; managerId?: number; page?: number; size?: number }): Observable<ApiResponse<Dataset>> {
         const teamContext = this.authService.getTeamContext();
         let httpParams = new HttpParams();
         
@@ -101,6 +102,7 @@ export class DatasetService {
         }
         
         if (params.visibility !== undefined) httpParams = httpParams.set('visibility', params.visibility.toString());
+        if (params.qualified !== undefined) httpParams = httpParams.set('qualified', params.qualified.toString());
         if (finalManagerId !== undefined) httpParams = httpParams.set('managerId', finalManagerId.toString());
         if (params.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
         if (params.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
@@ -160,5 +162,13 @@ export class DatasetService {
 
     getLatestImportDate(): Observable<string> {
         return this.http.get<string>(`${this.apiUrl}/latest-import`);
+    }
+
+    cloneForTraining(uuid: string): Observable<Dataset> {
+        return this.http.post<Dataset>(`${this.apiUrl}/${uuid}/clone-for-training`, {});
+    }
+
+    checkIfEnriched(uuid: string): Observable<boolean> {
+        return this.http.get<boolean>(`${this.apiUrl}/${uuid}/is-enriched`);
     }
 }

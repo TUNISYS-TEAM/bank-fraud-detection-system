@@ -24,7 +24,7 @@ import java.util.function.Function;
 @RequiredArgsConstructor
 public class PredictionController {
 
-    private static final int MAX_WINDOW_DAYS = 365;
+    private static final int MAX_WINDOW_DAYS = 1000;
 
     private final TransactionRepository transactionRepository;
     private final FraudAlertRepository fraudAlertRepository;

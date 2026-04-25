@@ -64,6 +64,10 @@ public class Transaction {
     @Builder.Default
     private Boolean isFraud = false;
 
+    @Column(name = "final_decision")
+    @Builder.Default
+    private Boolean finalDecision = false;
+
     @Column(name = "fraud_score", precision = 5, scale = 4)
     private BigDecimal fraudScore;
 

@@ -1,6 +1,4 @@
 import logging
-import math
-import random
 from typing import Optional
 
 import joblib
@@ -15,22 +13,30 @@ logger = logging.getLogger(__name__)
 class RevenueImpactPredictor:
     """
     Prédit le chiffre d'affaires à risque et l'impact CA.
-
+    Retourne None si le modèle n'est pas disponible.
     """
 
     def __init__(self, model_path: Optional[str] = None):
         self.model_path = model_path or REVENUE_MODEL_FILE
+        self.model = None
+        self._load_model()
+
+    def _load_model(self):
         try:
             self.model = joblib.load(self.model_path)
         except Exception:
-            logger.warning("Modèle %s introuvable ou corrompu, fallback activé", self.model_path)
+            logger.warning("Modèle %s introuvable, KPI indisponible", self.model_path)
             self.model = None
 
-    def predict(self, postal_code: str, horizon_days: int) -> dict:
+    def reload(self):
+        """Recharge le modèle depuis le disque (après entraînement)."""
+        self._load_model()
+
+    def predict(self, postal_code: Optional[str], horizon_days: int) -> dict:
         horizon_days = max(1, horizon_days)
 
         if self.model is None:
-            return self._fallback_predict(postal_code, horizon_days)
+            return self._empty_result()
 
         features = self._build_features(postal_code, horizon_days)
 
@@ -40,10 +46,9 @@ class RevenueImpactPredictor:
             if preds.size < 4:
                 logger.warning(
                     "Sortie modèle revenue invalide pour postal_code=%s : %s valeurs reçues",
-                    postal_code,
-                    preds.size,
+                    postal_code, preds.size,
                 )
-                return self._fallback_predict(postal_code, horizon_days)
+                return self._empty_result()
 
             return self._format_output(
                 revenue_at_risk=float(preds[0]),
@@ -53,36 +58,30 @@ class RevenueImpactPredictor:
             )
 
         except Exception as exc:
-            logger.warning(
-                "Erreur pendant la prédiction revenue pour postal_code=%s : %s",
-                postal_code,
-                exc,
-            )
-            return self._fallback_predict(postal_code, horizon_days)
+            logger.warning("Erreur pendant la prédiction revenue pour postal_code=%s : %s", postal_code, exc)
+            return self._empty_result()
 
-    def _fallback_predict(self, postal_code: str, horizon_days: int) -> dict:
-        seed = stable_postal_code_seed(postal_code)
-        rng = random.Random(seed * 2 + horizon_days)
+    def _empty_result(self) -> dict:
+        return {
+            "revenue_at_risk": None,
+            "predicted_ca_impact": None,
+            "approval_rate": None,
+            "friction_score": None,
+        }
 
-        horizon_factor = math.log(1 + horizon_days) / math.log(8)
-
-        revenue_at_risk = rng.uniform(5000, 200000) * horizon_factor
-        predicted_ca_impact = revenue_at_risk * rng.uniform(0.2, 0.8)
-        approval_rate = rng.uniform(0.75, 0.95)
-        friction_score = rng.uniform(0.2, 0.7)
-
-        return self._format_output(
-            revenue_at_risk=revenue_at_risk,
-            predicted_ca_impact=predicted_ca_impact,
-            approval_rate=approval_rate,
-            friction_score=friction_score,
-        )
-
-    def _build_features(self, postal_code: str, horizon_days: int) -> np.ndarray:
+    def _build_features(self, postal_code: Optional[str], horizon_days: int) -> np.ndarray:
+        seed = hash(postal_code or "GLOBAL") % 10000
         return np.array([[
-            stable_postal_code_seed(postal_code),
-            horizon_days,
-        ]])
+            seed,     # code postal encodé
+            0,        # tx_count_30d
+            0,        # fraud_count_30d
+            0.0,      # total_amount_30d
+            0.0,      # fraud_amount_30d
+            0.0,      # avg_fraud_score_30d
+            0.0,      # amount
+            0.0,      # fraud_score
+            float(horizon_days),
+        ]], dtype=np.float32)
 
     def _format_output(
         self,

@@ -24,7 +24,7 @@ else:
     POSTAL_CODES: List[str] = os.getenv("POSTAL_CODES", "1000,1001,1002").split(",")
 
 DEFAULT_HORIZON_DAYS: int = int(os.getenv("DEFAULT_HORIZON_DAYS", 7))
-MODEL_PATH: str = os.getenv("MODEL_PATH", "./models/")
+MODEL_PATH: str = os.getenv("MODEL_PATH", "/app/models/")
 LOSS_MODEL_FILE: str = os.path.join(MODEL_PATH, "loss_forecaster.pkl")
 HOTSPOT_MODEL_FILE: str = os.path.join(MODEL_PATH, "hotspot_predictor.pkl")
 REVENUE_MODEL_FILE: str = os.path.join(MODEL_PATH, "revenue_impact_predictor.pkl")

@@ -36,6 +36,7 @@ public class FraudAlertService {
     private final KeycloakMappingRepository keycloakMappingRepository;
     private final AppUserRepository appUserRepository;
     private final PostalCodeCoordinatesResolver coordinatesResolver;
+    private final com.fraud.backend.data.repository.corebanking.TransactionRepository transactionRepository;
 
     private AppUser getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -274,6 +275,18 @@ public class FraudAlertService {
         alert.setActionTaken(request.getActionTaken());
         alert.setReviewDate(LocalDateTime.now());
         alert.setReviewedBy(currentUser);
+
+        // Sync final decision to transaction
+        com.fraud.backend.data.entity.corebanking.Transaction targetTransaction = alert.getTransaction();
+        if (targetTransaction != null) {
+            String status = request.getStatus();
+            if ("CONFIRMED".equalsIgnoreCase(status) || "RESOLVED".equalsIgnoreCase(status)) {
+                targetTransaction.setFinalDecision(true);
+            } else if ("REJECTED".equalsIgnoreCase(status) || "FALSE_POSITIVE".equalsIgnoreCase(status) || "DISMISSED".equalsIgnoreCase(status)) {
+                targetTransaction.setFinalDecision(false);
+            }
+            transactionRepository.save(targetTransaction);
+        }
 
         FraudAlert updatedAlert = fraudAlertRepository.save(alert);
         return fraudAlertMapper.toResponse(updatedAlert);

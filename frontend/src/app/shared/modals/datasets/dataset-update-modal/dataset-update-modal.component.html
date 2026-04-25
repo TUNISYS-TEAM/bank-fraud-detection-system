@@ -77,6 +77,26 @@
                         }
                     </p>
                 </div>
+
+                <!-- Avertissement si non enrichi -->
+                @if (selectedDataset()?.type === 'TRANSACTIONS_TRAIN' && !isEnriched() && datasetForm.get('visibility')?.value) {
+                    <div class="p-5 warning-glass rounded-2xl flex items-start space-x-4 animate-fadeIn border-l-4 border-l-amber-500">
+                        <div class="flex-shrink-0">
+                            <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center pulse-warning">
+                                <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="text-sm font-bold text-amber-900 mb-1">Action Requise</h4>
+                            <p class="text-xs font-medium text-amber-800/80 leading-relaxed">
+                                Pour rendre ce dataset visible aux analystes, vous devez d'abord 
+                                <span class="font-bold text-amber-600 underline decoration-amber-300 underline-offset-2">extraire le comportement client</span>.
+                            </p>
+                        </div>
+                    </div>
+                }
                 
                 <!-- Manager Assignment (only for VAL datasets and when visible) -->
                 @if (selectedDataset()?.type === 'TRANSACTIONS_VAL' && datasetForm.get('visibility')?.value) {
@@ -129,16 +149,17 @@
 
                 <!-- Alerte de conflit -->
                 @if (errorMessage()) {
-                <div class="p-4 bg-red-50/80 border border-red-100 rounded-xl flex items-start space-x-3 animate-message shadow-sm">
-                    <div class="flex-shrink-0 mt-0.5">
-                        <div class="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-sm shadow-red-200">
-                            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" />
+                <div class="p-5 danger-glass rounded-2xl flex items-start space-x-4 animate-message border-l-4 border-l-red-500">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
                         </div>
                     </div>
                     <div class="flex-1">
-                        <p class="text-xs text-red-900 leading-relaxed conflict-text" [innerHTML]="errorMessage()"></p>
+                        <h4 class="text-sm font-bold text-red-900 mb-1">Erreur de validation</h4>
+                        <p class="text-xs font-medium text-red-800/80 leading-relaxed conflict-text" [innerHTML]="errorMessage()"></p>
                     </div>
                 </div>
                 }
@@ -164,7 +185,7 @@
                         class="flex-1 px-6 py-3 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-all text-sm shadow-sm">
                         Annuler
                     </button>
-                    <button type="submit" [disabled]="datasetForm.invalid || isLoading()"
+                    <button type="submit" [disabled]="datasetForm.invalid || isLoading() || (datasetForm.get('visibility')?.value && !isEnriched())"
                         class="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all text-sm font-medium shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
                         @if (isLoading()) {
                             <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24">

@@ -20,6 +20,14 @@ import java.util.List;
 public interface DatasetRepository extends JpaRepository<Dataset, Long> {
 
         Optional<Dataset> findByDatasetUuid(UUID datasetUuid);
+        
+        Optional<Dataset> findByDatasetName(String datasetName);
+        
+        Optional<Dataset> findByDatasetNameIgnoreCase(String datasetName);
+
+        Optional<Dataset> findFirstByDatasetNameIgnoreCase(String datasetName);
+
+        boolean existsByDatasetNameIgnoreCase(String datasetName);
 
         Page<Dataset> findByStatus(DatasetStatus status, Pageable pageable);
 
@@ -195,6 +203,22 @@ public interface DatasetRepository extends JpaRepository<Dataset, Long> {
         Page<Dataset> findByTypeAndAssignedManagerId(DatasetType type, Long managerId, Pageable pageable);
 
         /**
+         * Find datasets by type, qualification status and visibility
+         */
+        Page<Dataset> findByTypeAndQualifiedAndVisibility(DatasetType type, Boolean qualified, Boolean visibility, Pageable pageable);
+
+        /**
+         * Find datasets by type, qualification status, visibility and assigned manager
+         */
+        Page<Dataset> findByTypeAndQualifiedAndVisibilityAndAssignedManagerId(DatasetType type, Boolean qualified, Boolean visibility, Long managerId, Pageable pageable);
+        
+        Page<Dataset> findByAssignedManagerIdAndTypeInAndVisibility(Long managerId, java.util.Collection<DatasetType> types, Boolean visibility, Pageable pageable);
+        
+        Page<Dataset> findByTypeAndAssignedManagerIdAndVisibility(DatasetType type, Long managerId, Boolean visibility, Pageable pageable);
+        
+        Page<Dataset> findByAssignedManagerIdAndVisibility(Long managerId, Boolean visibility, Pageable pageable);
+
+        /**
          * Find training datasets filtered by manager and visibility
          */
         @Query("SELECT d FROM Dataset d WHERE d.type = :type AND d.status IN :statuses " +
@@ -207,8 +231,27 @@ public interface DatasetRepository extends JpaRepository<Dataset, Long> {
                         Pageable pageable);
 
         /**
+         * Find training datasets filtered by manager, visibility and multiple types
+         */
+        @Query("SELECT d FROM Dataset d WHERE d.type IN :types AND d.status IN :statuses " +
+               "AND d.assignedManager.id = :managerId " +
+               "AND d.visibility = true")
+        Page<Dataset> findTrainingDatasetsByTypesForManager(
+                        @Param("types") List<DatasetType> types,
+                        @Param("statuses") List<DatasetStatus> statuses,
+                        @Param("managerId") Long managerId,
+                        Pageable pageable);
+
+        /**
          * Find visible datasets by type and manager
          */
+        /**
+         * Find enriched version of a raw dataset
+         */
+        @Query(value = "SELECT * FROM dataset WHERE dataset_type = 'TRANSACTIONS_TRAIN_ENRICHED' " +
+                       "AND feature_columns->'enrichment'->>'sourceDatasetId' = :sourceUuid LIMIT 1", nativeQuery = true)
+        Optional<Dataset> findEnrichedBySourceUuid(@Param("sourceUuid") String sourceUuid);
+
         @Query("SELECT d FROM Dataset d WHERE d.type = :type AND d.visibility = true " +
                "AND d.assignedManager.id = :managerId")
         List<Dataset> findVisibleByTypeAndManager(

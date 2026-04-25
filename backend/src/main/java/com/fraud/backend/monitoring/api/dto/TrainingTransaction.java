@@ -17,6 +17,7 @@ public class TrainingTransaction {
     private String customerId;
     private String channel;
     private boolean isFraud;
+    private boolean finalDecision;
     private Double fraudScore;
     private String transactionStatus;
 }

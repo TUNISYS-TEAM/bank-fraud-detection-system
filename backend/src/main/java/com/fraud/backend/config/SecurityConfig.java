@@ -43,7 +43,8 @@ public class SecurityConfig {
                 "/public/**",
                 "/error",
                 "/ws/**",
-                "/ws*/**"
+                "/ws*/**",
+                "/api/internal/**" 
         };
 
         private final CookieBearerTokenResolver cookieBearerTokenResolver;

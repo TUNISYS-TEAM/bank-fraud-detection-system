@@ -1,6 +1,4 @@
 import logging
-import math
-import random
 from typing import Optional
 
 import joblib
@@ -15,36 +13,45 @@ logger = logging.getLogger(__name__)
 class LossForecaster:
     """
     Prévision des pertes futures par zone et horizon.
-    
+    Retourne None si le modèle n'est pas disponible.
     """
 
     def __init__(self, model_path: Optional[str] = None):
         self.model_path = model_path or LOSS_MODEL_FILE
+        self.model = None
+        self._load_model()
+
+    def _load_model(self):
         try:
             self.model = joblib.load(self.model_path)
         except Exception:
-            logger.warning("Modèle %s introuvable ou corrompu, fallback activé", self.model_path)
+            logger.warning("Modèle %s introuvable, KPI indisponible", self.model_path)
             self.model = None
 
-    def predict(self, postal_code: str, horizon_days: int) -> dict:
+    def reload(self):
+        """Recharge le modèle depuis le disque (après entraînement)."""
+        self._load_model()
+
+    def predict(self, postal_code: Optional[str], horizon_days: int) -> dict:
         if self.model is None:
-            seed = stable_postal_code_seed(postal_code)
-            rng = random.Random(seed + horizon_days)
-            # Facteur non-linéaire : log(1 + horizon_days) pour éviter le doublement linéaire
-            total_loss = rng.uniform(1000, 50000) * math.log(1 + horizon_days) / math.log(8)
-            return {
-                "fraud_loss_forecast": round(max(0.0, total_loss), 2)
-            }
+            return {"fraud_loss_forecast": None}
 
         features = self._build_features(postal_code, horizon_days)
         pred = float(self.model.predict(features)[0])
-        pred = max(0.0, pred)
         return {
-            "fraud_loss_forecast": round(pred, 2)
+            "fraud_loss_forecast": round(max(0.0, pred), 2)
         }
 
-    def _build_features(self, postal_code: str, horizon_days: int) -> np.ndarray:
+    def _build_features(self, postal_code: Optional[str], horizon_days: int) -> np.ndarray:
+        seed = hash(postal_code or "GLOBAL") % 10000
         return np.array([[
-            stable_postal_code_seed(postal_code),
-            horizon_days,
-        ]])
+            seed,     # code postal encodé
+            0,        # tx_count_30d (non disponible en prédiction)
+            0,        # fraud_count_30d
+            0.0,      # total_amount_30d
+            0.0,      # fraud_amount_30d
+            0.0,      # avg_fraud_score_30d
+            0.0,      # amount
+            0.0,      # fraud_score
+            float(horizon_days),
+        ]], dtype=np.float32)

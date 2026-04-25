@@ -32,9 +32,13 @@ public class TrainingDataAssembler {
                 .map(transaction -> toTrainingTransaction(transaction, fraudulentIds, coordinatesResolver))
                 .collect(Collectors.toList());
 
+        long fraudCount = list.stream().filter(TrainingTransaction::isFraud).count();
+
         return TrainingDataResponse.builder()
                 .windowStart(windowStart)
                 .windowEnd(windowEnd)
+                .transactionCount(list.size())
+                .fraudCount(fraudCount)
                 .transactions(list)
                 .build();
     }
@@ -60,6 +64,7 @@ public class TrainingDataAssembler {
                 .customerId(resolveCustomerId(tx))
                 .channel(tx.getChannel() != null ? tx.getChannel().name() : null)
                 .isFraud(Boolean.TRUE.equals(tx.getIsFraud()) || fraudulentIds.contains(tx.getId()))
+                .finalDecision(Boolean.TRUE.equals(tx.getFinalDecision()))
                 .fraudScore(convertToDouble(tx.getFraudScore()))
                 .transactionStatus(tx.getStatus() != null ? tx.getStatus().name() : null)
                 .build();

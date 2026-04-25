@@ -2,9 +2,9 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 class OverviewZoneRequest(BaseModel):
-    postalCode: str
-    region: str
-    period: str              # ex: "next_7_days"
+    postalCode: Optional[str] = None
+    region: Optional[str] = "Tunisie"
+    period: Optional[str] = "next_7_days"
     modelId: Optional[str] = "current-production-model"
 
 class RefreshRequest(BaseModel):

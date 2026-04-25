@@ -392,7 +392,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     this.http.get<PageResponse<Dataset>>(url).subscribe({
       next: (response) => {
         this.allTrainingDatasets = response.content;
-        this.processedDatasets = response.content.filter(d => d.status === 'PROCESSED' || d.status === 'CLEANED');
+        this.processedDatasets = response.content.filter(d => 
+          (d.status === 'PROCESSED' || d.status === 'CLEANED') && 
+          d.datasetName.toLowerCase().includes('(enriched)')
+        );
         this.totalElements = response.totalElements;
         this.totalPages = response.totalPages;
         this.currentPage = response.number;

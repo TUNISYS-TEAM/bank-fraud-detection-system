@@ -4,9 +4,11 @@ import { forkJoin, of, Subscription } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { environment } from '../../../../../environments/environment';
 import { DatasetService, Dataset, ApiResponse, DatasetType, DatasetStatus } from '../../../../core/services/dataset.service';
+import { ToastrService } from 'ngx-toastr';
 import { AuthStore } from '../../../../core/store/auth.store';
 import { StatsService } from '../../../../core/services/stats.service';
 import { KpiCard } from '../../../../shared/cards/cards.component';
+import { AuthService } from '../../../../core/services/auth.service';
 
 // Extended Dataset interface with additional properties
 export interface ExtendedDataset extends Dataset {
@@ -92,6 +94,8 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private datasetService = inject(DatasetService);
   private statsService = inject(StatsService);
+  private toastr = inject(ToastrService);
+  private authService = inject(AuthService);
   authStore = inject(AuthStore);
   private statsSubscription?: Subscription;
   public datasetType = DatasetType;
@@ -158,6 +162,16 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   private extractingProgressInterval: any;
   private extractingStartTime: number = 0;
 
+  // Validation datasets available for import
+  valDatasets = signal<Dataset[]>([]);
+  isLoadingValDatasets = signal(false);
+  cloningDatasetId = signal<string | null>(null);
+
+  // Export states
+  showExportMenu = signal(false);
+  isExporting = signal(false);
+  exportingDatasetName = signal<string | null>(null);
+
   // Modals
   showCreateModal = signal(false);
   showViewModal = signal(false);
@@ -185,6 +199,7 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadStats();
     this.loadDatasets();
+    this.loadValDatasets();
 
     this.statsSubscription = this.statsService.refreshStats$.subscribe(() => {
       this.loadStats();
@@ -243,12 +258,23 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   loadDatasets(): void {
     this.loading.set(true);
 
+    const userRole = this.authStore.userRole();
+    const teamContext = this.authService.getTeamContext();
+
     const params: any = {
       q: this.searchQuery() || undefined,
       page: this.currentPage(),
       size: this.pageSize,
-      types: [DatasetType.TRANSACTIONS_TRAIN]
+      types: userRole === 'ANALYST' ? [DatasetType.TRANSACTIONS_TRAIN_ENRICHED] : [DatasetType.TRANSACTIONS_TRAIN]
     };
+
+    if (userRole === 'ANALYST') {
+      params.visibility = true;
+    }
+
+    if (teamContext.managerId !== undefined) {
+      params.managerId = teamContext.managerId;
+    }
 
     this.datasetService.list(params).subscribe({
       next: (response: ApiResponse<Dataset>) => {
@@ -287,6 +313,36 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   onPageChange(page: number): void {
     this.currentPage.set(page);
     this.loadDatasets();
+  }
+
+  // ── Export Methods ───────────────────────────────────────────────────
+  toggleExportMenu(): void {
+    this.showExportMenu.update(v => !v);
+  }
+
+  exportDataset(ds: Dataset): void {
+    this.isExporting.set(true);
+    this.exportingDatasetName.set(ds.datasetName);
+
+    this.datasetService.download(ds.datasetUuid).subscribe({
+      next: (blob) => {
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `${ds.datasetName}.csv`;
+        link.click();
+        window.URL.revokeObjectURL(link.href);
+        this.showExportMenu.set(false);
+        this.isExporting.set(false);
+        this.exportingDatasetName.set(null);
+        this.toastr.success(`Exportation de ${ds.datasetName} réussie`);
+      },
+      error: (err) => {
+        this.isExporting.set(false);
+        this.exportingDatasetName.set(null);
+        this.toastr.error('Erreur lors de l\'exportation CSV');
+        console.error('Export error:', err);
+      }
+    });
   }
 
   // ── Accordion ─────────────────────────────────────────────────────────
@@ -737,6 +793,7 @@ export class TrainDataComponent implements OnInit, OnDestroy {
   onDatasetDeleted(): void {
     this.loadStats();
     this.loadDatasets();
+    this.loadValDatasets();
     this.closeDeleteModal();
   }
 
@@ -782,5 +839,56 @@ export class TrainDataComponent implements OnInit, OnDestroy {
     });
 
     return result;
+  }
+
+  // ── Import Validation Datasets ─────────────────────────────────────────
+  loadValDatasets(): void {
+    const user = this.authStore.user();
+    if (!user && this.authStore.userRole() !== 'ADMIN') return;
+
+    this.isLoadingValDatasets.set(true);
+    
+    // Filtre des datasets de validation qualifiés et visibles
+    const params: any = {
+      type: DatasetType.TRANSACTIONS_VAL,
+      qualified: true,
+      visibility: true,
+      size: 100
+    };
+
+    if (this.authStore.userRole() === 'ANALYST') {
+      params.managerId = (user as any)?.managerId;
+    } else if (this.authStore.userRole() === 'MANAGER') {
+      params.managerId = user?.userId;
+    }
+
+    this.datasetService.list(params).subscribe({
+      next: (response) => {
+        this.valDatasets.set(response.content);
+        this.isLoadingValDatasets.set(false);
+      },
+      error: (err) => {
+        console.error('Error loading validation datasets:', err);
+        this.isLoadingValDatasets.set(false);
+      }
+    });
+  }
+
+  cloneValForTraining(valDatasetUuid: string): void {
+    this.cloningDatasetId.set(valDatasetUuid);
+    
+    this.datasetService.cloneForTraining(valDatasetUuid).subscribe({
+      next: (cloned) => {
+        this.toastr.success(`Dataset "${cloned.datasetName}" importé avec succès pour l'entraînement.`);
+        this.cloningDatasetId.set(null);
+        this.loadDatasets();       
+        this.loadValDatasets();    
+        this.loadStats();       
+      },
+      error: (err) => {
+        this.toastr.error(err.error?.message || "Erreur lors de l'import du dataset.");
+        this.cloningDatasetId.set(null);
+      }
+    });
   }
 }

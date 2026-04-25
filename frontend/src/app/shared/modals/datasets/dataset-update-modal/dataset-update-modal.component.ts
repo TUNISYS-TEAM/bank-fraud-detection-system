@@ -20,6 +20,7 @@ export class DatasetUpdateModalComponent implements OnInit {
       assignedManagerId: value.assignedManagerId || null
     });
     this.updateManagerValidation(value.visibility);
+    this.checkEnrichmentStatus(value.datasetUuid, value.type);
   }
   @Output() close = new EventEmitter<void>();
   @Output() updated = new EventEmitter<void>();
@@ -32,6 +33,7 @@ export class DatasetUpdateModalComponent implements OnInit {
   errorMessage = signal('');
   selectedDataset = signal<Dataset | null>(null);
   managers = signal<any[]>([]);
+  isEnriched = signal<boolean>(true); // Default to true to not block other types
 
   datasetForm: FormGroup = this.fb.group({
     datasetName: ['', [Validators.required, Validators.minLength(3)]],
@@ -67,6 +69,17 @@ export class DatasetUpdateModalComponent implements OnInit {
       managerControl?.clearValidators();
     }
     managerControl?.updateValueAndValidity();
+  }
+  
+  checkEnrichmentStatus(uuid: string, type: string): void {
+    if (type === 'TRANSACTIONS_TRAIN') {
+      this.datasetService.checkIfEnriched(uuid).subscribe({
+        next: (enriched) => this.isEnriched.set(enriched),
+        error: () => this.isEnriched.set(false)
+      });
+    } else {
+      this.isEnriched.set(true); // Always true for other types
+    }
   }
 
   closeModal(): void {

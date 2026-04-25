@@ -49,7 +49,12 @@ public class Dataset {
     private DatasetStatus status;
 
     @Column(name = "visibility", nullable = false)
+    @Builder.Default
     private Boolean visibility = false;
+
+    @Column(name = "qualified", nullable = false)
+    @Builder.Default
+    private Boolean qualified = false;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "dataset_type", nullable = false, length = 30)
@@ -100,6 +105,9 @@ public class Dataset {
         if (type == null) {
             type = DatasetType.TRANSACTIONS_TRAIN;
         }
+        if (qualified == null) {
+            qualified = false;
+        }
         // status can be null now
     }
 
@@ -118,17 +126,19 @@ public class Dataset {
 
     public void markAsProcessed() {
         this.status = DatasetStatus.PROCESSED;
-        this.visibility = true;
     }
 
     public void markAsCleaned() {
         this.status = DatasetStatus.CLEANED;
-        this.visibility = true;
     }
 
     public void markAsInactive() {
         this.status = null;
         this.visibility = false;
+    }
+
+    public void markAsQualified() {
+        this.qualified = true;
     }
 
     public void updateFileStats(String filePath, BigDecimal fileSizeMb, Long rowCount) {

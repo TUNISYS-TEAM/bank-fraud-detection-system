@@ -1,0 +1,3 @@
+ALTER TABLE dataset ADD COLUMN qualified BOOLEAN DEFAULT FALSE;
+UPDATE dataset SET qualified = FALSE;
+ALTER TABLE dataset ALTER COLUMN qualified SET NOT NULL;

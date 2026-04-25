@@ -16,6 +16,8 @@ import { SystemMetricsService, SystemMetrics } from '../../../../core/services/s
 import { ToastrService } from 'ngx-toastr';
 import { DatasetService, Dataset, DatasetType } from '../../../../core/services/dataset.service';
 import { TunisiaMapService } from '../../../../core/services/tunisia-map.service';
+import { ForecastService } from '../../../../core/services/forecast.service';
+import { ForecastKpis } from '../../../../core/models/forecast.model';
 
 interface AlertStats {
   total: number;
@@ -55,11 +57,16 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   private datasetService = inject(DatasetService);
   // === FRAUD MAP ===
   private mapService = inject(TunisiaMapService);
+  private forecastService = inject(ForecastService);
 
   userRole = signal<UserRole | null>(null);
   isLoading = signal(true);
   isModalProcessing = signal(false);
   private adminChartsInitialized = false;
+
+  // Forecast KPIs
+  selectedZoneKpis = signal<ForecastKpis | null>(null);
+  isLoadingZoneKpis = signal(false);
 
   @HostListener('window:resize')
   onResize(): void {
@@ -245,6 +252,121 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   });
 
   // =========================================================
+  // FORECAST CARDS (gestion des valeurs null / indisponibles)
+  // =========================================================
+  forecastLossCard = computed((): KpiCard => {
+    const kpis = this.selectedZoneKpis();
+    const val = kpis?.fraud_loss_forecast;
+    return {
+      label: 'Pertes Prévues (7j)',
+      value: val != null ? val : 'N/A',
+      icon: 'trending-down',
+      trend: val != null ? 'Attention Requise' : 'Indisponible',
+      trendUp: false,
+      color: '#f43f5e',
+      isCurrency: val != null,
+    };
+  });
+
+  forecastRiskCard = computed((): KpiCard => {
+    const kpis = this.selectedZoneKpis();
+    const level = kpis?.risk_level;
+    return {
+      label: 'Niveau de Risque',
+      value: level ? this.translateRisk(level) : 'N/A',
+      icon: level ? this.getRiskIcon(level) : 'help-circle',
+      trend: level ? 'Prédiction IA' : 'Données manquantes',
+      trendUp: level === 'HIGH' || level === 'CRITICAL',
+      color: level ? this.getRiskColor(level) : '#94a3b8',
+      description: level ? 'Tendance' : 'Modèle non disponible',
+    };
+  });
+
+  forecastRevenueCard = computed((): KpiCard => {
+    const kpis = this.selectedZoneKpis();
+    const val = kpis?.revenue_at_risk;
+    return {
+      label: 'Impact CA Potentiel',
+      value: val != null ? val : 'N/A',
+      icon: 'dollar-sign',
+      trend: val != null ? 'Exposition' : 'Indisponible',
+      trendUp: true,
+      color: '#f59e0b',
+      isCurrency: val != null,
+    };
+  });
+
+  forecastDriftCard = computed((): KpiCard => {
+    const kpis = this.selectedZoneKpis();
+    const drift = kpis?.details?.behavior_drift_score;
+    return {
+      label: 'Drift Comportemental',
+      value: drift != null ? (drift * 100).toFixed(1) + '%' : 'N/A',
+      icon: 'activity',
+      trend: drift != null ? 'écart type' : 'Indisponible',
+      trendUp: drift != null && drift > 0.15,
+      color: '#3b82f6',
+      description: drift != null ? 'Stabilité' : 'Pas assez de données',
+    };
+  });
+
+  forecastAnomaliesCard = computed((): KpiCard => {
+    const kpis = this.selectedZoneKpis();
+    // Utiliser total_anomalies (somme) pour la vue globale, hotspot_score × 100 pour une zone
+    const val = kpis?.total_anomalies ?? (kpis?.hotspot_score != null ? Math.round(kpis.hotspot_score * 100) : null);
+    return {
+      label: 'Anomalies Prévues',
+      value: val != null ? val : 'N/A',
+      icon: 'alert-circle',
+      trend: val != null ? 'Volume estimé' : 'Indisponible',
+      trendUp: true,
+      color: '#6366f1',
+    };
+  });
+
+  forecastCustomerRatioCard = computed((): KpiCard => {
+    const kpis = this.selectedZoneKpis();
+    const ratio = kpis?.high_risk_customer_ratio;
+    return {
+      label: 'Clients à Haut Risque',
+      value: ratio != null ? (ratio * 100).toFixed(1) + '%' : 'N/A',
+      icon: 'users',
+      trend: ratio != null ? 'Base client' : 'Indisponible',
+      trendUp: ratio != null && ratio > 0.1,
+      color: '#8b5cf6',
+      description: ratio != null ? 'Score Risque' : 'Données manquantes',
+    };
+  });
+
+  forecastNetSavingsCard = computed((): KpiCard => {
+    const kpis = this.selectedZoneKpis();
+    const val = kpis?.net_savings;
+    return {
+      label: 'Économies Nettes (Est.)',
+      value: val != null ? val : 'N/A',
+      icon: 'shield',
+      trend: val != null ? 'Optimisation' : 'Indisponible',
+      trendUp: true,
+      color: '#10b981',
+      isCurrency: val != null,
+    };
+  });
+
+  forecastFalsePositiveCard = computed((): KpiCard => {
+    const kpis = this.selectedZoneKpis();
+    const val = kpis?.details?.cost_of_false_positives;
+    return {
+      label: 'Coût Faux Positifs',
+      value: val != null ? val : 'N/A',
+      icon: 'minus-circle',
+      trend: val != null ? 'Perte opérationnelle' : 'Indisponible',
+      trendUp: false,
+      color: '#64748b',
+      isCurrency: val != null,
+    };
+  });
+
+  // =========================================================
   // SECTION ADMIN
   // =========================================================
   apiError = signal<string | null>(null);
@@ -373,6 +495,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
       this.loadAdminOverview();
     } else {
       this.loadFraudOverview();
+      this.loadGlobalKpis();
     }
   }
 
@@ -641,6 +764,16 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     this.riskDistributionChart?.dispose();
     this.fraudEvolutionChart = null;
     this.riskDistributionChart = null;
+  }
+
+  getRiskColor(risk: string): string {
+    switch (risk?.toUpperCase()) {
+      case 'CRITICAL': return '#ef4444';
+      case 'HIGH': return '#f97316';
+      case 'MEDIUM': return '#3b82f6';
+      case 'LOW': return '#22c55e';
+      default: return '#94a3b8';
+    }
   }
 
   getRiskBadgeClass(risk: string): string {
@@ -969,7 +1102,9 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
           this.adminTotalAlerts.set(results.confirmed.totalElements || 0);
         }
         if (results.datasets) {
-          this.availableDatasets.set(results.datasets.content || []);
+          const allDatasets = results.datasets.content || [];
+          const filteredDatasets = allDatasets.filter((d: Dataset) => d.visibility === true && d.assignedManagerId != null);
+          this.availableDatasets.set(filteredDatasets);
         }
         this.isLoading.set(false);
         // === FRAUD MAP ===
@@ -1368,6 +1503,56 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
         }
       }
     });
+
+    this.fraudMapChart.on('click', (params: any) => {
+      if (params.componentType === 'series' && params.seriesType === 'scatter') {
+        this.selectZone(params.name);
+      }
+    });
+  }
+
+  selectZone(postalCode: string | null): void {
+    this.isLoadingZoneKpis.set(true);
+    this.forecastService.getZoneKpis(postalCode).subscribe({
+      next: (kpis) => {
+        this.selectedZoneKpis.set(kpis);
+        this.isLoadingZoneKpis.set(false);
+      },
+      error: () => {
+        // Valeur vide pour éviter les erreurs dans le template
+        this.selectedZoneKpis.set({
+          postal_code: null,
+          zone_label: 'Indisponible',
+          risk_level: null,
+          hotspot_score: null,
+          total_anomalies: null,
+          fraud_loss_forecast: null,
+          revenue_at_risk: null,
+          expected_loss_per_customer: null,
+          high_risk_customer_ratio: null,
+          net_savings: null,
+          details: {
+            cost_of_false_positives: null,
+            cross_border_anomaly_rate: null,
+            behavior_drift_score: null,
+            predicted_ca_impact: null,
+            transaction_approval_rate: null,
+            customer_friction_score: null,
+          }
+        });
+        this.isLoadingZoneKpis.set(false);
+        const label = postalCode ? `le code postal ${postalCode}` : 'les données globales';
+        this.toastr.error(`Impossible de charger les prévisions pour ${label}`, 'Erreur Forecast');
+      }
+    });
+  }
+
+  loadGlobalKpis(): void {
+    this.selectZone(null);
+  }
+
+  clearZoneSelection(): void {
+    this.loadGlobalKpis();
   }
 
   private updateFraudMapChart(): void {

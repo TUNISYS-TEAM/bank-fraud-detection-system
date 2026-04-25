@@ -116,13 +116,35 @@ public class DatasetService {
 
     // ==================== PUBLIC CRUD ====================
 
-    public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, List<DatasetType> types, Boolean visibility, Long managerId, Pageable pageable) {
+    public Page<Dataset> list(String q, DatasetStatus status, DatasetType type, List<DatasetType> types, Boolean visibility, Boolean qualified, Long managerId, Pageable pageable) {
+        if (qualified != null && type != null) {
+            if (visibility != null) {
+                if (managerId != null) {
+                    return datasetRepository.findByTypeAndQualifiedAndVisibilityAndAssignedManagerId(type, qualified, visibility, managerId, pageable);
+                }
+                return datasetRepository.findByTypeAndQualifiedAndVisibility(type, qualified, visibility, pageable);
+            }
+            if (managerId != null) {
+                return datasetRepository.findByTypeAndQualifiedAndVisibilityAndAssignedManagerId(type, qualified, true, managerId, pageable); // Fallback to visibility true if filtering by qualified
+            }
+            return datasetRepository.findByTypeAndQualifiedAndVisibility(type, qualified, true, pageable);
+        }
+
         if (managerId != null) {
             if (types != null && !types.isEmpty()) {
+                if (visibility != null) {
+                    return datasetRepository.findByAssignedManagerIdAndTypeInAndVisibility(managerId, types, visibility, pageable);
+                }
                 return datasetRepository.findByAssignedManagerIdAndTypeIn(managerId, types, pageable);
             }
             if (type != null) {
+                if (visibility != null) {
+                    return datasetRepository.findByTypeAndAssignedManagerIdAndVisibility(type, managerId, visibility, pageable);
+                }
                 return datasetRepository.findByTypeAndAssignedManagerId(type, managerId, pageable);
+            }
+            if (visibility != null) {
+                return datasetRepository.findByAssignedManagerIdAndVisibility(managerId, visibility, pageable);
             }
             return datasetRepository.findByAssignedManagerId(managerId, pageable);
         }
@@ -140,6 +162,7 @@ public class DatasetService {
         if (status != null && type != null) {
             return datasetRepository.findByStatusAndType(status, type, pageable);
         }
+
         
         if (type != null && visibility != null) {
             return datasetRepository.findByVisibilityAndType(visibility, type, pageable);
@@ -160,18 +183,24 @@ public class DatasetService {
         return datasetRepository.findAll(pageable);
     }
 
-    public Page<Dataset> listTrainingDatasets(String q, Long managerId, Pageable pageable) {
+    public Page<Dataset> listTrainingDatasets(String q, Long managerId, Boolean visibility, Pageable pageable) {
         List<DatasetStatus> statuses = List.of(DatasetStatus.PROCESSED, DatasetStatus.CLEANED);
-        DatasetType type = DatasetType.TRANSACTIONS_TRAIN_ENRICHED;
+        List<DatasetType> types = List.of(DatasetType.TRANSACTIONS_TRAIN, DatasetType.TRANSACTIONS_TRAIN_ENRICHED);
         
         if (managerId != null) {
-            return datasetRepository.findTrainingDatasetsForManager(type, statuses, managerId, pageable);
+            // Manager view: show ALL their datasets of these types
+            return datasetRepository.findByAssignedManagerIdAndTypeIn(managerId, types, pageable);
         }
 
         if (q != null && !q.isBlank()) {
-            return datasetRepository.findTrainingDatasetsBySearchTerm(type, statuses, q.trim(), pageable);
+            return datasetRepository.findByDatasetNameOrCodeAndTypeIn(q.trim(), types, pageable);
         }
-        return datasetRepository.findByTypeAndStatusInAndVisibilityTrue(type, statuses, pageable);
+        
+        if (visibility != null) {
+            return datasetRepository.findByVisibilityAndTypeIn(visibility, types, pageable);
+        }
+        
+        return datasetRepository.findByTypeIn(types, pageable);
     }
 
     public Page<Dataset> listAllTrainingDatasets(String q, Long managerId, Pageable pageable) {
@@ -1010,39 +1039,37 @@ public class DatasetService {
         // first
         if (ds.getType() == DatasetType.TRANSACTIONS_TRAIN) {
             try {
-                List<Dataset> enrichedDatasets = datasetRepository.findByType(
-                        DatasetType.TRANSACTIONS_TRAIN_ENRICHED,
-                        Pageable.unpaged()).getContent();
+                // 1. Try standard way: find enriched by metadata link
+                Optional<Dataset> enrichedOpt = datasetRepository.findEnrichedBySourceUuid(uuid.toString());
+                
+                // 2. Fallback: find enriched by naming convention
+                if (enrichedOpt.isEmpty()) {
+                    enrichedOpt = datasetRepository.findFirstByDatasetNameIgnoreCase(
+                            ds.getDatasetName().trim() + " (enriched)");
+                }
 
-                for (Dataset enriched : enrichedDatasets) {
-                    Map<String, Object> enrichedFeatureCols = enriched.getFeatureColumns();
-                    if (enrichedFeatureCols != null && enrichedFeatureCols.containsKey("enrichment")) {
-                        Map<String, Object> enrichedMeta = (Map<String, Object>) enrichedFeatureCols
-                                .get("enrichment");
-                        if (enrichedMeta != null &&
-                                uuid.toString().equals(enrichedMeta.get("sourceDatasetId"))) {
+                if (enrichedOpt.isPresent()) {
+                    Dataset enriched = enrichedOpt.get();
+                    log.info("Found enriched dataset {} to delete along with source", enriched.getDatasetUuid());
 
-                            log.info("Found enriched dataset {} to delete along with source",
-                                    enriched.getDatasetUuid());
-
-                            // Delete the enriched dataset's file from MinIO
-                            if (enriched.getFilePath() != null && !enriched.getFilePath().isBlank()) {
-                                try {
-                                    storageService.delete(enriched.getFilePath());
-                                    log.info("Deleted enriched dataset file from MinIO: {}",
-                                            enriched.getFilePath());
-                                } catch (Exception e) {
-                                    log.warn("Failed to delete enriched dataset file from MinIO: {}",
-                                            e.getMessage());
-                                }
-                            }
-
-                            // Delete the enriched dataset from database
-                            datasetRepository.delete(enriched);
-                            log.info("Deleted enriched dataset: {}", enriched.getDatasetUuid());
-                            break;
+                    // Delete the enriched dataset's file from MinIO
+                    if (enriched.getFilePath() != null && !enriched.getFilePath().isBlank()) {
+                        try {
+                            storageService.delete(enriched.getFilePath());
+                            log.info("Deleted enriched dataset file from MinIO: {}", enriched.getFilePath());
+                        } catch (Exception e) {
+                            log.warn("Failed to delete enriched dataset file from MinIO: {}", e.getMessage());
                         }
                     }
+
+                    // Clear DB tables for enriched dataset
+                    if (isDatabaseBackedType(enriched.getType())) {
+                        clearTableForDataset(enriched);
+                    }
+
+                    // Delete the enriched dataset from database
+                    datasetRepository.delete(enriched);
+                    log.info("Deleted enriched dataset: {}", enriched.getDatasetUuid());
                 }
             } catch (Exception e) {
                 log.warn("Could not delete enriched version for dataset {}: {}", uuid, e.getMessage());
@@ -1066,6 +1093,24 @@ public class DatasetService {
 
             log.info("Successfully deleted dataset {} and its associated resources", uuid);
 
+            // LOGIQUE DE RESTAURATION DU STATUT QUALIFIED
+            // Si c'est un dataset d'entraînement qui a été cloné depuis un dataset de validation
+            if (ds.getType() == DatasetType.TRANSACTIONS_TRAIN && ds.getStatistics() != null) {
+                String sourceUuidStr = (String) ds.getStatistics().get("cloned_from_uuid");
+                if (sourceUuidStr != null) {
+                    try {
+                        UUID sourceUuid = UUID.fromString(sourceUuidStr);
+                        datasetRepository.findByDatasetUuid(sourceUuid).ifPresent(sourceDs -> {
+                            log.info("Restoring qualified=true for source validation dataset {}", sourceUuid);
+                            sourceDs.setQualified(true);
+                            datasetRepository.save(sourceDs);
+                        });
+                    } catch (Exception e) {
+                        log.warn("Failed to restore qualification for source dataset {}: {}", sourceUuidStr, e.getMessage());
+                    }
+                }
+            }
+
         } catch (DataIntegrityViolationException e) {
             log.warn("Échec de la suppression du dataset {} ({}) : {}", ds.getDatasetName(), uuid, e.getMessage());
             throw new IllegalArgumentException(
@@ -1088,18 +1133,30 @@ public class DatasetService {
         }
 
         if (request.getVisibility() != null && !request.getVisibility().equals(oldVisibility)) {
-            // If trying to set visibility to false
+            // If it's a raw training dataset, we also update its enriched version
+            if (ds.getType() == DatasetType.TRANSACTIONS_TRAIN) {
+                // Try standard way then fallback for legacy
+                Optional<Dataset> enrichedOpt = datasetRepository.findEnrichedBySourceUuid(ds.getDatasetUuid().toString());
+                if (enrichedOpt.isEmpty()) {
+                    String expectedName = ds.getDatasetName().trim() + " (enriched)";
+                    enrichedOpt = datasetRepository.findFirstByDatasetNameIgnoreCase(expectedName);
+                }
+
+                enrichedOpt.ifPresent(enriched -> {
+                    enriched.setVisibility(request.getVisibility());
+                    datasetRepository.save(enriched);
+                    log.info("Visibilité du dataset enrichi {} mise à jour à {}", enriched.getDatasetUuid(), request.getVisibility());
+                });
+            }
+
+            // Normal visibility logic
             if (!request.getVisibility() && oldVisibility) {
-                // Clear the corresponding table if this dataset was visible
                 clearTableForDataset(ds);
             }
 
-            // If trying to set visibility to true
             if (request.getVisibility() && !oldVisibility) {
-                // For types that should have only one visible dataset
                 if (isSingleVisibleRestricted(ds.getType())) {
-                    Optional<Dataset> visibleOfSameType = datasetRepository.findVisibleByTypeExcluding(ds.getType(),
-                            uuid);
+                    Optional<Dataset> visibleOfSameType = datasetRepository.findVisibleByTypeExcluding(ds.getType(), uuid);
                     if (visibleOfSameType.isPresent()) {
                         Dataset other = visibleOfSameType.get();
                         throw new IllegalArgumentException(String.format(
@@ -1111,9 +1168,13 @@ public class DatasetService {
 
             ds.setVisibility(request.getVisibility());
             visibilityChanged = true;
+            
+            if (!request.getVisibility()) {
+                ds.setAssignedManager(null);
+            }
         }
 
-        if (request.getAssignedManagerId() != null) {
+        if (request.getAssignedManagerId() != null && ds.getVisibility()) {
             ds.setAssignedManager(userService.getById(request.getAssignedManagerId()));
         }
 
@@ -1124,7 +1185,6 @@ public class DatasetService {
             try {
                 importDataFromMinioToDb(ds);
 
-                // Execute post-import tasks asynchronously to release the admin UI immediately
                 if (ds.getType() == DatasetType.TRANSACTIONS_VAL) {
                     final Long managerId = ds.getAssignedManager() != null ? ds.getAssignedManager().getId() : null;
                     java.util.concurrent.CompletableFuture.runAsync(() -> {
@@ -1160,6 +1220,23 @@ public class DatasetService {
         }
 
         return ds;
+    }
+
+    public boolean checkIfEnriched(UUID uuid) {
+        // 1. Check by metadata (standard way for new datasets)
+        if (datasetRepository.findEnrichedBySourceUuid(uuid.toString()).isPresent()) {
+            return true;
+        }
+        
+        // 2. Fallback for legacy datasets: check by naming convention (case insensitive + trimmed)
+        try {
+            Dataset source = get(uuid);
+            String sourceName = source.getDatasetName().trim();
+            String expectedEnrichedName = sourceName + " (enriched)";
+            return datasetRepository.existsByDatasetNameIgnoreCase(expectedEnrichedName);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ==================== ANALYSE ====================
@@ -1402,6 +1479,7 @@ public class DatasetService {
         Path tempParquet = null;
         Path tempCsv = null;
         String containerInput = "/tmp/fraud-work/export_" + ds.getDatasetUuid() + ".parquet";
+        String containerPrepared = "/tmp/fraud-work/output/cloned_" + ds.getDatasetUuid() + ".parquet";
         String containerOutput = "/tmp/fraud-work/export_" + ds.getDatasetUuid() + ".csv";
 
         try {
@@ -1412,28 +1490,40 @@ public class DatasetService {
             }
 
             // 2. Ensure data directory exists in container
-            execDockerCommand(onnxContainerName, "mkdir", "-p", "/tmp/fraud-work");
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work");
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work/output");
 
             // 3. Copy Parquet to container
-            execDockerCopy(tempParquet, onnxContainerName + ":" + containerInput);
+            execDockerCopy(tempParquet, containerInput);
 
-            // 4. Convert via Python CLI
-            execDockerCommand(onnxContainerName, "python", "-m", "ml_onnx_service.cli.main", "convert-to-csv",
-                    "--input", containerInput,
+            // 4. If TRANSACTIONS_VAL, prepare the Parquet first (add fraud column, remove validation-only cols)
+            String parquetToConvert = containerInput;
+            if (ds.getType() == DatasetType.TRANSACTIONS_VAL) {
+                log.info("Preparing VAL dataset {} for export (adding training columns via clone_val_to_train)", ds.getDatasetUuid());
+                execDockerCommand("python", "/shared-ml/scripts/clone_val_to_train.py",
+                        "--input", containerInput,
+                        "--dataset-id", ds.getDatasetUuid().toString(),
+                        "--job-id", "export-" + System.currentTimeMillis());
+                parquetToConvert = containerPrepared;
+            }
+
+            // 5. Convert via Python CLI
+            execDockerCommand("python", "-m", "ml_onnx_service.cli.main", "convert-to-csv",
+                    "--input", parquetToConvert,
                     "--output", containerOutput);
 
-            // 5. Copy CSV back from container
+            // 6. Copy CSV back from container
             tempCsv = Files.createTempFile("export_out_", ".csv");
             execDockerCopyFromContainer(containerOutput, tempCsv);
 
-            // 6. Clean up container files
+            // 7. Clean up container files
             try {
-                execDockerCommand("rm", "-f", containerInput, containerOutput);
+                execDockerCommand("rm", "-f", containerInput, containerOutput, containerPrepared);
             } catch (Exception e) {
                 log.warn("Failed to clean up container files after export: {}", e.getMessage());
             }
 
-            // 7. Read CSV into memory to return stream and delete temp file
+            // 8. Read CSV into memory to return stream and delete temp file
             byte[] csvBytes = Files.readAllBytes(tempCsv);
             return new ByteArrayInputStream(csvBytes);
 
@@ -1652,8 +1742,159 @@ public class DatasetService {
                 pageable);
     }
 
-    // ========================== EXTRACTION COMPORTEMENT CLIENT
-    // =============================
+    @Transactional
+    public Dataset cloneForTraining(UUID valDatasetUuid) throws Exception {
+        Dataset valDataset = get(valDatasetUuid);
+        String jobId = UUID.randomUUID().toString();
+
+        // 1. Vérifier les préconditions
+        if (valDataset.getType() != DatasetType.TRANSACTIONS_VAL) {
+            throw new IllegalArgumentException("Seuls les datasets de validation peuvent être importés pour entraînement.");
+        }
+        
+        if (valDataset.getFilePath() == null || valDataset.getFilePath().isBlank()) {
+            throw new IllegalArgumentException("Le dataset source n'a pas de fichier associé (filePath manquant).");
+        }
+        if (!valDataset.getVisibility()) {
+            throw new IllegalArgumentException("Le dataset source doit être activé (visible).");
+        }
+
+        log.info("Clonage du dataset de validation {} pour entraînement (Manager: {})", 
+                valDatasetUuid, valDataset.getAssignedManager() != null ? valDataset.getAssignedManager().getId() : "null");
+
+        Path tempFile = null;
+        Path outputFile = null;
+        String containerInput = null;
+        String containerOutput = null;
+        Dataset trainDataset = null;
+
+        try {
+            // 2. Télécharger le fichier source depuis MinIO
+            tempFile = Files.createTempFile("clone_input_", ".parquet");
+            try (InputStream in = storageService.download(valDataset.getFilePath())) {
+                Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+            log.info("Fichier source téléchargé: {}", tempFile);
+
+            // 3. Préparer les répertoires dans le conteneur
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work");
+            execDockerCommand("mkdir", "-p", "/tmp/fraud-work/output");
+
+            // 4. Copier dans le conteneur
+            containerInput = "/tmp/fraud-work/" + tempFile.getFileName().toString();
+            execDockerCopy(tempFile, containerInput);
+
+            // 5. Créer le nouveau dataset en base (pour avoir un UUID)
+            trainDataset = Dataset.builder()
+                    .datasetName("TRAIN_from_" + valDataset.getDatasetName())
+                    .datasetCode(generateCode())
+                    .type(DatasetType.TRANSACTIONS_TRAIN)
+                    .status(null) // Prêt pour analyse
+                    .visibility(false)
+                    .assignedManager(valDataset.getAssignedManager())
+                    .build();
+            
+            trainDataset = datasetRepository.save(trainDataset);
+            UUID trainUuid = trainDataset.getDatasetUuid();
+
+            // 6. Exécuter le script Python de clonage
+            List<String> cmd = new ArrayList<>();
+            cmd.addAll(List.of(
+                    "docker", "exec", onnxContainerName,
+                    "python", "/shared-ml/scripts/clone_val_to_train.py",
+                    "--input", containerInput,
+                    "--dataset-id", trainUuid.toString(),
+                    "--job-id", jobId));
+
+            log.info("Exécution du script de clonage: {}", String.join(" ", cmd));
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            StringBuilder outputBuilder = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    outputBuilder.append(line).append("\n");
+                }
+            }
+
+            int exitCode = process.waitFor();
+            String result = outputBuilder.toString().trim();
+
+            if (exitCode != 0) {
+                log.error("Script Python échoué (code {}): {}", exitCode, result);
+                throw new RuntimeException("Échec du script de clonage Python.");
+            }
+
+            JsonNode root = extractJsonFromOutput(result);
+            if (root == null || "error".equals(root.path("status").asText())) {
+                throw new RuntimeException("Sortie JSON invalide ou erreur Python: " + (root != null ? root.path("error").asText() : "N/A"));
+            }
+
+            // 7. Récupérer le fichier de sortie du conteneur
+            String outputFilename = root.path("output_file").asText();
+            containerOutput = "/tmp/fraud-work/output/" + outputFilename;
+            outputFile = Files.createTempFile("clone_output_", ".parquet");
+            execDockerCopyFromContainer(containerOutput, outputFile);
+
+            // 8. Upload vers MinIO
+            String minioPath = "data/raw/transactions_train/" + trainUuid + "/data.parquet";
+            try (InputStream is = Files.newInputStream(outputFile)) {
+                storageService.upload(minioPath, is, Files.size(outputFile), "application/octet-stream");
+            }
+
+            // 9. Mettre à jour les stats du nouveau dataset
+            long rowCount = root.path("original_rows").asLong(0);
+            BigDecimal fileSizeMb = bytesToMb(Files.size(outputFile));
+            trainDataset.updateFileStats(minioPath, fileSizeMb, rowCount);
+            
+            // Ajouter métadonnées de source
+            Map<String, Object> stats = new HashMap<>();
+            stats.put("cloned_from_uuid", valDatasetUuid.toString());
+            stats.put("cloned_from_name", valDataset.getDatasetName());
+            stats.put("cloned_at", LocalDateTime.now().toString());
+            trainDataset.setStatistics(stats);
+
+            trainDataset = datasetRepository.save(trainDataset);
+            log.info("Dataset de clonage terminé avec succès: {}", trainUuid);
+
+            // Désactiver le statut qualified du dataset source (pour qu'il ne soit plus dans la liste des imports)
+            valDataset.setQualified(false);
+            datasetRepository.save(valDataset);
+
+            return trainDataset;
+
+        } catch (Exception e) {
+            log.error("Erreur lors du clonage du dataset {}", valDatasetUuid, e);
+            if (trainDataset != null && trainDataset.getId() != null) {
+                try { datasetRepository.delete(trainDataset); } catch (Exception ignored) {}
+            }
+            throw e;
+        } finally {
+            // Nettoyage
+            try {
+                if (tempFile != null) Files.deleteIfExists(tempFile);
+                if (outputFile != null) Files.deleteIfExists(outputFile);
+                if (containerInput != null) execDockerCommand("rm", "-f", containerInput);
+                if (containerOutput != null) execDockerCommand("rm", "-f", containerOutput);
+            } catch (Exception e) {
+                log.warn("Erreur lors du nettoyage post-clonage: {}", e.getMessage());
+            }
+        }
+    }
+
+    @Transactional
+    public void qualifyDataset(UUID datasetUuid) {
+        Dataset dataset = get(datasetUuid);
+        dataset.markAsQualified();
+        datasetRepository.save(dataset);
+        log.info("Dataset {} marqué comme QUALIFIÉ", datasetUuid);
+    }
+
+
+    // ======================== EXTRACTION COMPORTEMENT CLIENT ======================== 
 
     @Transactional
     public DatasetCleanResponse extractBehavior(UUID datasetUuid) throws Exception {

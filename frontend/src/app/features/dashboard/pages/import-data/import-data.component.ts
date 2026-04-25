@@ -4,32 +4,8 @@ import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../../environments/environment';
 import { AuthStore } from '../../../../core/store/auth.store';
 import { AuthService } from '../../../../core/services/auth.service';
+import { DatasetService, Dataset, ApiResponse } from '../../../../core/services/dataset.service';
 import { KpiCard } from '../../../../shared/cards/cards.component';
-
-export interface Dataset {
-  datasetUuid: string;
-  datasetCode: string;
-  datasetName: string;
-  fileSizeMb: number;
-  rowCount: number;
-  status: 'ACTIVE' | 'PROCESSED' | 'INACTIVE';
-  importedAt: string;
-  filePath?: string;
-  processedFilePath?: string;
-  featureColumns?: any;
-  statistics?: any;
-  assignedManagerId?: number;
-  assignedManagerName?: string;
-  assignedManagerEmail?: string;
-}
-
-export interface ApiResponse {
-  content: Dataset[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
-  size: number;
-}
 
 export interface AnalysisResult {
   columns: ColumnInfo[] | null;
@@ -76,6 +52,7 @@ export class ImportDataComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private route = inject(ActivatedRoute);
   private authService = inject(AuthService);
+  private datasetService = inject(DatasetService);
   authStore = inject(AuthStore);
 
   // États pour la liste des datasets
@@ -192,20 +169,27 @@ export class ImportDataComponent implements OnInit, OnDestroy {
   loadDatasets(): void {
     this.loading.set(true);
 
-    // Use the training endpoint to get only TRANSACTIONS_TRAIN datasets
-    let url = `${environment.apiUrl}/datasets/training?page=${this.currentPage()}&size=${this.pageSize}`;
+    const userRole = this.authStore.userRole();
+    const teamContext: { managerId?: number } = this.authService.getTeamContext();
 
-    const teamContext = this.authService.getTeamContext();
+    const params: any = {
+      q: this.searchQuery() || undefined,
+      page: this.currentPage(),
+      size: this.pageSize,
+      // Analysts see enriched data, Managers see raw training data
+      types: userRole === 'ANALYST' ? ['TRANSACTIONS_TRAIN_ENRICHED'] : ['TRANSACTIONS_TRAIN']
+    };
+
+    if (userRole === 'ANALYST') {
+      params.visibility = true;
+    }
+
     if (teamContext.managerId !== undefined) {
-      url += `&managerId=${teamContext.managerId}`;
+      params.managerId = teamContext.managerId;
     }
 
-    if (this.searchQuery()) {
-      url += `&q=${encodeURIComponent(this.searchQuery())}`;
-    }
-
-    this.http.get<ApiResponse>(url).subscribe({
-      next: (response) => {
+    this.datasetService.list(params).subscribe({
+      next: (response: ApiResponse<Dataset>) => {
         this.allDatasets.set(response.content);
         this.totalElements.set(response.totalElements);
         this.totalPages.set(response.totalPages);
@@ -214,13 +198,13 @@ export class ImportDataComponent implements OnInit, OnDestroy {
         // Auto-select dataset if coming from query param
         const targetUuid = this.route.snapshot.queryParamMap.get('datasetUuid');
         if (targetUuid && !this.selectedDataset()) {
-          const targetDataset = response.content.find(d => d.datasetUuid === targetUuid);
+          const targetDataset = response.content.find((d: Dataset) => d.datasetUuid === targetUuid);
           if (targetDataset) {
             this.selectDataset(targetDataset);
           }
         }
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading training datasets:', error);
         this.loading.set(false);
       }
@@ -566,7 +550,8 @@ export class ImportDataComponent implements OnInit, OnDestroy {
     return new Intl.NumberFormat('fr-FR').format(n);
   }
 
-  getStatusClass(status: string): string {
+  getStatusClass(status: string | null | undefined): string {
+    if (!status) return 'bg-gray-50 text-gray-500 border-gray-100';
     switch (status) {
       case 'ACTIVE':
         return 'bg-green-50 text-green-600 border-green-100';
@@ -579,7 +564,8 @@ export class ImportDataComponent implements OnInit, OnDestroy {
     }
   }
 
-  getStatusText(status: string): string {
+  getStatusText(status: string | null | undefined): string {
+    if (!status) return 'NON TRAITÉ';
     switch (status) {
       case 'ACTIVE':
         return 'ACTIF';

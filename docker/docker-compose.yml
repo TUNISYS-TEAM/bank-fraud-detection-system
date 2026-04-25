@@ -192,7 +192,7 @@ services:
       - ../shared-ml/src/shared_ml:/app/src/shared_ml           
     environment:
       - PYTHONUNBUFFERED=1
-      - JAVA_BACKEND_URL=http://backend:8080
+      - JAVA_BACKEND_URL=http://host.docker.internal:8100
       - INTERNAL_API_KEY=${API_INTERNAL_KEY:-secret}
       # POSTAL_CODES n'est plus nécessaire
     restart: unless-stopped

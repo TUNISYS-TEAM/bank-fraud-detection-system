@@ -11,6 +11,7 @@ import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetPreviewR
 import com.fraud.backend.api.dto.frauddetection.dataset.response.DatasetAnalysisResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.fraud.backend.data.entity.frauddetection.Dataset;
 
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
@@ -47,12 +48,13 @@ public class DatasetController {
             @RequestParam(value = "type", required = false) DatasetType type,
             @RequestParam(value = "types", required = false) List<DatasetType> types,
             @RequestParam(value = "visibility", required = false) Boolean visibility,
+            @RequestParam(value = "qualified", required = false) Boolean qualified,
             @RequestParam(value = "managerId", required = false) Long managerId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
         
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
-        return datasetService.list(q, status, type, types, visibility, managerId, pageable)
+        return datasetService.list(q, status, type, types, visibility, qualified, managerId, pageable)
                 .map(datasetMapper::toResponse);
     }
 
@@ -65,12 +67,14 @@ public class DatasetController {
     public Page<DatasetResponse> listTrainingDatasets(
             @RequestParam(value = "q", required = false) String q,
             @RequestParam(value = "managerId", required = false) Long managerId,
+            @RequestParam(value = "visibility", required = false) Boolean visibility,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
 
-        log.info("Récupération paginée des datasets d'entraînement - page: {}, size: {}, search: {}, manager: {}", page, size, q, managerId);
+        log.info("Récupération paginée des datasets d'entraînement - page: {}, size: {}, search: {}, manager: {}, visibility: {}", 
+                page, size, q, managerId, visibility);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "importedAt"));
-        return datasetService.listTrainingDatasets(q, managerId, pageable).map(datasetMapper::toResponse);
+        return datasetService.listTrainingDatasets(q, managerId, visibility, pageable).map(datasetMapper::toResponse);
     }
 
     @GetMapping("/training/all")
@@ -105,6 +109,11 @@ public class DatasetController {
 
         log.info("Uploading dataset: {} with type: {}", datasetName, datasetType);
         return datasetMapper.toResponse(datasetService.uploadDataset(datasetName, datasetType, file));
+    }
+
+    @GetMapping("/{uuid}/is-enriched")
+    public ResponseEntity<Boolean> checkIfEnriched(@PathVariable UUID uuid) {
+        return ResponseEntity.ok(datasetService.checkIfEnriched(uuid));
     }
 
     @DeleteMapping("/{uuid}")
@@ -225,5 +234,17 @@ public class DatasetController {
         log.info("Demande d'extraction des features comportementales pour dataset: {}", uuid);
         DatasetCleanResponse response = datasetService.extractBehavior(uuid);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{uuid}/clone-for-training")
+    public ResponseEntity<DatasetResponse> cloneForTraining(@PathVariable UUID uuid) throws Exception {
+        log.info("Demande d'import du dataset de validation {} pour entraînement", uuid);
+        Dataset cloned = datasetService.cloneForTraining(uuid);
+        return ResponseEntity.ok(datasetMapper.toResponse(cloned));
+    }
+    @PostMapping("/{uuid}/qualify")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void qualify(@PathVariable UUID uuid) {
+        datasetService.qualifyDataset(uuid);
     }
 }

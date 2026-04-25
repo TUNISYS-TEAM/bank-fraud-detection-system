@@ -48,7 +48,8 @@ import {
   MapPin,
   MessageCircle,
   BellOff, Clipboard,
-  Filter, Compass
+  Filter, Compass,
+  MinusCircle, Navigation
 } from 'angular-feather/icons';
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
@@ -56,8 +57,8 @@ const icons = {
   Eye, EyeOff, Users, Database, FileText, Plus, Download, Search, AlertCircle, HelpCircle, TrendingUp, Play,
   CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader, GitMerge, Zap,
   AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, Layers, Server,
-  CheckSquare, Square, ChevronUp, CreditCard, ChevronDown, Check, RotateCcw, Award, XCircle, PieChart, DollarSign, UserCheck, Compass,
-  ShieldOff, User, TrendingDown, PauseCircle, Share2, Archive, Inbox, Send, Phone, MapPin, MessageCircle, BellOff, Filter, Clipboard
+  CheckSquare, Square, ChevronUp, CreditCard, ChevronDown, Check, RotateCcw, Award, XCircle, PieChart, DollarSign, UserCheck, Compass, Navigation,
+  ShieldOff, User, TrendingDown, PauseCircle, Share2, Archive, Inbox, Send, Phone, MapPin, MessageCircle, BellOff, Filter, Clipboard, MinusCircle
 };
 
 @NgModule({
