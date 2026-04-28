@@ -49,13 +49,15 @@ import {
   MessageCircle,
   BellOff, Clipboard,
   Filter, Compass,
-  MinusCircle, Navigation
+  MinusCircle, Navigation,
+  Radio,
+  ShoppingBag
 } from 'angular-feather/icons';
 const icons = {
   Shield, Grid, Upload, Globe, AlertTriangle, Activity,
   ExternalLink, Settings, LogOut, Bell, X, Mail, Lock, Tag, Calendar, Target, Hash, HardDrive, List,
   Eye, EyeOff, Users, Database, FileText, Plus, Download, Search, AlertCircle, HelpCircle, TrendingUp, Play,
-  CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader, GitMerge, Zap,
+  CheckCircle, PlusCircle, BarChart2, PlayCircle, Cpu, RefreshCw, Info, Power, Copy, Chrome, Loader, GitMerge, Zap, Radio, ShoppingBag,
   AlertOctagon, Sliders, Clock, Key, Edit2, Trash2, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, Layers, Server,
   CheckSquare, Square, ChevronUp, CreditCard, ChevronDown, Check, RotateCcw, Award, XCircle, PieChart, DollarSign, UserCheck, Compass, Navigation,
   ShieldOff, User, TrendingDown, PauseCircle, Share2, Archive, Inbox, Send, Phone, MapPin, MessageCircle, BellOff, Filter, Clipboard, MinusCircle

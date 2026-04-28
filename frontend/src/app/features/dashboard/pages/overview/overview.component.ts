@@ -6,7 +6,7 @@ import { catchError, timeout, switchMap } from 'rxjs/operators';
 
 import { environment } from '../../../../../environments/environment';
 import { AuthStore } from '../../../../core/store/auth.store';
-import { OverviewService, OverviewStats } from '../../../../core/services/overview.service';
+import { OverviewService, OverviewStats, RiskProfile } from '../../../../core/services/overview.service';
 import { FraudAlertService } from '../../../../core/services/fraud-alert.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import { FraudAlertResponse, FraudLocationResponse } from '../../../../core/models/fraud-alert.model';
@@ -248,6 +248,63 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
       trendUp: true,
       color: '#10b981',
       description: 'Déployé',
+    };
+  });
+
+  // =========================================================
+  // RISK PROFILE CARDS (GLOBAL & FIXED)
+  // =========================================================
+  riskProfile = signal<RiskProfile | null>(null);
+
+  riskiestChannelCard = computed((): KpiCard => {
+    const r = this.riskProfile()?.riskiestChannel;
+    return {
+      label: 'Canal le Plus Risqué',
+      value: r ? this.translateChannel(r.name!) : '...',
+      icon: 'radio',
+      trend: r ? `${r.fraudCount} fraudes` : undefined,
+      trendUp: true,
+      color: '#ef4444',
+      description: r ? `Taux: ${r.fraudRate.toFixed(1)}%` : 'Analyse globale',
+    };
+  });
+
+  riskiestCategoryCard = computed((): KpiCard => {
+    const r = this.riskProfile()?.riskiestCategory;
+    return {
+      label: 'Catégorie la Plus Risquée',
+      value: r?.name || '...',
+      icon: 'shopping-bag',
+      trend: r ? `${r.fraudCount} fraudes` : undefined,
+      trendUp: true,
+      color: '#f59e0b',
+      description: r ? `Taux: ${r.fraudRate.toFixed(1)}%` : 'Analyse globale',
+    };
+  });
+
+  riskiestHourCard = computed((): KpiCard => {
+    const r = this.riskProfile()?.riskiestHour;
+    return {
+      label: 'Heure la Plus Risquée',
+      value: r?.label || '...',
+      icon: 'clock',
+      trend: r ? `${r.fraudCount} fraudes` : undefined,
+      trendUp: true,
+      color: '#8b5cf6',
+      description: r ? `Taux: ${r.fraudRate.toFixed(1)}%` : 'Analyse globale',
+    };
+  });
+
+  riskiestAccountTypeCard = computed((): KpiCard => {
+    const r = this.riskProfile()?.riskiestAccountType;
+    return {
+      label: 'Type de Compte le Plus Risqué',
+      value: r ? this.translateAccountType(r.name!) : '...',
+      icon: 'credit-card',
+      trend: r ? `${r.fraudCount} fraudes` : undefined,
+      trendUp: true,
+      color: '#3b82f6',
+      description: r ? `Taux: ${r.fraudRate.toFixed(1)}%` : 'Analyse globale',
     };
   });
 
@@ -496,7 +553,15 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     } else {
       this.loadFraudOverview();
       this.loadGlobalKpis();
+      this.loadRiskProfile();
     }
+  }
+
+  loadRiskProfile(): void {
+    this.overviewService.getRiskProfile().subscribe({
+      next: (profile) => this.riskProfile.set(profile),
+      error: () => this.riskProfile.set(null),
+    });
   }
 
   ngAfterViewInit(): void {
@@ -871,6 +936,28 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
         return 'Comportement Suspect';
       default:
         return type;
+    }
+  }
+
+  translateChannel(channel: string): string {
+    switch (channel?.toUpperCase()) {
+      case 'POS': return 'Point de Vente';
+      case 'ATM': return 'Guichet Auto.';
+      case 'ONLINE': return 'En Ligne';
+      case 'MOBILE': return 'Mobile';
+      case 'VIREMENT': return 'Virement';
+      case 'CHEQUE': return 'Chèque';
+      default: return channel;
+    }
+  }
+
+  translateAccountType(type: string): string {
+    switch (type?.toUpperCase()) {
+      case 'COURANT': return 'Courant';
+      case 'EPARGNE': return 'Épargne';
+      case 'DEVISE': return 'Devise';
+      case 'BLOQUE': return 'Bloqué';
+      default: return type;
     }
   }
 

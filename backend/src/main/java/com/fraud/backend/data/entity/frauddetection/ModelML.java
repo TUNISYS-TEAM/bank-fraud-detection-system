@@ -69,8 +69,6 @@ public class ModelML {
     @Builder.Default
     private InferenceEngine inferenceEngine = InferenceEngine.ONNX_LOCAL;
 
-    private String description;
-
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

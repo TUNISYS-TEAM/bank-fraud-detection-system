@@ -524,7 +524,6 @@ public class DatasetService {
         if (type == DatasetType.TRANSACTIONS_VAL) {
             log.info("Deleting transactions for dataset_id: {}", target.getId());
             jdbcTemplate.update("DELETE FROM fraud_alert WHERE transaction_id IN (SELECT id FROM transaction WHERE dataset_id = ?)", target.getId());
-            jdbcTemplate.update("DELETE FROM client_behavior_history WHERE transaction_id IN (SELECT id FROM transaction WHERE dataset_id = ?)", target.getId());
             jdbcTemplate.update("DELETE FROM transaction WHERE dataset_id = ?", target.getId());
             return;
         }
@@ -539,7 +538,6 @@ public class DatasetService {
                 case CLIENTS:
                     // Ordre : enfants → parents
                     jdbcTemplate.execute("DELETE FROM fraud_alert");
-                    jdbcTemplate.execute("DELETE FROM client_behavior_history");
                     jdbcTemplate.execute("DELETE FROM client_behavior");
                     jdbcTemplate.execute("DELETE FROM transaction");
                     jdbcTemplate.execute("DELETE FROM account");
@@ -549,7 +547,6 @@ public class DatasetService {
 
                 case ACCOUNTS:
                     jdbcTemplate.execute("DELETE FROM fraud_alert");
-                    jdbcTemplate.execute("DELETE FROM client_behavior_history");
                     jdbcTemplate.execute("DELETE FROM client_behavior");
                     jdbcTemplate.execute("DELETE FROM transaction");
                     jdbcTemplate.execute("DELETE FROM account");
@@ -558,7 +555,6 @@ public class DatasetService {
 
                 case TRANSACTIONS_VAL:
                     jdbcTemplate.execute("DELETE FROM fraud_alert");
-                    jdbcTemplate.execute("DELETE FROM client_behavior_history");
                     jdbcTemplate.execute("DELETE FROM client_behavior");
                     jdbcTemplate.execute("DELETE FROM transaction");
                     log.info("All transaction validation tables cleared");
@@ -696,7 +692,6 @@ public class DatasetService {
             org.apache.hadoop.conf.Configuration conf, Map<String, String> colMap) throws IOException {
         // Clear existing data
         jdbcTemplate.execute("DELETE FROM fraud_alert");
-        jdbcTemplate.execute("DELETE FROM client_behavior_history");
         jdbcTemplate.execute("DELETE FROM client_behavior");
         jdbcTemplate.execute("DELETE FROM transaction");
         jdbcTemplate.execute("DELETE FROM account");
@@ -758,7 +753,6 @@ public class DatasetService {
             org.apache.hadoop.conf.Configuration conf, Map<String, String> colMap) throws IOException {
         // Clear existing accounts
         jdbcTemplate.execute("DELETE FROM fraud_alert");
-        jdbcTemplate.execute("DELETE FROM client_behavior_history");
         jdbcTemplate.execute("DELETE FROM client_behavior");
         jdbcTemplate.execute("DELETE FROM transaction");
         jdbcTemplate.execute("DELETE FROM account");
@@ -832,7 +826,6 @@ public class DatasetService {
 
             // Clear existing transactions (Not anymore, we append them)
             // jdbcTemplate.execute("DELETE FROM fraud_alert");
-            // jdbcTemplate.execute("DELETE FROM client_behavior_history");
             // jdbcTemplate.execute("DELETE FROM client_behavior");
             // jdbcTemplate.execute("DELETE FROM transaction");
 

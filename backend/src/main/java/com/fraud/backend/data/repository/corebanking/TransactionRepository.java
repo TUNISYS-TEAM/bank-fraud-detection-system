@@ -339,4 +339,35 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
                      @Param("postalCode") String postalCode,
                      @Param("start") LocalDateTime start,
                      @Param("end") LocalDateTime end);
+
+	// --- Risk Profiling Queries ---
+
+	// KPI 1: Canal le plus risqué (basé sur le volume de fraudes finalDecision)
+	@Query(value = "SELECT t.channel, COUNT(*) as total, " +
+			"SUM(CASE WHEN t.final_decision = true THEN 1 ELSE 0 END) as frauds " +
+			"FROM transaction t WHERE t.channel IS NOT NULL " +
+			"GROUP BY t.channel ORDER BY frauds DESC", nativeQuery = true)
+	List<Object[]> fraudCountByChannel();
+
+	// KPI 2: Catégorie la plus risquée
+	@Query(value = "SELECT t.merchant_category, COUNT(*) as total, " +
+			"SUM(CASE WHEN t.final_decision = true THEN 1 ELSE 0 END) as frauds " +
+			"FROM transaction t WHERE t.merchant_category IS NOT NULL " +
+			"GROUP BY t.merchant_category ORDER BY frauds DESC", nativeQuery = true)
+	List<Object[]> fraudCountByCategory();
+
+	// KPI 3: Heure la plus risquée
+	@Query(value = "SELECT EXTRACT(HOUR FROM t.transaction_date) as hour, COUNT(*) as total, " +
+			"SUM(CASE WHEN t.final_decision = true THEN 1 ELSE 0 END) as frauds " +
+			"FROM transaction t " +
+			"GROUP BY EXTRACT(HOUR FROM t.transaction_date) ORDER BY frauds DESC", nativeQuery = true)
+	List<Object[]> fraudCountByHour();
+
+	// KPI 4: Type de compte le plus risqué (JOIN avec account)
+	@Query(value = "SELECT a.account_type, COUNT(*) as total, " +
+			"SUM(CASE WHEN t.final_decision = true THEN 1 ELSE 0 END) as frauds " +
+			"FROM transaction t JOIN account a ON t.account_id = a.id " +
+			"WHERE a.account_type IS NOT NULL " +
+			"GROUP BY a.account_type ORDER BY frauds DESC", nativeQuery = true)
+	List<Object[]> fraudCountByAccountType();
 }

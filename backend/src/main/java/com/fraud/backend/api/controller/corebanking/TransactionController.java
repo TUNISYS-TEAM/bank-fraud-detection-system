@@ -103,4 +103,9 @@ public class TransactionController {
             @RequestParam(required = false) String datasetUuid) {
         return ResponseEntity.ok(transactionService.getGlobalAnalyzedStats(datasetUuid));
     }
+
+    @GetMapping("/stats/risk-profile")
+    public ResponseEntity<java.util.Map<String, Object>> getRiskProfile() {
+        return ResponseEntity.ok(transactionService.getRiskProfile());
+    }
 }

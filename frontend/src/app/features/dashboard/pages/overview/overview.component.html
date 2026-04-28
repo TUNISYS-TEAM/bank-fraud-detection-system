@@ -315,97 +315,115 @@
         </div>
     </div>
 
-    <!-- ===== FRAUD HOTSPOTS MAP ===== -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8 px-1">
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col lg:col-span-1 overflow-hidden">
-            <div class="px-8 py-6 border-b border-gray-100 bg-slate-50/30 flex items-center justify-between">
-                <div>
-                    <h3 class="text-xl font-bold text-slate-900 tracking-tight">Points Chauds de Fraude</h3>
-                    <p class="text-sm text-slate-600 font-medium mt-1">Taille des points proportionnelle au nombre de fraudes</p>
-                </div>
-                <div class="p-3 bg-red-50 text-red-600 rounded-2xl">
-                    <i-feather name="map-pin" class="w-6 h-6"></i-feather>
-                </div>
-            </div>
-            <div class="p-7 flex-1 flex flex-col">
-                <div id="fraudMapChart" class="mt-10" style="width: 100%; height: 800px;"></div>
-            </div>
+    <!-- ===== SECTION: ANALYSE PRÉDICTIVE & PROFILAGE ===== -->
+    <div class="mt-12 px-1">
+        <!-- Titre de la section englobante -->
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Analyse Prédictive & Profilage de Risque</h2>
+            <p class="text-sm text-slate-500 font-medium mt-0.5">Intelligence globale basée sur l'historique de fraudes confirmées</p>
         </div>
 
-        <!-- Forecast KPIs Panel -->
-        <div class="lg:col-span-2 relative">
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-full flex flex-col transition-all duration-700">
+        <!-- 4 KPIs de profil de risque (Pleine largeur) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <app-cards [data]="riskiestChannelCard()" class="animate-fadeIn" style="animation-delay: 100ms"></app-cards>
+            <app-cards [data]="riskiestCategoryCard()" class="animate-fadeIn" style="animation-delay: 200ms"></app-cards>
+            <app-cards [data]="riskiestHourCard()" class="animate-fadeIn" style="animation-delay: 300ms"></app-cards>
+            <app-cards [data]="riskiestAccountTypeCard()" class="animate-fadeIn" style="animation-delay: 400ms"></app-cards>
+        </div>
 
-                @if (isLoadingZoneKpis()) {
-                <div class="flex-1 flex flex-col items-center justify-center p-12">
-                    <div class="relative w-24 h-24 mb-6">
-                        <div class="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
-                        <div class="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
-                        <div class="absolute inset-0 flex items-center justify-center">
-                            <i-feather name="cpu" class="w-8 h-8 text-blue-600 animate-pulse"></i-feather>
-                        </div>
-                    </div>
-                    <p class="text-slate-500 font-black uppercase tracking-widest text-xs">Calcul des vecteurs de fraude...</p>
-                </div>
-                } @else {
-                <!-- Header -->
+        <!-- Grid existante: Points Chauds (map) + KPIs Forecast -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- ===== FRAUD HOTSPOTS MAP ===== -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col lg:col-span-1 overflow-hidden">
                 <div class="px-8 py-6 border-b border-gray-100 bg-slate-50/30 flex items-center justify-between">
-                    <div class="flex items-center gap-4">
-                        <div>
-                            <h3 class="text-2xl font-bold text-slate-900 tracking-tight">
-                                {{ selectedZoneKpis()?.zone_label || 'Analyse Prédictive' }}
-                            </h3>
-                            <p class="text-sm text-slate-600 font-medium mt-1">Intelligence artificielle & Forecast financier</p>
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900 tracking-tight">Points Chauds de Fraude</h3>
+                        <p class="text-sm text-slate-600 font-medium mt-1">Taille des points proportionnelle au nombre de fraudes</p>
+                    </div>
+                    <div class="p-3 bg-red-50 text-red-600 rounded-2xl">
+                        <i-feather name="map-pin" class="w-6 h-6"></i-feather>
+                    </div>
+                </div>
+                <div class="p-7 flex-1 flex flex-col">
+                    <div id="fraudMapChart" class="mt-10" style="width: 100%; height: 800px;"></div>
+                </div>
+            </div>
+
+            <!-- Forecast KPIs Panel -->
+            <div class="lg:col-span-2 relative">
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-full flex flex-col transition-all duration-700">
+
+                    @if (isLoadingZoneKpis()) {
+                    <div class="flex-1 flex flex-col items-center justify-center p-12">
+                        <div class="relative w-24 h-24 mb-6">
+                            <div class="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+                            <div class="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <i-feather name="cpu" class="w-8 h-8 text-blue-600 animate-pulse"></i-feather>
+                            </div>
+                        </div>
+                        <p class="text-slate-500 font-black uppercase tracking-widest text-xs">Calcul des vecteurs de fraude...</p>
+                    </div>
+                    } @else {
+                    <!-- Header -->
+                    <div class="px-8 py-6 border-b border-gray-100 bg-slate-50/30 flex items-center justify-between">
+                        <div class="flex items-center gap-4">
+                            <div>
+                                <h3 class="text-2xl font-bold text-slate-900 tracking-tight">
+                                    {{ selectedZoneKpis()?.zone_label || 'Analyse Prédictive' }}
+                                </h3>
+                                <p class="text-sm text-slate-600 font-medium mt-1">Intelligence artificielle & Forecast financier</p>
+                            </div>
+                        </div>
+                        @if (selectedZoneKpis()?.postal_code) {
+                        <button (click)="clearZoneSelection()" title="Retour à la vue globale"
+                            class="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-100 rounded-lg flex items-center gap-2">
+                            <span class="text-xs font-bold uppercase tracking-tighter">Réinitialiser</span>
+                            <i-feather name="rotate-ccw" class="w-4 h-4"></i-feather>
+                        </button>
+                        }
+                    </div>
+
+                    <!-- Avertissement si modèle indisponible -->
+                    @if (selectedZoneKpis()?.risk_level === null && selectedZoneKpis()?.fraud_loss_forecast === null) {
+                    <div class="px-8 py-3 bg-amber-50 border-b border-amber-100 text-amber-700 text-sm font-semibold">
+                        <i-feather name="alert-triangle" class="w-4 h-4 inline mr-1"></i-feather>
+                        Modèle prédictif non disponible – les données affichées sont insuffisantes pour cette zone.
+                    </div>
+                    }
+
+                    <!-- Content (Centered) -->
+                    <div class="p-8 flex-1 flex flex-col overflow-y-auto">
+                        <div class="flex-1 flex items-center justify-center">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+                                <!-- Principal Forecast Cards -->
+                                <app-cards [data]="forecastRiskCard()"></app-cards>
+                                <app-cards [data]="forecastLossCard()"></app-cards>
+                                <app-cards [data]="forecastNetSavingsCard()"></app-cards>
+                                <app-cards [data]="forecastRevenueCard()"></app-cards>
+                                <app-cards [data]="forecastDriftCard()"></app-cards>
+                                <app-cards [data]="forecastAnomaliesCard()"></app-cards>
+                                <app-cards [data]="forecastCustomerRatioCard()"></app-cards>
+                                <app-cards [data]="forecastFalsePositiveCard()"></app-cards>
+                            </div>
                         </div>
                     </div>
-                    @if (selectedZoneKpis()?.postal_code) {
-                    <button (click)="clearZoneSelection()" title="Retour à la vue globale"
-                        class="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-100 rounded-lg flex items-center gap-2">
-                        <span class="text-xs font-bold uppercase tracking-tighter">Réinitialiser</span>
-                        <i-feather name="rotate-ccw" class="w-4 h-4"></i-feather>
-                    </button>
+
+                    <!-- AI Insight Banner (Footer style) -->
+                    <div class="p-6 bg-slate-50/50 border-t border-slate-100 flex flex-col gap-2">
+                        <div class="flex items-center gap-3">
+                            <i-feather name="cpu" class="w-4 h-4 text-blue-500"></i-feather>
+                            <h4 class="text-base font-black text-blue-900 tracking-tight">
+                                Moteur Prédictif IA
+                            </h4>
+                        </div>
+                        <p class="text-[13px] text-blue-800/70 leading-relaxed font-semibold">
+                            Prévisions basées sur l'analyse de flux et le drift comportemental.
+                            Les valeurs sont recalculées pour un horizon de <b class="text-blue-600">7 jours</b>.
+                        </p>
+                    </div>
                     }
                 </div>
-
-                <!-- Avertissement si modèle indisponible -->
-                @if (selectedZoneKpis()?.risk_level === null && selectedZoneKpis()?.fraud_loss_forecast === null) {
-                <div class="px-8 py-3 bg-amber-50 border-b border-amber-100 text-amber-700 text-sm font-semibold">
-                    <i-feather name="alert-triangle" class="w-4 h-4 inline mr-1"></i-feather>
-                    Modèle prédictif non disponible – les données affichées sont insuffisantes pour cette zone.
-                </div>
-                }
-
-                <!-- Content (Centered) -->
-                <div class="p-8 flex-1 flex flex-col overflow-y-auto">
-                    <div class="flex-1 flex items-center justify-center">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
-                            <!-- Principal Forecast Cards -->
-                            <app-cards [data]="forecastRiskCard()"></app-cards>
-                            <app-cards [data]="forecastLossCard()"></app-cards>
-                            <app-cards [data]="forecastNetSavingsCard()"></app-cards>
-                            <app-cards [data]="forecastRevenueCard()"></app-cards>
-                            <app-cards [data]="forecastDriftCard()"></app-cards>
-                            <app-cards [data]="forecastAnomaliesCard()"></app-cards>
-                            <app-cards [data]="forecastCustomerRatioCard()"></app-cards>
-                            <app-cards [data]="forecastFalsePositiveCard()"></app-cards>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- AI Insight Banner (Footer style) -->
-                <div class="p-6 bg-slate-50/50 border-t border-slate-100 flex flex-col gap-2">
-                    <div class="flex items-center gap-3">
-                        <i-feather name="cpu" class="w-4 h-4 text-blue-500"></i-feather>
-                        <h4 class="text-base font-black text-blue-900 tracking-tight">
-                            Moteur Prédictif IA
-                        </h4>
-                    </div>
-                    <p class="text-[13px] text-blue-800/70 leading-relaxed font-semibold">
-                        Prévisions basées sur l'analyse de flux et le drift comportemental.
-                        Les valeurs sont recalculées pour un horizon de <b class="text-blue-600">7 jours</b>.
-                    </p>
-                </div>
-                }
             </div>
         </div>
     </div>

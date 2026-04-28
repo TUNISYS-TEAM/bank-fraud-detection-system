@@ -342,22 +342,6 @@ class HybridEngine:
                     threshold = 0.5
                     logger.warning("No threshold available for standalone anomaly batch inference; fallback to 0.5")
 
-                logger.warning(
-                    "Standalone anomaly batch stats: n=%d score_min=%.6f score_max=%.6f score_mean=%.6f threshold=%.6f",
-                    len(scores),
-                    float(np.min(scores)) if len(scores) else 0.0,
-                    float(np.max(scores)) if len(scores) else 0.0,
-                    float(np.mean(scores)) if len(scores) else 0.0,
-                    float(threshold),
-                )
-
-                # Diagnostic: showing first row features to see if anything is exploded
-                if len(X_trans) > 0:
-                    first_row = X_trans[0]
-                    if hasattr(first_row, "toarray"): first_row = first_row.toarray()[0]
-                    logger.warning("DIAGNOSTIC - First row features (truncated): %s", str(first_row[:10]))
-                    logger.warning("DIAGNOSTIC - First row max value: %.6f", float(np.max(first_row)))
-
                 all_results = []
                 for i, score in enumerate(scores):
                     transaction_dict = features_raw.iloc[i].to_dict()
@@ -408,6 +392,10 @@ class HybridEngine:
             logger.error(f"Erreur d'inférence batch : {e}")
             raise
 
+    # ═══════════════════════════════════════════════════════════════
+    # EXPLAINABILITY (GUARANTEED NON-EMPTY CONTRIBUTIONS)
+    # ═══════════════════════════════════════════════════════════════
+
     @staticmethod
     def _build_rich_fraud_reason(
         artifact_bundle: Dict[str, Any],
@@ -422,22 +410,21 @@ class HybridEngine:
         default_alert_type: str = 'HYBRID_ENSEMBLE'
     ) -> Dict[str, Any]:
         """
-        Génère une explication enrichie en utilisant le moteur d'explicabilité avancé (xia_engine).
+        Génère une explication enrichie en utilisant le moteur d'explicabilité avancé.
+        GARANTIE : les contributions ne seront JAMAIS vides.
         """
         model_uuid = artifact_bundle.get('model_uuid', getattr(artifact_bundle.get('model'), 'model_uuid', 'default'))
 
         # Récupérer ou créer l'explainer
         if model_uuid not in HybridEngine._explainers_cache:
-            # Extraire le modèle XGBoost (ou le modèle principal)
             bundle_model = artifact_bundle.get("model")
             if isinstance(bundle_model, HybridEnsembleBundle):
                 xgb_model = bundle_model.get_xgb_classifier()
             else:
-                xgb_model = bundle_model  # modèle unique (ex: XGBoost, RandomForest)
+                xgb_model = bundle_model
 
             preprocessor = artifact_bundle.get("preprocessor")
 
-            # Récupérer les noms des features après transformation
             feature_names = None
             if hasattr(preprocessor, 'get_feature_names_out'):
                 try:
@@ -447,7 +434,6 @@ class HybridEngine:
             if feature_names is None:
                 feature_names = [f"feature_{i}" for i in range(X_trans.shape[1])]
 
-            # Données de fond (background) pour SHAP
             background_data = artifact_bundle.get('background_data')
             if background_data is not None and not isinstance(background_data, np.ndarray):
                 background_data = np.array(background_data)
@@ -467,48 +453,47 @@ class HybridEngine:
                     dl_method=artifact_bundle.get('dl_method', 'integrated_gradients')
                 )
                 HybridEngine._explainers_cache[model_uuid] = explainer
-                logger.info(f"Explainability engine initialized for {model_uuid} using xai_engine")
+                logger.info("Explainability engine initialized for %s", model_uuid)
             except Exception as e:
-                logger.error(f"Failed to init explainer: {e}")
-                # Fallback plat et cohérent
-                actual_risk_level = HybridEngine._compute_risk_level(fraud_score, threshold)
-                return {
-                    "summary": f"{actual_risk_level}: Erreur analyseur",
-                    "risk_level": actual_risk_level,
-                    "fraud_score": round(float(fraud_score), 4),
-                    "primary_factor": "MODEL_ERROR",
-                    "total_risk_points": 0,
-                    "contributions": [],
-                    "alert_type": default_alert_type,
-                    "analysis_source": "fallback_error"
-                }
+                logger.error("Failed to init explainer: %s", e)
+                return HybridEngine._build_minimal_fraud_reason(
+                    fraud_score=fraud_score,
+                    threshold=threshold,
+                    transaction_data=transaction_data,
+                    behavior_data=behavior_data,
+                    default_alert_type=default_alert_type
+                )
 
         explainer = HybridEngine._explainers_cache[model_uuid]
 
-        # Préparer le vecteur de caractéristiques pour la transaction courante
         features_vector = X_trans[row_id] if X_trans.ndim > 1 else X_trans
         if isinstance(features_vector, np.ndarray) and features_vector.ndim > 1:
             features_vector = features_vector.flatten()
 
-        # Appeler l'expliqueur avancé
-        explanation = explainer.explain_fraud(
-            features=features_vector,
-            fraud_score=fraud_score,
-            transaction_data=transaction_data,
-            behavior_data=behavior_data
-        )
+        try:
+            explanation = explainer.explain_fraud(
+                features=features_vector,
+                fraud_score=fraud_score,
+                transaction_data=transaction_data,
+                behavior_data=behavior_data
+            )
+        except Exception as e:
+            logger.error("Explainability call failed: %s", e)
+            return HybridEngine._build_minimal_fraud_reason(
+                fraud_score=fraud_score,
+                threshold=threshold,
+                transaction_data=transaction_data,
+                behavior_data=behavior_data,
+                default_alert_type=default_alert_type
+            )
 
-        # --- APLATISSEMENT ET SYNCHRONISATION ---
-        # On extrait le contenu du JSON pour éviter l'imbrication qui casse le Front
         final_reason = explanation.get("fraud_reason_json", {})
         final_reason["alert_type"] = explanation.get("alert_type", default_alert_type)
 
-        # On force la cohérence du niveau de risque (ML score > XAI text)
         actual_risk_level = HybridEngine._compute_risk_level(fraud_score, threshold)
         final_reason["risk_level"] = actual_risk_level
         final_reason["fraud_score"] = round(float(fraud_score), 4)
 
-        # Mise à jour du résumé (ex: "MOYEN : ..." -> "CRITIQUE : ...")
         old_summary = final_reason.get("summary", "")
         if ":" in old_summary:
             factor_part = old_summary.split(":", 1)[1].strip()
@@ -520,14 +505,108 @@ class HybridEngine:
         return final_reason
 
     @staticmethod
+    def _build_minimal_fraud_reason(
+        fraud_score: float,
+        threshold: float,
+        transaction_data: Dict[str, Any],
+        behavior_data: Dict[str, Any],
+        default_alert_type: str
+    ) -> Dict[str, Any]:
+        """
+        Fallback minimal avec GARANTIE de contributions non-vides.
+        Appelé uniquement si le moteur d'explicabilité échoue complètement.
+        """
+        risk_level = HybridEngine._compute_risk_level(fraud_score, threshold)
+        total_tx = behavior_data.get('client_total_transactions', 0) if behavior_data else 0
+        amount = transaction_data.get('TX_Amount', transaction_data.get('amount', 0))
+        avg_amount = behavior_data.get('client_AVG_TX_Amount', 0) if behavior_data else 0
+
+        if risk_level == "CRITICAL":
+            desc = f"Transaction hautement suspecte (score {fraud_score:.1%})"
+            detail = (f"Transaction de {amount} avec un score critique de {fraud_score:.1%}. "
+                     f"Vérification manuelle immédiate requise.")
+            severity = "high"
+            points = int(fraud_score * 90)
+        elif risk_level == "HIGH":
+            desc = f"Anomalie comportementale détectée (score {fraud_score:.1%})"
+            if total_tx == 0:
+                detail = (f"Première transaction de {amount}. "
+                         f"Score élevé de {fraud_score:.1%} dû à l'absence d'historique client.")
+            elif total_tx <= 5:
+                detail = (f"Transaction de {amount} avec un historique limité ({total_tx} transactions, "
+                         f"moyenne: {avg_amount}). Score de {fraud_score:.1%}.")
+            else:
+                detail = (f"Transaction de {amount} (client établi: {total_tx} transactions, "
+                         f"moyenne: {avg_amount}). Score de {fraud_score:.1%}.")
+            severity = "high"
+            points = int(fraud_score * 75)
+        elif risk_level == "MEDIUM":
+            desc = f"Comportement légèrement atypique (score {fraud_score:.1%})"
+            if total_tx <= 5:
+                detail = (f"Transaction de {amount} avec un historique client limité "
+                         f"({total_tx} transactions). Score modéré de {fraud_score:.1%}.")
+            else:
+                detail = (f"Transaction de {amount} (client établi: {total_tx} transactions). "
+                         f"Légers écarts détectés (score {fraud_score:.1%}).")
+            severity = "medium"
+            points = int(fraud_score * 55)
+        else:
+            desc = f"Transaction dans la norme (score {fraud_score:.1%})"
+            if total_tx == 0:
+                detail = (f"Première transaction de {amount}. "
+                         f"Score faible ({fraud_score:.1%}) – conforme aux attentes.")
+            else:
+                detail = (f"Transaction de {amount} conforme au profil habituel "
+                         f"({total_tx} transactions, moyenne: {avg_amount}). Score: {fraud_score:.1%}.")
+            severity = "low"
+            points = int(fraud_score * 35)
+
+        return {
+            "risk_level": risk_level,
+            "fraud_score": round(float(fraud_score), 4),
+            "primary_factor": "BEHAVIORAL",
+            "primary_factor_display": "Analyse comportementale",
+            "summary": f"{risk_level}: {desc}",
+            "narrative": detail,
+            "client_context": {
+                "total_transactions": total_tx,
+                "has_history": total_tx > 0,
+                "avg_amount": round(float(avg_amount) if avg_amount else 0, 2),
+                "risk_score": round(float(behavior_data.get('client_risk_score', 0)) if behavior_data else 0, 1),
+                "is_established": total_tx > 5
+            },
+            "contributions": [{
+                "factor": "BEHAVIORAL",
+                "factor_display": "Analyse comportementale",
+                "description": desc,
+                "detail": detail,
+                "impact_points": points,
+                "type": "fallback",
+                "severity": severity
+            }],
+            "total_risk_points": points,
+            "analysis_source": "minimal_fallback",
+            "alert_type": default_alert_type if total_tx > 0 else "NO_HISTORY",
+            "explainers_used": {
+                "shap": None,
+                "deep_learning": False,
+                "statistical": False,
+                "score_based": True
+            }
+        }
+
+    @staticmethod
     def _compute_risk_level(score: float, threshold: float) -> str:
-        if score >= 0.9:
+        """Calcule le niveau de risque selon le seuil du modèle."""
+        if score >= threshold + (1.0 - threshold) * 0.6:
             return "CRITICAL"
         if score >= threshold:
             return "HIGH"
-        if score >= threshold / 2:
+        if score >= threshold * 0.6:
             return "MEDIUM"
-        return "LOW"
+        if score >= threshold * 0.3:
+            return "LOW"
+        return "VERY_LOW"
 
     @staticmethod
     def _predict_hybrid(bundle: HybridEnsembleBundle, X_trans: np.ndarray) -> Dict[str, Any]:
@@ -578,14 +657,6 @@ class HybridEngine:
         if effective_threshold is None:
             effective_threshold = 0.5
             logger.warning("No probability threshold provided for standalone anomaly model; fallback to 0.5")
-        else:
-            logger.warning("Using standalone anomaly probability threshold: %.6f", float(effective_threshold))
-
-        logger.warning(
-            "Standalone anomaly probability stats: first_score=%.6f threshold=%.6f",
-            score,
-            float(effective_threshold),
-        )
 
         return {
             "fraud_score": score,

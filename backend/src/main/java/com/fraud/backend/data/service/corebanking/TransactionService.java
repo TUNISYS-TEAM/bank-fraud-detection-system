@@ -232,4 +232,68 @@ public class TransactionService {
         stats.put("riskDistribution", riskCounts); // FIX: Added riskDistribution so frontend chart works
         return stats;
     }
+
+    /**
+     * Calcule le profil de risque global basé sur les transactions.
+     * Ces statistiques sont globales et ne dépendent pas des filtres utilisateur.
+     */
+    public java.util.Map<String, Object> getRiskProfile() {
+        java.util.Map<String, Object> profile = new java.util.HashMap<>();
+
+        // 1. Canal le plus risqué
+        List<Object[]> channels = transactionRepository.fraudCountByChannel();
+        if (!channels.isEmpty()) {
+            Object[] top = channels.get(0);
+            long total = ((Number) top[1]).longValue();
+            long frauds = ((Number) top[2]).longValue();
+            profile.put("riskiestChannel", java.util.Map.of(
+                    "name", top[0].toString(),
+                    "totalCount", total,
+                    "fraudCount", frauds,
+                    "fraudRate", total > 0 ? (double) frauds / total * 100 : 0));
+        }
+
+        // 2. Catégorie la plus risquée
+        List<Object[]> categories = transactionRepository.fraudCountByCategory();
+        if (!categories.isEmpty()) {
+            Object[] top = categories.get(0);
+            long total = ((Number) top[1]).longValue();
+            long frauds = ((Number) top[2]).longValue();
+            profile.put("riskiestCategory", java.util.Map.of(
+                    "name", top[0].toString(),
+                    "totalCount", total,
+                    "fraudCount", frauds,
+                    "fraudRate", total > 0 ? (double) frauds / total * 100 : 0));
+        }
+
+        // 3. Heure la plus risquée
+        List<Object[]> hours = transactionRepository.fraudCountByHour();
+        if (!hours.isEmpty()) {
+            Object[] top = hours.get(0);
+            int hour = ((Number) top[0]).intValue();
+            long total = ((Number) top[1]).longValue();
+            long frauds = ((Number) top[2]).longValue();
+            profile.put("riskiestHour", java.util.Map.of(
+                    "hour", hour,
+                    "label", String.format("%02d:00 - %02d:59", hour, hour),
+                    "totalCount", total,
+                    "fraudCount", frauds,
+                    "fraudRate", total > 0 ? (double) frauds / total * 100 : 0));
+        }
+
+        // 4. Type de compte le plus risqué
+        List<Object[]> accountTypes = transactionRepository.fraudCountByAccountType();
+        if (!accountTypes.isEmpty()) {
+            Object[] top = accountTypes.get(0);
+            long total = ((Number) top[1]).longValue();
+            long frauds = ((Number) top[2]).longValue();
+            profile.put("riskiestAccountType", java.util.Map.of(
+                    "name", top[0].toString(),
+                    "totalCount", total,
+                    "fraudCount", frauds,
+                    "fraudRate", total > 0 ? (double) frauds / total * 100 : 0));
+        }
+
+        return profile;
+    }
 }

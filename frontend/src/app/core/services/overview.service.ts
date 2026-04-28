@@ -22,6 +22,22 @@ export interface OverviewStats {
   } | null;
 }
 
+export interface RiskProfileItem {
+  name?: string;
+  hour?: number;
+  label?: string;
+  fraudCount: number;
+  totalCount: number;
+  fraudRate: number;
+}
+
+export interface RiskProfile {
+  riskiestChannel: RiskProfileItem | null;
+  riskiestCategory: RiskProfileItem | null;
+  riskiestHour: RiskProfileItem | null;
+  riskiestAccountType: RiskProfileItem | null;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -33,6 +49,7 @@ export class OverviewService {
   private apiFraudUrl = `${this.apiUrl}/fraud-alerts`;
 
   getOverviewStats(): Observable<OverviewStats> {
+// ... (code existant) ...
     const teamContext = this.authService.getTeamContext();
     const managerId = teamContext.managerId;
 
@@ -131,5 +148,9 @@ export class OverviewService {
     if (teamContext.managerId) params.managerId = teamContext.managerId.toString();
     
     return this.http.get<any[]>(`${this.apiFraudUrl}/risk-distribution`, { params });
+  }
+
+  getRiskProfile(): Observable<RiskProfile> {
+    return this.http.get<RiskProfile>(`${this.apiUrl}/transactions/stats/risk-profile`);
   }
 }
