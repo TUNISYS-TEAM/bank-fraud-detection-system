@@ -1,0 +1,17 @@
+@media print {
+    /* Masquer uniquement les éléments spécifiés pour ne pas être exportés */
+    .no-export, 
+    .no-export *,
+    button[title="Télécharger PDF"],
+    button[title="Partager ce rapport"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* Éviter de couper les graphiques ou blocs au milieu d'une page */
+    .grid > div,
+    .bg-white {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+}

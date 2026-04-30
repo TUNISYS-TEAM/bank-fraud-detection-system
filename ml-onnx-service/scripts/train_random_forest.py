@@ -2,6 +2,8 @@
 Train a Random Forest model for bank fraud detection.
 No data leakage – per‑split preprocessing, cost‑sensitive learning, dynamic thresholding.
 Uses shared_ml components for splitting, postal codes, preprocessing.
+
+MODIFIED: Only selected features (from UI) are used. Preprocessing adapts to selection.
 """
 
 from __future__ import annotations
@@ -97,7 +99,7 @@ def load_hyperparameters(hyperparam_arg: str) -> dict:
 
 
 # ------------------------------------------------------------------------------
-# Identify categorical columns dynamically
+# Identify categorical columns dynamically from the given dataframe
 # ------------------------------------------------------------------------------
 def identify_categorical_columns(df: pd.DataFrame) -> list[str]:
     expected_cats = ['category', 'Channel', 'client_usual_region', 'client_usual_channel', 'client_usual_category']
@@ -112,14 +114,14 @@ def identify_categorical_columns(df: pd.DataFrame) -> list[str]:
 
 
 # ------------------------------------------------------------------------------
-# Preprocessing pipeline
+# Preprocessing pipeline (dynamic)
 # ------------------------------------------------------------------------------
-def create_preprocessing_pipeline(categorical_columns: list[str]) -> Pipeline:
-    return Pipeline([
-        ('onehot', SafeOneHotEncoder(categorical_cols=categorical_columns, include_raw_cats=True)),
-        ('temporal', TemporalFeatureTransformer()),
-        ('selector', TreeFeatureSelector()),
-    ])
+def create_preprocessing_pipeline(categorical_columns: list[str], has_temporal: bool) -> Pipeline:
+    steps = [('onehot', SafeOneHotEncoder(categorical_cols=categorical_columns, include_raw_cats=True))]
+    if has_temporal:
+        steps.append(('temporal', TemporalFeatureTransformer()))
+    steps.append(('selector', TreeFeatureSelector()))
+    return Pipeline(steps)
 
 
 # ------------------------------------------------------------------------------
@@ -186,16 +188,15 @@ def main():
 
         model_name = hp.get('model_name', 'Random Forest')
         selected_original_features = hp.get('selected_original_features', [])
-        all_features = hp.get('all_features', [])
 
         if not selected_original_features:
-            raise ValueError("No original features selected for training")
+            raise ValueError("No features selected for training")
 
         dataset_path = Path(args.dataset_path)
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset not found: {dataset_path}")
 
-        # Load data
+        # Load full dataset (needed for temporal split)
         if dataset_path.suffix.lower() == '.parquet':
             df = pd.read_parquet(dataset_path)
         else:
@@ -212,72 +213,80 @@ def main():
             if len(df) < before:
                 logger.warning("Dropped %d rows with invalid TX_Time", before - len(df))
 
-        available_features = [f for f in all_features if f in df.columns]
-        if not available_features:
-            raise ValueError("None of the required features are available")
+        # Keep only selected features + fraud + TX_Time if needed for split
+        features_in_dataset = [f for f in selected_original_features if f in df.columns]
+        missing = set(selected_original_features) - set(features_in_dataset)
+        if missing:
+            logger.warning("Features not in dataset: %s", missing)
 
-        feature_cols_for_split = available_features.copy()
-        if 'TX_Time' not in feature_cols_for_split and 'TX_Time' in df.columns:
-            feature_cols_for_split.append('TX_Time')
+        # Ensure TX_Time is present for temporal split (always needed)
+        if 'TX_Time' in df.columns:
+            pass
+        else:
+            raise ValueError("TX_Time column missing, cannot perform temporal split")
 
-        X = df[feature_cols_for_split].copy()
-        y = df['fraud'].values
-        df_processed = X.copy()
-        df_processed['fraud'] = y
+        # For the split, we need selected features + TX_Time + fraud
+        split_cols = features_in_dataset + ['TX_Time', 'fraud']
+        split_cols = list(dict.fromkeys(split_cols))  # remove duplicates, preserve order
+        df_split = df[split_cols].copy()
 
-        # ========== STEP 1: TEMPORAL SPLIT (shared_ml) ==========
-        if 'TX_Time' not in df_processed.columns:
-            raise ValueError("TX_Time column missing")
+        # Temporal split
         df_train, df_val, df_test = temporal_split(
-            df_processed, time_col='TX_Time', train_ratio=0.7, val_ratio=0.15
+            df_split, time_col='TX_Time', train_ratio=0.7, val_ratio=0.15
         )
 
-        # ========== STEP 2: PER‑SPLIT PREPROCESSING ==========
-        logger.info("Applying per-split preprocessing...")
-        df_train = process_id_columns(df_train)
-        df_val = process_id_columns(df_val)
-        df_test = process_id_columns(df_test)
+        # Determine if TX_Time is selected as a feature for training
+        has_temporal = 'TX_Time' in selected_original_features
 
-        # Customer postal codes
-        customer_region_categories = process_customer_postal_fit(df_train)
-        df_train = process_customer_postal_transform(df_train, customer_region_categories)
-        df_val = process_customer_postal_transform(df_val, customer_region_categories)
-        df_test = process_customer_postal_transform(df_test, customer_region_categories)
+        # Feature columns for training (without fraud, and without TX_Time if not selected)
+        train_feat_cols = [c for c in features_in_dataset if c != 'TX_Time' or has_temporal]
+        # Ensure TX_Time is not included if it's not explicitly selected
+        if not has_temporal and 'TX_Time' in train_feat_cols:
+            train_feat_cols.remove('TX_Time')
 
-        # Merchant postal codes (if present)
-        if 'Merchant_Postal_Code' in df_processed.columns:
-            merchant_region_categories = process_merchant_postal_fit(df_train)
-            df_train = process_merchant_postal_transform(df_train, merchant_region_categories)
-            df_val = process_merchant_postal_transform(df_val, merchant_region_categories)
-            df_test = process_merchant_postal_transform(df_test, merchant_region_categories)
-
-        # Garder TX_Time pour le pipeline
-        X_train = df_train.drop('fraud', axis=1)   # TX_Time est conservé
-        X_val = df_val.drop('fraud', axis=1)
-        X_test = df_test.drop('fraud', axis=1)
+        X_train = df_train[train_feat_cols].copy()
+        X_val = df_val[train_feat_cols].copy()
+        X_test = df_test[train_feat_cols].copy()
         y_train = df_train['fraud'].values
         y_val = df_val['fraud'].values
         y_test = df_test['fraud'].values
+
+        # Process ID columns (if present)
+        X_train = process_id_columns(X_train)
+        X_val = process_id_columns(X_val)
+        X_test = process_id_columns(X_test)
+
+        # Postal codes processing (only if the column is in the selected features)
+        if 'Customer_Postal_Code' in X_train.columns:
+            customer_region_categories = process_customer_postal_fit(X_train)
+            X_train = process_customer_postal_transform(X_train, customer_region_categories)
+            X_val = process_customer_postal_transform(X_val, customer_region_categories)
+            X_test = process_customer_postal_transform(X_test, customer_region_categories)
+
+        if 'Merchant_Postal_Code' in X_train.columns:
+            merchant_region_categories = process_merchant_postal_fit(X_train)
+            X_train = process_merchant_postal_transform(X_train, merchant_region_categories)
+            X_val = process_merchant_postal_transform(X_val, merchant_region_categories)
+            X_test = process_merchant_postal_transform(X_test, merchant_region_categories)
 
         logger.info("Train: %d rows (fraud rate %.4f)", len(X_train), y_train.mean())
         logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
         logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
 
-        # Identify categorical columns on training data
+        # Identify categorical columns among selected features
         categorical_columns = identify_categorical_columns(X_train)
         logger.info("Categorical columns to encode: %s", categorical_columns)
 
-        # ========== STEP 3: PREPROCESSING PIPELINE ==========
-        preprocessor = create_preprocessing_pipeline(categorical_columns)
+        # Build preprocessing pipeline (TemporalFeatureTransformer only if TX_Time selected)
+        preprocessor = create_preprocessing_pipeline(categorical_columns, has_temporal)
         X_train_proc = preprocessor.fit_transform(X_train)
         X_val_proc = preprocessor.transform(X_val)
         X_test_proc = preprocessor.transform(X_test)
 
-        # Supprimer TX_Time s'il est encore présent (le sélecteur l'a déjà fait, mais par sécurité)
-        if 'TX_Time' in X_train_proc.columns:
-            X_train_proc = X_train_proc.drop('TX_Time', axis=1)
-            X_val_proc = X_val_proc.drop('TX_Time', axis=1)
-            X_test_proc = X_test_proc.drop('TX_Time', axis=1)
+        # Drop TX_Time if still present (should not, but just in case)
+        for df_proc in (X_train_proc, X_val_proc, X_test_proc):
+            if 'TX_Time' in df_proc.columns:
+                df_proc.drop('TX_Time', axis=1, inplace=True)
 
         try:
             feature_names = preprocessor.get_feature_names_out()
@@ -286,7 +295,7 @@ def main():
 
         logger.info("Processed feature shape: %s", X_train_proc.shape)
 
-        # ========== STEP 4: COST‑SENSITIVE RANDOM FOREST ==========
+        # ========== COST‑SENSITIVE RANDOM FOREST ==========
         fraud_weight = hp.get('fraud_weight')
         if fraud_weight is None:
             fraud_ratio = y_train.mean()
@@ -317,7 +326,7 @@ def main():
         rf_model.fit(X_train_proc, y_train)
         train_time = time.time() - train_start
 
-        # ========== STEP 5: THRESHOLD CALCULATIONS ==========
+        # ========== THRESHOLD CALCULATIONS ==========
         y_val_proba = rf_model.predict_proba(X_val_proc)[:, 1]
         max_prob = y_val_proba.max()
         logger.info("Validation max probability: %.4f", max_prob)
@@ -342,11 +351,10 @@ def main():
             if final_threshold > max_prob:
                 logger.warning("User threshold %.4f > max prob %.4f → will detect nothing.", final_threshold, max_prob)
         else:
-            # MODIF : utiliser F-beta par défaut (meilleur compromis recall/précision)
             final_threshold = fbeta_threshold
             logger.info("No UI threshold, using F-beta threshold: %.4f", final_threshold)
 
-        # ========== STEP 6: TEST EVALUATION ==========
+        # ========== TEST EVALUATION ==========
         y_test_proba = rf_model.predict_proba(X_test_proc)[:, 1]
         y_test_pred = (y_test_proba >= final_threshold).astype(int)
 
@@ -366,7 +374,7 @@ def main():
         importances = rf_model.feature_importances_
         feature_importance_map = dict(sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True))
 
-        # ========== STEP 7: SAVE ARTIFACTS ==========
+        # ========== SAVE ARTIFACTS ==========
         timestamp = args.timestamp
         output_models_dir = Path("/tmp/fraud-work/output/models")
         output_onnx_dir = Path("/tmp/fraud-work/output/onnx")

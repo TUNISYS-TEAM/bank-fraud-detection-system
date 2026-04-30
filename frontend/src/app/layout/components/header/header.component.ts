@@ -1,3 +1,4 @@
+
 import { Component, inject, signal, HostListener, ElementRef } from '@angular/core';
 import { AuthStore } from '../../../core/store/auth.store';
 import { NotificationService, Notification } from '../../../core/services/notification.service';
@@ -55,6 +56,7 @@ export class HeaderComponent {
       case 'VALIDATION_REQUEST': return 'clipboard';
       case 'MODEL_VALIDATED': return 'check-circle';
       case 'MODEL_REJECTED': return 'x-circle';
+      case 'NEW_REPORT': return 'file-text';
       default: return 'bell';
     }
   }

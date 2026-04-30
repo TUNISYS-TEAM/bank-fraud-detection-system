@@ -1,6 +1,8 @@
 """
 Train a Hybrid Ensemble model combining supervised models (RF, XGBoost)
 and unsupervised anomaly detection (COPOD), with temporal OOF stacking.
+Now supports dynamic feature selection: only selected features are used,
+and temporal features are generated only if TX_Time is selected.
 """
 
 from __future__ import annotations
@@ -171,6 +173,27 @@ def compute_fast_feature_importance_from_scores(
     return importances
 
 
+def identify_categorical_columns(df: pd.DataFrame) -> list[str]:
+    expected_cats = ['category', 'Channel', 'client_usual_region', 'client_usual_channel', 'client_usual_category']
+    exclude = {'TX_Time', 'Account_Id', 'Device_Id', 'Customer_Region', 'Merchant_Region'}
+    categorical_cols = []
+    for col in df.columns:
+        if col in exclude:
+            continue
+        if col in expected_cats or df[col].dtype == 'object' or df[col].dtype.name == 'category':
+            categorical_cols.append(col)
+    return categorical_cols
+
+
+def create_preprocessing_pipeline(categorical_columns: list[str], has_temporal: bool) -> Pipeline:
+    steps = [('onehot', SafeOneHotEncoder(categorical_cols=categorical_columns, include_raw_cats=True))]
+    if has_temporal:
+        steps.append(('temporal', TemporalFeatureTransformer()))
+    steps.append(('selector', TreeFeatureSelector()))
+    steps.append(('scaler', SafeScaler(scaler_type='robust')))
+    return Pipeline(steps)
+
+
 def build_rf(random_state: int, n_estimators: int, max_depth: int | None) -> RandomForestClassifier:
     return RandomForestClassifier(
         n_estimators=n_estimators,
@@ -204,10 +227,6 @@ def build_xgb(
 
 
 def build_temporal_oof_slices(n_rows: int, n_splits: int) -> list[tuple[np.ndarray, np.ndarray]]:
-    """
-    Build expanding-window temporal folds on the already time-ordered train split.
-    Each fold trains on the past and predicts the next block.
-    """
     if n_splits < 2:
         raise ValueError("n_splits must be >= 2")
 
@@ -277,13 +296,18 @@ def main():
             if len(df) < before:
                 logger.warning("Dropped %d rows with invalid TX_Time", before - len(df))
 
+        # Use only selected features, excluding IDs
         available_features = [
             f for f in selected_original_features
             if f in df.columns and f not in EXCLUDED_FEATURE_NAMES
         ]
+        missing = set(selected_original_features) - set(available_features) - EXCLUDED_FEATURE_NAMES
+        if missing:
+            logger.warning("Features not in dataset: %s", missing)
         if not available_features:
             raise ValueError("None of the selected features are available after excluding IDs")
 
+        # Always include TX_Time for temporal split
         feature_cols_for_split = available_features.copy()
         if "TX_Time" not in feature_cols_for_split and "TX_Time" in df.columns:
             feature_cols_for_split.append("TX_Time")
@@ -293,10 +317,9 @@ def main():
         df_processed = X.copy()
         df_processed["fraud"] = y
 
-        excluded_cols = ["TX_Time", "fraud"]
-        categorical_cols = df_processed.select_dtypes(exclude=[np.number, "datetime64[ns]"]).columns.tolist()
-        categorical_cols = [c for c in categorical_cols if c not in excluded_cols]
-        logger.info("Identified categorical columns: %s", categorical_cols)
+        # Determine if TX_Time is selected
+        has_temporal = "TX_Time" in selected_original_features
+
         logger.info("Selected original features used for Hybrid Ensemble: %s", available_features)
 
         if "TX_Time" not in df_processed.columns:
@@ -308,12 +331,14 @@ def main():
 
         logger.info("Applying per-split preprocessing...")
 
-        customer_region_categories = process_customer_postal_fit(df_train)
-        df_train = process_customer_postal_transform(df_train, customer_region_categories)
-        df_val = process_customer_postal_transform(df_val, customer_region_categories)
-        df_test = process_customer_postal_transform(df_test, customer_region_categories)
+        # Postal codes only if columns present
+        if "Customer_Postal_Code" in df_train.columns:
+            customer_region_categories = process_customer_postal_fit(df_train)
+            df_train = process_customer_postal_transform(df_train, customer_region_categories)
+            df_val = process_customer_postal_transform(df_val, customer_region_categories)
+            df_test = process_customer_postal_transform(df_test, customer_region_categories)
 
-        if "Merchant_Postal_Code" in df_processed.columns:
+        if "Merchant_Postal_Code" in df_train.columns:
             merchant_region_categories = process_merchant_postal_fit(df_train)
             df_train = process_merchant_postal_transform(df_train, merchant_region_categories)
             df_val = process_merchant_postal_transform(df_val, merchant_region_categories)
@@ -330,19 +355,21 @@ def main():
         logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
         logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
 
-        preprocessor = Pipeline([
-            ("onehot", SafeOneHotEncoder(categorical_cols=categorical_cols, include_raw_cats=True)),
-            ("temporal", TemporalFeatureTransformer()),
-            ("selector", TreeFeatureSelector()),
-            ("scaler", SafeScaler(scaler_type="robust")),
-        ])
+        # Identify categorical columns among selected features
+        categorical_columns = identify_categorical_columns(X_train)
+        logger.info("Categorical columns to encode: %s", categorical_columns)
+
+        # Build preprocessing pipeline (temporal only if TX_Time selected)
+        preprocessor = create_preprocessing_pipeline(categorical_columns, has_temporal)
 
         X_train_proc = preprocessor.fit_transform(X_train)
         X_val_proc = preprocessor.transform(X_val)
         X_test_proc = preprocessor.transform(X_test)
 
-        preprocessor._customer_region_categories_ = list(customer_region_categories)
-        if "Merchant_Postal_Code" in df_processed.columns:
+        # Store postal categories if they were processed
+        if "Customer_Postal_Code" in df_train.columns:
+            preprocessor._customer_region_categories_ = list(customer_region_categories)
+        if "Merchant_Postal_Code" in df_train.columns:
             preprocessor._merchant_region_categories_ = list(merchant_region_categories)
 
         if hasattr(X_train_proc, "columns") and "TX_Time" in X_train_proc.columns:

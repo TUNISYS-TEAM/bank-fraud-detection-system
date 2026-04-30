@@ -333,6 +333,40 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
        List<Transaction> findAllByTransactionDateBetween(@Param("start") LocalDateTime start,
                      @Param("end") LocalDateTime end);
 
+       @Query("SELECT COUNT(t) FROM Transaction t WHERE t.transactionDate BETWEEN :start AND :end")
+       long countAllByTransactionDateBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+       @Query("SELECT SUM(t.amount) FROM Transaction t WHERE t.transactionDate BETWEEN :start AND :end")
+       java.math.BigDecimal sumAmountByTransactionDateBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+       @Query("SELECT AVG(t.fraudScore) FROM Transaction t WHERE t.fraudScore IS NOT NULL AND t.transactionDate BETWEEN :start AND :end")
+       Optional<Double> getAverageFraudScoreByTransactionDateBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+       @Query("SELECT COUNT(t) FROM Transaction t WHERE t.status = 'REJECTED' AND t.transactionDate BETWEEN :start AND :end")
+       long countBlockedByTransactionDateBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+       @EntityGraph(attributePaths = { "account", "account.client", "dataset" })
+       @Query("SELECT t FROM Transaction t LEFT JOIN t.dataset d LEFT JOIN d.assignedManager m " +
+              "WHERE t.createdAt BETWEEN :start AND :end AND (:managerId IS NULL OR m.id = :managerId)")
+       List<Transaction> findAllByCreatedAtBetweenAndManagerId(@Param("start") LocalDateTime start,
+                     @Param("end") LocalDateTime end, @Param("managerId") Long managerId);
+
+       @Query("SELECT COUNT(t) FROM Transaction t LEFT JOIN t.dataset d LEFT JOIN d.assignedManager m " +
+              "WHERE t.createdAt BETWEEN :start AND :end AND (:managerId IS NULL OR m.id = :managerId)")
+       long countAllByCreatedAtBetweenAndManagerId(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, @Param("managerId") Long managerId);
+
+       @Query("SELECT SUM(t.amount) FROM Transaction t LEFT JOIN t.dataset d LEFT JOIN d.assignedManager m " +
+              "WHERE t.createdAt BETWEEN :start AND :end AND (:managerId IS NULL OR m.id = :managerId)")
+       java.math.BigDecimal sumAmountByCreatedAtBetweenAndManagerId(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, @Param("managerId") Long managerId);
+
+       @Query("SELECT AVG(t.fraudScore) FROM Transaction t LEFT JOIN t.dataset d LEFT JOIN d.assignedManager m " +
+              "WHERE t.fraudScore IS NOT NULL AND t.createdAt BETWEEN :start AND :end AND (:managerId IS NULL OR m.id = :managerId)")
+       Optional<Double> getAverageFraudScoreByCreatedAtBetweenAndManagerId(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, @Param("managerId") Long managerId);
+
+       @Query("SELECT COUNT(t) FROM Transaction t LEFT JOIN t.dataset d LEFT JOIN d.assignedManager m " +
+              "WHERE t.status = 'REJECTED' AND t.createdAt BETWEEN :start AND :end AND (:managerId IS NULL OR m.id = :managerId)")
+       long countBlockedByCreatedAtBetweenAndManagerId(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, @Param("managerId") Long managerId);
+
        @EntityGraph(attributePaths = { "account", "account.client", "dataset" })
        @Query("SELECT t FROM Transaction t WHERE t.postalCodeClient = :postalCode AND t.transactionDate BETWEEN :start AND :end")
        List<Transaction> findAllByPostalCodeClientAndTransactionDateBetween(

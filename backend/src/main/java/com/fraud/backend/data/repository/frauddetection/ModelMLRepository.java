@@ -74,9 +74,11 @@ public interface ModelMLRepository extends JpaRepository<ModelML, Long> {
 
         Page<ModelML> findByValidatedByIdOrderByCreatedAtDesc(Long validatedById, Pageable pageable);
 
-        /**
-         * Find models created by a specific user with any of the given statuses,
-         * ordered by creation date descending.
-         */
         List<ModelML> findByCreatedByIdAndStatusInOrderByCreatedAtDesc(Long createdById, List<String> statuses);
+
+        @org.springframework.data.jpa.repository.Query("SELECT m FROM ModelML m WHERE (m.createdBy.id = :managerId OR m.createdBy.manager.id = :managerId) AND m.status = :status ORDER BY m.createdAt DESC")
+        List<ModelML> findByTeamAndStatus(@org.springframework.data.repository.query.Param("managerId") Long managerId, @org.springframework.data.repository.query.Param("status") String status);
+
+        @org.springframework.data.jpa.repository.Query("SELECT m FROM ModelML m WHERE (m.createdBy.id = :managerId OR m.createdBy.manager.id = :managerId) ORDER BY m.createdAt DESC")
+        List<ModelML> findByTeam(@org.springframework.data.repository.query.Param("managerId") Long managerId);
 }

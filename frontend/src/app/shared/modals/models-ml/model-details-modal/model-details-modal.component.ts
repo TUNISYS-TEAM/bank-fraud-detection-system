@@ -724,8 +724,16 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
   }
 
   getClientFeatures(): string[] {
-    const allFeatures = this.modelResult?.hyperparameters?.all_features || 
-                       this.modelResult?.hyperparameters_used?.all_features || [];
+    // Try all_features first (legacy)
+    let allFeatures = this.modelResult?.hyperparameters?.all_features || 
+                      this.modelResult?.hyperparameters_used?.all_features || [];
+
+    // If empty, fall back to selectedFeatures / selected_original_features
+    if (!Array.isArray(allFeatures) || allFeatures.length === 0) {
+      allFeatures = this.modelResult?.selectedFeatures || 
+                    this.modelResult?.selected_original_features || 
+                    [];
+    }
 
     if (!Array.isArray(allFeatures)) return [];
 
@@ -735,7 +743,16 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
   }
 
   getOriginalFeatures(): string[] {
-    return this.modelResult?.selectedFeatures || this.modelResult?.selected_original_features || [];
+    // Get all features from selectedFeatures / selected_original_features
+    const allFeatures = this.modelResult?.selectedFeatures || 
+                        this.modelResult?.selected_original_features || [];
+
+    if (!Array.isArray(allFeatures)) return [];
+
+    // Filter out client_* features (those are shown in the behavioral section)
+    return allFeatures.filter((f: any) =>
+      f && typeof f === 'string' && !f.toLowerCase().startsWith('client_')
+    );
   }
 
   isAutoencoder(): boolean {

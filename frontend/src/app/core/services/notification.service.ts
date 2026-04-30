@@ -143,6 +143,7 @@ export class NotificationService {
       case 'VALIDATION_REQUEST': return 'Demande de validation';
       case 'MODEL_VALIDATED': return 'Modèle validé';
       case 'MODEL_REJECTED': return 'Modèle rejeté';
+      case 'NEW_REPORT': return 'Nouveau rapport';
       default: return 'Notification';
     }
   }
@@ -158,6 +159,8 @@ export class NotificationService {
         return `Modèle ${p.modelUuid} validé`;
       case 'MODEL_REJECTED':
         return `Modèle ${p.modelUuid} rejeté`;
+      case 'NEW_REPORT':
+        return `${p.title}\nDe: ${p.generatedByName}`;
       default:
         return 'Nouvelle notification';
     }

@@ -19,6 +19,10 @@ import java.util.List;
 @Repository
 public interface DatasetRepository extends JpaRepository<Dataset, Long> {
 
+        List<Dataset> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
+
+        List<Dataset> findByAssignedManagerIdAndCreatedAtBetween(Long managerId, LocalDateTime start, LocalDateTime end);
+
         Optional<Dataset> findByDatasetUuid(UUID datasetUuid);
         
         Optional<Dataset> findByDatasetName(String datasetName);

@@ -42,6 +42,38 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   private allClientBehaviorFeatures: string[] = [];
   expandedCategories: Set<string> = new Set(['transaction', 'categorical', 'temporal']);
 
+  // ---- Dépendances : quelles features client_* sont automatiquement ajoutées quand une feature de base est cochée ----
+  private readonly featureDependencies: Record<string, string[]> = {
+    'TX_Amount': [
+      'client_AVG_TX_Amount', 'client_AVG_TX_PerDay', 'client_amount_deviation',
+      'client_abs_amount_deviation', 'client_amount_max_ratio', 'client_amount_z_score',
+      'client_is_new_max', 'client_is_new_min', 'amount_abs_diff', 'amount_ratio_raw'
+    ],
+    'TX_Time': [
+      'client_time_since_last_tx', 'client_hours_since_last_tx', 'client_gap_z_score',
+      'client_total_days_since_first'
+    ],
+    'Account_Id': [
+      'client_total_transactions', 'log_total_tx', 'client_risk_score'
+    ],
+    'Channel': [
+      'client_usual_channel', 'client_is_unusual_channel', 'client_channel_freq',
+      'is_unusual_channel_with_history'
+    ],
+    'category': [
+      'client_usual_category', 'client_is_unusual_category', 'client_category_freq',
+      'is_unusual_category_with_history'
+    ],
+    'Customer_Postal_Code': [
+      'client_usual_region', 'client_is_unusual_region', 'client_region_freq',
+      'is_unusual_region_with_history'
+    ],
+    'Device_Id': [],
+    'Merchant_Postal_Code': [],
+    'ip_adress': [],
+    'currency': []
+  };
+
   // Model selection
   availableModels = [
     {
@@ -293,9 +325,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     'Merchant_Postal_Code', 'Device_Id', 'ip_adress'
   ]);
 
-  // Track model versions to generate sequential numbers
-  // (Moving to top after private originalFeatures if needed, but and removing duplicate declaration)
-
   constructor(
     private http: HttpClient,
     private router: Router,
@@ -363,10 +392,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       'HYBRID_ENSEMBLE': 'ENS'
     };
 
-
     const prefix = prefixMap[modelType] || 'MDL';
 
-    // Get next version number for this prefix
     let nextVersion = this.modelVersions.get(prefix) || 0;
     nextVersion++;
     this.modelVersions.set(prefix, nextVersion);
@@ -377,7 +404,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   loadAllTrainingDatasets(): void {
     this.isLoadingDatasets = true;
 
-    // Use the dedicated /training endpoint which returns only visible and processed datasets
     let url = `${environment.apiUrl}/datasets/training?page=${this.currentPage}&size=${this.pageSize}`;
 
     const teamContext = this.authService.getTeamContext();
@@ -392,8 +418,8 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     this.http.get<PageResponse<Dataset>>(url).subscribe({
       next: (response) => {
         this.allTrainingDatasets = response.content;
-        this.processedDatasets = response.content.filter(d => 
-          (d.status === 'PROCESSED' || d.status === 'CLEANED') && 
+        this.processedDatasets = response.content.filter(d =>
+          (d.status === 'PROCESSED' || d.status === 'CLEANED') &&
           d.datasetName.toLowerCase().includes('(enriched)')
         );
         this.totalElements = response.totalElements;
@@ -447,12 +473,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   loadDatasetFeatures(): void {
     this.http.get<any>(`${environment.apiUrl}/datasets/${this.selectedDatasetUuid}/analysis`).subscribe({
       next: (analysis) => {
-        // Mettre à jour les statistiques du dataset sélectionné
         if (this.selectedDataset && analysis.statistics) {
           this.selectedDataset.statistics = analysis.statistics;
         }
 
-        // Extract features - separate original and client behavior
         const { originalFeatures, clientBehaviorFeatures } = this.extractFeaturesFromAnalysis(analysis);
         this.features = originalFeatures;
         this.allClientBehaviorFeatures = clientBehaviorFeatures;
@@ -483,13 +507,11 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
         const name = col.name.toLowerCase();
 
-        // Check if it's a client behavior feature
         if (name.startsWith('client_')) {
           clientBehaviorFeatures.push(col.name);
           return;
         }
 
-        // Only include original features that are in our set
         if (this.originalFeatures.has(name) || this.originalFeatures.has(col.name)) {
           let category: 'transaction' | 'categorical' | 'temporal' = 'transaction';
 
@@ -735,26 +757,29 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Stop any existing polling and progress
     this.stopPolling();
     this.stopTrainingProgress();
     this.trainingError = null;
 
-    // Get selected original features from UI
-    const selectedOriginalFeatures = this.features
+    // Features de base cochées par l'utilisateur
+    const selectedBaseFeatures = this.features
       .filter(f => f.enabled)
       .map(f => f.name);
 
-    // Combine: selected original features + ALL client behavior features
-    const allFeaturesForTraining = [...selectedOriginalFeatures, ...this.allClientBehaviorFeatures];
+    // Ajouter automatiquement les dépendances comportementales
+    const allFeaturesSet = new Set<string>(selectedBaseFeatures);
+    for (const baseFeature of selectedBaseFeatures) {
+      const deps = this.featureDependencies[baseFeature] || [];
+      deps.forEach(dep => allFeaturesSet.add(dep));
+    }
 
-    // Remove duplicates just in case
-    const uniqueFeaturesForTraining = [...new Set(allFeaturesForTraining)];
+    // Toujours inclure TX_Time pour le split temporel
+    allFeaturesSet.add('TX_Time');
 
-    // Generate versioned model name
+    const uniqueFeaturesForTraining = Array.from(allFeaturesSet);
+
     const versionedModelName = this.generateVersionedModelName(config.modelType);
 
-    // Build the hyperparameters object
     const hyperparameters: any = {
       ...config.hyperparameters,
       selected_original_features: uniqueFeaturesForTraining,
@@ -770,7 +795,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
             config.modelType === 'AUTOENCODER' ? 'autoencoder' :
               config.modelType === 'ECOD' ? 'ecod' :
                 config.modelType === 'COPOD' ? 'copod' : 'random-forest';
-
 
     const request: TrainingJobRequest = {
       datasetUuid: this.selectedDatasetUuid,
@@ -799,17 +823,14 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         this.trainingProgress = 100;
 
         if (isTest) {
-          // Enrich the response with original request hyperparameters so user-chosen
-          // values (like and_high_conf_threshold, strategy) are always displayed correctly
-          // and also persisted to DB when the user saves this test result.
           const enrichedResponse = {
             ...response,
             hyperparameters: {
-              ...hyperparameters,           // original user-chosen values
-              ...(response.hyperparameters || {}), // server response overrides only what it explicitly returns
+              ...hyperparameters,
+              ...(response.hyperparameters || {}),
             }
           };
-          this.lastTrainingResult = enrichedResponse; // keep enriched version for save
+          this.lastTrainingResult = enrichedResponse;
           const modelData = this.transformModelDataForModal(enrichedResponse);
           this.selectedModelForDetails = modelData;
           this.showModelDetailsModal = true;
@@ -842,17 +863,15 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (response) => {
         this.lastTrainingResult = response;
-        this.wasLastJobTest.set(false); // It's no longer a test, it's a saved model
+        this.wasLastJobTest.set(false);
         this.isSavingTestResult.set(false);
         this.saveSuccess.set(true);
         this.loadModelHistory();
 
-        // Hide success message after 5 seconds
         setTimeout(() => {
           this.saveSuccess.set(false);
         }, 5000);
 
-        // Transform the response for immediate use if needed
         const modelData = this.transformModelDataForModal(response);
         this.selectedModelForDetails = modelData;
       },
@@ -881,7 +900,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
               const aucRoc = metrics.aucRoc || metrics.auc_roc || 0;
               const accuracy = metrics.accuracy || 0;
 
-              // Use thresholds from metrics if available
               const thresholds = metrics.thresholds || {
                 final: this.detectionThreshold
               };
@@ -961,7 +979,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
   }
 
   viewModelDetails(modelUuid: string): void {
-    // If it's the last training/test result we have in memory, use it directly (fast path)
     if (this.lastTrainingResult && this.lastTrainingResult.modelUuid === modelUuid) {
       const modelData = this.transformModelDataForModal(this.lastTrainingResult);
       this.selectedModelForDetails = modelData;
@@ -969,16 +986,13 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Try to find the model in history first
     const modelFromHistory = this.modelHistory.find(m => m.modelUuid === modelUuid);
 
     if (modelFromHistory) {
-      // Transform the history data into the format expected by the modal
       const modelData = this.transformModelDataForModal(modelFromHistory);
       this.selectedModelForDetails = modelData;
       this.showModelDetailsModal = true;
     } else {
-      // If not in history, fetch from API
       this.http.get<any>(`${environment.apiUrl}/v1/fraud-detection/models/training/${modelUuid}`).subscribe({
         next: (model) => {
           const modelData = this.transformModelDataForModal(model);
@@ -992,20 +1006,12 @@ export class MlModelsComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Helper method to transform model data for the modal
   private transformModelDataForModal(model: any): any {
-    // Force transformation to ensure 'UNKNOWN' names are handled and type mapping is applied
-
-
-    // Infer data from nested structures
     const hyperparameters = model.hyperparameters || {};
     const trainingResults = hyperparameters._trainingResults || {};
     const trainingMetadata = hyperparameters._trainingMetadata || {};
 
-    // Infer model type if missing (especially for test runs)
     let modelType = (model.modelType && model.modelType !== 'UNKNOWN' && model.modelType !== 'unknown') ? model.modelType : null;
-    
-    // Infer model name first as it helps with modelType inference
     let modelName = model.modelName || model.jobName || hyperparameters.model_name || null;
     if (modelName === 'UNKNOWN' || modelName === 'unknown') modelName = null;
 
@@ -1021,7 +1027,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       else if (nameToCheck.includes('HYBRID') || nameToCheck.startsWith('ENS')) modelType = 'HYBRID_ENSEMBLE';
     }
 
-    // Best effort for final model name
     let finalModelName = modelName;
     if (!finalModelName) {
       if (modelType === 'AUTOENCODER') finalModelName = 'Autoencoder';
@@ -1041,18 +1046,10 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Get metrics from various possible locations
     const metrics = model.metrics || trainingResults.metrics || {};
-
-    // Get confusion matrix
     const confusionMatrix = model.confusionMatrix || trainingResults.confusionMatrix || {
-      true_negatives: 0,
-      false_positives: 0,
-      false_negatives: 0,
-      true_positives: 0
+      true_negatives: 0, false_positives: 0, false_negatives: 0, true_positives: 0
     };
-
-    // Get thresholds
     const thresholds = model.thresholds || trainingResults.thresholds || hyperparameters._thresholds || {
       fbeta: hyperparameters.detection_threshold || 0.5,
       fbeta_score: metrics.f1_score || model.f1Score || 0,
@@ -1061,10 +1058,7 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       final: hyperparameters.detection_threshold || 0.7
     };
 
-    // Get selected features
     const selectedOriginalFeatures = hyperparameters.selected_original_features || model.selectedFeatures || [];
-
-    // Get all features
     const allFeatures = hyperparameters.all_features || [];
 
     return {
@@ -1079,8 +1073,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
       fraudRate: trainingResults.fraudRate || model.fraudRate || 0,
       testRows: trainingResults.testRows || model.testRows || 0,
       trainingRows: trainingResults.trainingRows || model.trainingRows || 0,
-
-      // Metrics
       metrics: {
         f1_score: metrics.f1_score || model.f1Score || metrics.f1Score || 0,
         precision: metrics.precision || model.precision || 0,
@@ -1088,16 +1080,12 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         auc_roc: metrics.auc_roc || model.aucRoc || metrics.aucRoc || 0,
         accuracy: metrics.accuracy || 0
       },
-
-      // Confusion Matrix
       confusionMatrix: {
         true_negatives: confusionMatrix.true_negatives || confusionMatrix.trueNegatives || 0,
         false_positives: confusionMatrix.false_positives || confusionMatrix.falsePositives || 0,
         false_negatives: confusionMatrix.false_negatives || confusionMatrix.falseNegatives || 0,
         true_positives: confusionMatrix.true_positives || confusionMatrix.truePositives || 0
       },
-
-      // Thresholds
       thresholds: {
         fbeta: thresholds.fbeta || 0.5,
         fbeta_score: thresholds.fbeta_score || metrics.f1_score || 0,
@@ -1105,12 +1093,9 @@ export class MlModelsComponent implements OnInit, OnDestroy {
         min_cost: thresholds.min_cost || 0,
         final: thresholds.final || hyperparameters.detection_threshold || 0.7
       },
-
-      // Features
       selectedFeatures: selectedOriginalFeatures,
       selected_original_features: selectedOriginalFeatures,
       featureImportance: model.featureImportance || trainingResults.featureImportance || {},
-      
       hyperparameters_used: {
         ...hyperparameters,
         all_features: allFeatures,
@@ -1158,7 +1143,6 @@ export class MlModelsComponent implements OnInit, OnDestroy {
 
     this.http.get<any>(url).subscribe({
       next: (response) => {
-        // Transform each model to extract dates from nested structures
         this.modelHistory = response.content.map((model: any) => {
           const hyperparameters = model.hyperparameters || {};
           const trainingResults = hyperparameters._trainingResults || {};

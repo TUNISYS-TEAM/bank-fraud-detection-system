@@ -24,7 +24,8 @@ export class HistoryComponent implements OnInit {
     { value: 'NEW_MESSAGE', label: 'Messages' },
     { value: 'VALIDATION_REQUEST', label: 'Demandes de validation' },
     { value: 'MODEL_VALIDATED', label: 'Modèles validés' },
-    { value: 'MODEL_REJECTED', label: 'Modèles rejetés' }
+    { value: 'MODEL_REJECTED', label: 'Modèles rejetés' },
+    { value: 'NEW_REPORT', label: 'Rapports' }
   ];
 
   ngOnInit() {
@@ -192,6 +193,8 @@ export class HistoryComponent implements OnInit {
           this.router.navigate(['/dashboard/messages']);
         }
         break;
+      case 'MODEL_VALIDATED':
+      case 'MODEL_REJECTED':
       case 'VALIDATION_REQUEST':
         if (payload?.modelUuid) {
           this.router.navigate(['/dashboard/messages'], {
@@ -199,6 +202,15 @@ export class HistoryComponent implements OnInit {
           });
         } else {
           this.router.navigate(['/dashboard/messages'], { queryParams: { tab: 'validation' } });
+        }
+        break;
+      case 'NEW_REPORT':
+        if (payload?.rapportUuid) {
+          this.router.navigate(['/dashboard/messages'], {
+            queryParams: { tab: 'reporting', rapportUuid: payload.rapportUuid }
+          });
+        } else {
+          this.router.navigate(['/dashboard/messages'], { queryParams: { tab: 'reporting' } });
         }
         break;
       default:
@@ -212,6 +224,7 @@ export class HistoryComponent implements OnInit {
       case 'VALIDATION_REQUEST': return 'clipboard';
       case 'MODEL_VALIDATED': return 'check-circle';
       case 'MODEL_REJECTED': return 'x-circle';
+      case 'NEW_REPORT': return 'file-text';
       default: return 'bell';
     }
   }
@@ -222,6 +235,7 @@ export class HistoryComponent implements OnInit {
       case 'VALIDATION_REQUEST': return 'bg-yellow-100 text-yellow-700';
       case 'MODEL_VALIDATED': return 'bg-green-100 text-green-700';
       case 'MODEL_REJECTED': return 'bg-red-100 text-red-700';
+      case 'NEW_REPORT': return 'bg-emerald-100 text-emerald-700';
       default: return 'bg-gray-100 text-gray-700';
     }
   }
@@ -240,6 +254,7 @@ export class HistoryComponent implements OnInit {
       case 'VALIDATION_REQUEST': return 'Validation';
       case 'MODEL_VALIDATED': return 'Validé';
       case 'MODEL_REJECTED': return 'Rejeté';
+      case 'NEW_REPORT': return 'Rapport';
       default: return type;
     }
   }

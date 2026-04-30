@@ -1,8 +1,10 @@
 """
 Train a Balanced Random Forest model (imblearn) for bank fraud detection.
-No data leakage – per-split preprocessing, dynamic thresholding, ONNX export.
-Uses shared_ml components for splitting, postal codes, one-hot encoding, scaling,
-temporal features, feature selection, and optimal thresholding.
+No data leakage – per‑split preprocessing, dynamic thresholding, ONNX export.
+Uses shared_ml components for splitting, postal codes, one-hot encoding,
+temporal features (only if TX_Time is selected), feature selection, and optimal thresholding.
+
+MODIFIED: Only selected features (from UI) are used. Preprocessing adapts to feature selection.
 """
 
 from __future__ import annotations
@@ -99,6 +101,32 @@ def load_hyperparameters(hyperparam_arg: str) -> dict:
 
 
 # ------------------------------------------------------------------------------
+# Identify categorical columns dynamically from the given dataframe
+# ------------------------------------------------------------------------------
+def identify_categorical_columns(df: pd.DataFrame) -> list[str]:
+    expected_cats = ['category', 'Channel', 'client_usual_region', 'client_usual_channel', 'client_usual_category']
+    exclude = {'TX_Time', 'Account_Id', 'Device_Id', 'Customer_Region', 'Merchant_Region'}
+    categorical_cols = []
+    for col in df.columns:
+        if col in exclude:
+            continue
+        if col in expected_cats or df[col].dtype == 'object' or df[col].dtype.name == 'category':
+            categorical_cols.append(col)
+    return categorical_cols
+
+
+# ------------------------------------------------------------------------------
+# Preprocessing pipeline (dynamic)
+# ------------------------------------------------------------------------------
+def create_preprocessing_pipeline(categorical_columns: list[str], has_temporal: bool) -> Pipeline:
+    steps = [('onehot', SafeOneHotEncoder(categorical_cols=categorical_columns, include_raw_cats=True))]
+    if has_temporal:
+        steps.append(('temporal', TemporalFeatureTransformer()))
+    steps.append(('selector', TreeFeatureSelector()))
+    return Pipeline(steps)
+
+
+# ------------------------------------------------------------------------------
 # JSON serialization helper
 # ------------------------------------------------------------------------------
 def make_json_safe(obj):
@@ -168,10 +196,9 @@ def main():
         hp = load_hyperparameters(args.hyperparameters)
         model_name = hp.get('model_name', 'Balanced Random Forest')
         selected_original_features = hp.get('selected_original_features', [])
-        all_features = hp.get('all_features', [])
 
         if not selected_original_features:
-            raise ValueError("No original features selected for training")
+            raise ValueError("No features selected for training")
 
         dataset_path = Path(args.dataset_path)
         if not dataset_path.exists():
@@ -190,60 +217,59 @@ def main():
             df['TX_Time'] = pd.to_datetime(df['TX_Time'], errors='coerce')
             df = df.dropna(subset=['TX_Time']).reset_index(drop=True)
 
-        available_features = [f for f in all_features if f in df.columns]
-        if not available_features:
-            raise ValueError("None of the required features are available")
+        # Keep only selected features + fraud + TX_Time if needed for split
+        features_in_dataset = [f for f in selected_original_features if f in df.columns]
+        missing = set(selected_original_features) - set(features_in_dataset)
+        if missing:
+            logger.warning("Features not in dataset: %s", missing)
 
-        feature_cols_for_split = available_features.copy()
-        if 'TX_Time' not in feature_cols_for_split and 'TX_Time' in df.columns:
-            feature_cols_for_split.append('TX_Time')
+        if 'TX_Time' not in df.columns:
+            raise ValueError("TX_Time column missing, cannot perform temporal split")
 
-        X = df[feature_cols_for_split].copy()
-        y = df['fraud'].values
-        df_processed = X.copy()
-        df_processed['fraud'] = y
+        # For the split, we need selected features + TX_Time + fraud
+        split_cols = features_in_dataset + ['TX_Time', 'fraud']
+        split_cols = list(dict.fromkeys(split_cols))  # remove duplicates, preserve order
+        df_split = df[split_cols].copy()
 
-        # Identify categorical columns (everything not numeric/datetime)
-        excluded_cols = ['TX_Time', 'fraud', 'Account_Id', 'Device_Id']
-        categorical_cols = df_processed.select_dtypes(exclude=[np.number, 'datetime64[ns]']).columns.tolist()
-        categorical_cols = [c for c in categorical_cols if c not in excluded_cols]
-        logger.info("Identified categorical columns: %s", categorical_cols)
-
-        # ========== STEP 1: TEMPORAL SPLIT (shared_ml) ==========
-        if 'TX_Time' not in df_processed.columns:
-            raise ValueError("TX_Time column missing")
+        # Temporal split
         df_train, df_val, df_test = temporal_split(
-            df_processed, time_col='TX_Time', train_ratio=0.7, val_ratio=0.15
+            df_split, time_col='TX_Time', train_ratio=0.7, val_ratio=0.15
         )
 
-        # ========== STEP 2: PER-SPLIT PREPROCESSING ==========
-        logger.info("Applying per-split preprocessing...")
-        df_train = process_id_columns(df_train)
-        df_val = process_id_columns(df_val)
-        df_test = process_id_columns(df_test)
+        # Determine if TX_Time is selected as a feature for training
+        has_temporal = 'TX_Time' in selected_original_features
 
-        # Customer postal codes
-        customer_region_categories = process_customer_postal_fit(df_train)
-        df_train = process_customer_postal_transform(df_train, customer_region_categories)
-        df_val = process_customer_postal_transform(df_val, customer_region_categories)
-        df_test = process_customer_postal_transform(df_test, customer_region_categories)
+        # Feature columns for training (without fraud, and without TX_Time if not selected)
+        train_feat_cols = [c for c in features_in_dataset if c != 'TX_Time' or has_temporal]
+        if not has_temporal and 'TX_Time' in train_feat_cols:
+            train_feat_cols.remove('TX_Time')
 
-        # Merchant postal codes (if present)
-        if 'Merchant_Postal_Code' in df_processed.columns:
-            merchant_region_categories = process_merchant_postal_fit(df_train)
-            df_train = process_merchant_postal_transform(df_train, merchant_region_categories)
-            df_val = process_merchant_postal_transform(df_val, merchant_region_categories)
-            df_test = process_merchant_postal_transform(df_test, merchant_region_categories)
-
-        # Separate features and target (keep TX_Time for temporal transformer)
-        X_train = df_train.drop('fraud', axis=1)
-        X_val = df_val.drop('fraud', axis=1)
-        X_test = df_test.drop('fraud', axis=1)
+        X_train = df_train[train_feat_cols].copy()
+        X_val = df_val[train_feat_cols].copy()
+        X_test = df_test[train_feat_cols].copy()
         y_train = df_train['fraud'].values
         y_val = df_val['fraud'].values
         y_test = df_test['fraud'].values
 
-        # Keep this block as requested
+        # Process ID columns (if present)
+        X_train = process_id_columns(X_train)
+        X_val = process_id_columns(X_val)
+        X_test = process_id_columns(X_test)
+
+        # Postal codes processing (only if the column is in the selected features)
+        if 'Customer_Postal_Code' in X_train.columns:
+            customer_region_categories = process_customer_postal_fit(X_train)
+            X_train = process_customer_postal_transform(X_train, customer_region_categories)
+            X_val = process_customer_postal_transform(X_val, customer_region_categories)
+            X_test = process_customer_postal_transform(X_test, customer_region_categories)
+
+        if 'Merchant_Postal_Code' in X_train.columns:
+            merchant_region_categories = process_merchant_postal_fit(X_train)
+            X_train = process_merchant_postal_transform(X_train, merchant_region_categories)
+            X_val = process_merchant_postal_transform(X_val, merchant_region_categories)
+            X_test = process_merchant_postal_transform(X_test, merchant_region_categories)
+
+        # Convert any remaining object columns to numeric (as in original script)
         for X_set in [X_train, X_val, X_test]:
             for col in X_set.columns:
                 if X_set[col].dtype == 'object':
@@ -253,30 +279,30 @@ def main():
         logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
         logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
 
-        # ========== STEP 3: PREPROCESSING PIPELINE (aligned with RF) ==========
-        preprocessor = Pipeline([
-            ('onehot', SafeOneHotEncoder(categorical_cols=categorical_cols, include_raw_cats=True)),
-            ('temporal', TemporalFeatureTransformer()),
-            ('selector', TreeFeatureSelector()),
-        ])
+        # Identify categorical columns among selected features
+        categorical_columns = identify_categorical_columns(X_train)
+        logger.info("Categorical columns to encode: %s", categorical_columns)
 
+        # Build preprocessing pipeline (TemporalFeatureTransformer only if TX_Time selected)
+        preprocessor = create_preprocessing_pipeline(categorical_columns, has_temporal)
         X_train_proc = preprocessor.fit_transform(X_train)
         X_val_proc = preprocessor.transform(X_val)
         X_test_proc = preprocessor.transform(X_test)
 
-        # Drop TX_Time if still present (defensive only)
-        if hasattr(X_train_proc, 'columns') and 'TX_Time' in X_train_proc.columns:
-            X_train_proc = X_train_proc.drop('TX_Time', axis=1)
-            X_val_proc = X_val_proc.drop('TX_Time', axis=1)
-            X_test_proc = X_test_proc.drop('TX_Time', axis=1)
+        # Drop TX_Time if still present (defensive)
+        for df_proc in (X_train_proc, X_val_proc, X_test_proc):
+            if hasattr(df_proc, 'columns') and 'TX_Time' in df_proc.columns:
+                df_proc.drop('TX_Time', axis=1, inplace=True)
 
         # Get feature names for importance
         try:
-            feature_names = preprocessor.named_steps['onehot'].get_feature_names_out()
+            feature_names = preprocessor.get_feature_names_out()
         except Exception:
             feature_names = [f"feature_{i}" for i in range(X_train_proc.shape[1])]
 
-        # ========== STEP 4: BALANCED RANDOM FOREST ==========
+        logger.info("Processed feature shape: %s", X_train_proc.shape)
+
+        # ========== BALANCED RANDOM FOREST ==========
         brf_params = {
             'n_estimators': hp.get('n_estimators', 100),
             'max_depth': hp.get('max_depth', 15),
@@ -299,7 +325,7 @@ def main():
 
         final_model = brf_model
 
-        # ========== STEP 5: THRESHOLD CALCULATIONS ==========
+        # ========== THRESHOLD CALCULATIONS ==========
         y_val_proba = final_model.predict_proba(X_val_proc)[:, 1]
         max_prob = y_val_proba.max()
         logger.info("Validation max probability: %.4f", max_prob)
@@ -320,7 +346,7 @@ def main():
         user_threshold = hp.get('detection_threshold')
         if user_threshold is not None:
             final_threshold = float(user_threshold)
-            logger.info("Using user-supplied threshold from UI: %.4f", final_threshold)
+            logger.info("Using user‑supplied threshold from UI: %.4f", final_threshold)
             if final_threshold > max_prob:
                 logger.warning(
                     "User threshold %.4f > max validation prob %.4f → will detect nothing.",
@@ -330,7 +356,7 @@ def main():
             final_threshold = fbeta_threshold
             logger.info("No UI threshold, using F-beta threshold: %.4f", final_threshold)
 
-        # ========== STEP 6: TEST EVALUATION ==========
+        # ========== TEST EVALUATION ==========
         y_test_proba = final_model.predict_proba(X_test_proc)[:, 1]
         y_test_pred = (y_test_proba >= final_threshold).astype(int)
 
@@ -352,7 +378,7 @@ def main():
         importances = brf_model.feature_importances_
         feature_importance_map = dict(sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True))
 
-        # ========== STEP 7: SAVE ARTIFACTS ==========
+        # ========== SAVE ARTIFACTS ==========
         timestamp = args.timestamp
         output_models_dir = Path("/tmp/fraud-work/output/models")
         output_onnx_dir = Path("/tmp/fraud-work/output/onnx")

@@ -2,10 +2,9 @@ package com.fraud.backend.data.service.notification;
 
 import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.frauddetection.Notification;
-import com.fraud.backend.data.event.NotificationEvent;
 import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import com.fraud.backend.data.repository.frauddetection.NotificationRepository;
-
+import com.fraud.backend.data.event.NotificationEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -37,8 +36,8 @@ public class NotificationService {
             }
 
             if (user == null) {
-                log.warn("User not found for notification: userId={}, email={}", 
-                    event.getUserId(), event.getUserEmail());
+                log.warn("User not found for notification: userId={}, email={}",
+                        event.getUserId(), event.getUserEmail());
                 return;
             }
 
@@ -70,8 +69,8 @@ public class NotificationService {
                 notificationRepository.save(notification);
                 log.info("Notification {} marked as read for user {}", notificationUuid, userId);
             } else {
-                log.warn("User {} tried to mark notification {} which belongs to user {}", 
-                    userId, notificationUuid, notification.getUser().getId());
+                log.warn("User {} tried to mark notification {} which belongs to user {}",
+                        userId, notificationUuid, notification.getUser().getId());
             }
         });
     }
@@ -79,8 +78,8 @@ public class NotificationService {
     @Transactional
     public void markAllAsRead(Long userId) {
         Page<Notification> unreadNotifications = notificationRepository
-            .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId, Pageable.unpaged());
-        
+                .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId, Pageable.unpaged());
+
         List<Notification> notifications = unreadNotifications.getContent();
         notifications.forEach(notification -> {
             notification.setRead(true);
@@ -97,8 +96,8 @@ public class NotificationService {
                 notificationRepository.delete(notification);
                 log.info("Notification {} deleted for user {}", notificationUuid, userId);
             } else {
-                log.warn("User {} tried to delete notification {} which belongs to user {}", 
-                    userId, notificationUuid, notification.getUser().getId());
+                log.warn("User {} tried to delete notification {} which belongs to user {}",
+                        userId, notificationUuid, notification.getUser().getId());
             }
         });
     }
@@ -106,8 +105,8 @@ public class NotificationService {
     @Transactional
     public void deleteAllNotifications(Long userId) {
         Page<Notification> userNotifications = notificationRepository
-            .findByUserIdOrderByCreatedAtDesc(userId, Pageable.unpaged());
-        
+                .findByUserIdOrderByCreatedAtDesc(userId, Pageable.unpaged());
+
         List<Notification> notifications = userNotifications.getContent();
         notificationRepository.deleteAll(notifications);
         log.info("All notifications deleted for user: {}", userId);
@@ -131,6 +130,8 @@ public class NotificationService {
                 return "Modèle validé";
             case "MODEL_REJECTED":
                 return "Modèle rejeté";
+            case "NEW_REPORT":
+                return "Nouveau rapport";
             default:
                 return "Notification";
         }
@@ -149,6 +150,9 @@ public class NotificationService {
                 return String.format("Modèle %s validé", payload.get("modelUuid"));
             case "MODEL_REJECTED":
                 return String.format("Modèle %s rejeté", payload.get("modelUuid"));
+            case "NEW_REPORT":
+                return String.format("%s\nDe: %s",
+                        payload.get("title"), payload.get("generatedByName"));
             default:
                 return "Nouvelle notification";
         }

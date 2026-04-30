@@ -5,7 +5,7 @@ import { environment } from '../../../environments/environment';
 import { BehaviorSubject, Observable } from 'rxjs';
 
 export interface WebSocketMessage {
-  type: 'NEW_MESSAGE' | 'MESSAGE_READ' | 'UNREAD_COUNT' | 'NOTIFICATION';
+  type: 'NEW_MESSAGE' | 'MESSAGE_READ' | 'UNREAD_COUNT' | 'NOTIFICATION' | 'NEW_REPORT';
   payload: any;
   timestamp: string;
 }
@@ -112,9 +112,20 @@ export class WebSocketService {
       try {
         let payload: any;
         try { payload = JSON.parse(message.body); } catch { payload = message.body; }
+        
+        // If payload is an object with a type property, use it.
+        // This is used for NEW_REPORT events sent to /queue/messages
+        const messageType = (payload && typeof payload === 'object' && payload.type) 
+                            ? payload.type 
+                            : 'NEW_MESSAGE';
+        
+        const actualPayload = (payload && typeof payload === 'object' && payload.payload)
+                              ? payload.payload
+                              : payload;
+
         this.messageSubject.next({
-          type: 'NEW_MESSAGE',
-          payload,
+          type: messageType,
+          payload: actualPayload,
           timestamp: new Date().toISOString()
         });
       } catch (error) {

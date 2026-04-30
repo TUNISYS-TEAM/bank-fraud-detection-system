@@ -2,7 +2,8 @@
 Train an Anomaly Autoencoder model.
 Unsupervised anomaly detection based on reconstruction error (MSE).
 Uses shared_ml components for preprocessing, splitting, and thresholding.
-Includes temporal features, feature selection, scaling, and filtering of normal transactions.
+Now supports dynamic feature selection: only selected features are used,
+and temporal features are generated only if TX_Time is selected.
 """
 
 from __future__ import annotations
@@ -40,6 +41,8 @@ from shared_ml.preprocessing.behavioral import TemporalFeatureTransformer
 from shared_ml.utils.postal_codes import (
     process_customer_postal_fit,
     process_customer_postal_transform,
+    process_merchant_postal_fit,
+    process_merchant_postal_transform,
 )
 
 logging.basicConfig(
@@ -116,6 +119,34 @@ def load_hyperparameters(hyperparam_arg: str) -> dict:
 
 
 # ------------------------------------------------------------------------------
+# Identify categorical columns dynamically
+# ------------------------------------------------------------------------------
+def identify_categorical_columns(df: pd.DataFrame) -> list[str]:
+    expected_cats = ['category', 'Channel', 'client_usual_region', 'client_usual_channel', 'client_usual_category']
+    exclude = {'TX_Time', 'Account_Id', 'Device_Id', 'Customer_Region', 'Merchant_Region'}
+    categorical_cols = []
+    for col in df.columns:
+        if col in exclude:
+            continue
+        if col in expected_cats or df[col].dtype == 'object' or df[col].dtype.name == 'category':
+            categorical_cols.append(col)
+    return categorical_cols
+
+
+# ------------------------------------------------------------------------------
+# Preprocessing pipeline (dynamic)
+# ------------------------------------------------------------------------------
+def create_preprocessing_pipeline(categorical_columns: list[str], has_temporal: bool) -> Pipeline:
+    steps = []
+    if has_temporal:
+        steps.append(('temporal', TemporalFeatureTransformer()))
+    steps.append(('onehot', SafeOneHotEncoder(categorical_cols=categorical_columns, include_raw_cats=True)))
+    steps.append(('selector', TreeFeatureSelector()))
+    steps.append(('scaler', SafeScaler(scaler_type='robust')))
+    return Pipeline(steps)
+
+
+# ------------------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------------------
 def main():
@@ -142,10 +173,9 @@ def main():
 
         model_name = hp.get('model_name', 'AUTOENCODER')
         selected_original_features = hp.get('selected_original_features', [])
-        all_features = hp.get('all_features', [])
 
         if not selected_original_features:
-            raise ValueError("No original features selected for training")
+            raise ValueError("No features selected for training")
 
         dataset_path = Path(args.dataset_path)
         if not dataset_path.exists():
@@ -168,11 +198,15 @@ def main():
             if len(df) < before:
                 logger.warning("Dropped %d rows with invalid TX_Time", before - len(df))
 
-        # Keep only available features
+        # Use only selected features
         available_features = [f for f in selected_original_features if f in df.columns]
+        missing = set(selected_original_features) - set(available_features)
+        if missing:
+            logger.warning("Features not in dataset: %s", missing)
         if not available_features:
             raise ValueError("None of the selected features are available in the dataset")
 
+        # Always include TX_Time for temporal split
         feature_cols_for_split = available_features.copy()
         if 'TX_Time' not in feature_cols_for_split and 'TX_Time' in df.columns:
             feature_cols_for_split.append('TX_Time')
@@ -182,20 +216,16 @@ def main():
         df_processed = X.copy()
         df_processed['fraud'] = y
 
-        # Identify categorical columns (non-numeric, non-datetime)
-        excluded_cols = ['TX_Time', 'fraud', 'Account_Id', 'Device_Id']
-        categorical_cols = df_processed.select_dtypes(exclude=[np.number, 'datetime64[ns]']).columns.tolist()
-        categorical_cols = [c for c in categorical_cols if c not in excluded_cols]
-        logger.info("Identified categorical columns: %s", categorical_cols)
+        # Determine if TX_Time is selected
+        has_temporal = 'TX_Time' in selected_original_features
 
-        # ========== STEP 1: TEMPORAL SPLIT ==========
+        # Temporal split
         if 'TX_Time' not in df_processed.columns:
             raise ValueError("TX_Time column missing")
         df_train, df_val, df_test = temporal_split(
             df_processed, time_col='TX_Time', train_ratio=0.7, val_ratio=0.15
         )
 
-        # ========== STEP 2: PER‑SPLIT PREPROCESSING ==========
         logger.info("Applying per-split preprocessing...")
 
         # ID columns
@@ -203,14 +233,21 @@ def main():
         df_val = process_id_columns(df_val)
         df_test = process_id_columns(df_test)
 
-        # Customer postal codes
-        customer_region_categories = process_customer_postal_fit(df_train)
-        df_train = process_customer_postal_transform(df_train, customer_region_categories)
-        df_val = process_customer_postal_transform(df_val, customer_region_categories)
-        df_test = process_customer_postal_transform(df_test, customer_region_categories)
+        # Postal codes only if columns present
+        if 'Customer_Postal_Code' in df_train.columns:
+            customer_region_categories = process_customer_postal_fit(df_train)
+            df_train = process_customer_postal_transform(df_train, customer_region_categories)
+            df_val = process_customer_postal_transform(df_val, customer_region_categories)
+            df_test = process_customer_postal_transform(df_test, customer_region_categories)
 
-        # Separate features and target (keep TX_Time for temporal transformer)
-        X_train = df_train.drop('fraud', axis=1)   # garde TX_Time
+        if 'Merchant_Postal_Code' in df_train.columns:
+            merchant_region_categories = process_merchant_postal_fit(df_train)
+            df_train = process_merchant_postal_transform(df_train, merchant_region_categories)
+            df_val = process_merchant_postal_transform(df_val, merchant_region_categories)
+            df_test = process_merchant_postal_transform(df_test, merchant_region_categories)
+
+        # Separate features and target (keep TX_Time for temporal transformer if needed)
+        X_train = df_train.drop('fraud', axis=1)
         X_val = df_val.drop('fraud', axis=1)
         X_test = df_test.drop('fraud', axis=1)
         y_train = df_train['fraud'].values
@@ -227,25 +264,30 @@ def main():
         logger.info("Val:   %d rows (fraud rate %.4f)", len(X_val), y_val.mean())
         logger.info("Test:  %d rows (fraud rate %.4f)", len(X_test), y_test.mean())
 
-        # ========== STEP 3: PREPROCESSING PIPELINE (temporal + one-hot + selector + scaling) ==========
-        preprocessor = Pipeline([
-            ('temporal', TemporalFeatureTransformer()),
-            ('onehot', SafeOneHotEncoder(categorical_cols=categorical_cols, include_raw_cats=True)),
-            ('selector', TreeFeatureSelector()),
-            ('scaler', SafeScaler(scaler_type='robust'))
-        ])
+        # Identify categorical columns among selected features
+        categorical_columns = identify_categorical_columns(X_train)
+        logger.info("Categorical columns to encode: %s", categorical_columns)
+
+        # Build preprocessing pipeline (temporal only if TX_Time selected)
+        preprocessor = create_preprocessing_pipeline(categorical_columns, has_temporal)
 
         X_train_proc = preprocessor.fit_transform(X_train)
         X_val_proc = preprocessor.transform(X_val)
         X_test_proc = preprocessor.transform(X_test)
 
         # Drop TX_Time if still present (not needed for Autoencoder)
-        if 'TX_Time' in X_train_proc.columns:
+        if hasattr(X_train_proc, 'columns') and 'TX_Time' in X_train_proc.columns:
             X_train_proc = X_train_proc.drop('TX_Time', axis=1)
             X_val_proc = X_val_proc.drop('TX_Time', axis=1)
             X_test_proc = X_test_proc.drop('TX_Time', axis=1)
 
-        # ========== STEP 4: AUTOENCODER MODEL (train only on normal transactions) ==========
+        # Convert to numpy if needed
+        if hasattr(X_train_proc, 'toarray'):
+            X_train_proc = X_train_proc.toarray().astype(np.float32)
+            X_val_proc = X_val_proc.toarray().astype(np.float32)
+            X_test_proc = X_test_proc.toarray().astype(np.float32)
+
+        # ========== AUTOENCODER MODEL ==========
         encoding_dim = hp.get('encoding_dim', 32)
         epochs = hp.get('epochs', 20)
         batch_size = hp.get('batch_size', 1024)
@@ -272,9 +314,8 @@ def main():
 
         final_model = model
 
-        # ========== STEP 5: THRESHOLD CALCULATIONS ==========
+        # ========== THRESHOLD CALCULATIONS ==========
         y_val_proba_raw = final_model.predict_proba(X_val_proc)
-        # Handle case where predict_proba returns a 1D array (probability of positive class)
         if y_val_proba_raw.ndim == 1:
             y_val_proba = y_val_proba_raw
         else:
@@ -311,7 +352,7 @@ def main():
             final_threshold = fbeta_threshold
             logger.info("No UI threshold, using F-beta threshold: %.4f", final_threshold)
 
-        # ========== STEP 6: TEST EVALUATION ==========
+        # ========== TEST EVALUATION ==========
         y_test_proba_raw = final_model.predict_proba(X_test_proc)
         if y_test_proba_raw.ndim == 1:
             y_test_proba = y_test_proba_raw
@@ -336,7 +377,7 @@ def main():
         logger.info("  AUC-ROC:   %.4f", auc_roc)
         logger.info("  PR-AUC:    %.4f", pr_auc)
 
-        # ========== STEP 7: SAVE ARTIFACTS ==========
+        # ========== SAVE ARTIFACTS ==========
         timestamp = args.timestamp
         output_models_dir = Path("/tmp/fraud-work/output/models")
         output_pipelines_dir = Path("/tmp/fraud-work/output/pipelines")
@@ -363,7 +404,7 @@ def main():
             if temp_model_path.exists():
                 temp_model_path.unlink()
 
-        # ========== STEP 8: FEATURE IMPORTANCE ==========
+        # ========== FEATURE IMPORTANCE ==========
         feature_names = X_train.columns.tolist()
         try:
             feature_importance_map = model.get_feature_importance(feature_names=feature_names)
@@ -383,7 +424,7 @@ def main():
             'model_name': model_name,
             'model_path': str(model_path),
             'pipeline_path': str(pipeline_path),
-            'selected_original_features': selected_original_features,
+            'selected_original_features': available_features,
             'feature_importance': feature_importance_map,
             'hyperparameters_used': {
                 'encoding_dim': encoding_dim,
@@ -391,7 +432,6 @@ def main():
                 'batch_size': batch_size,
                 'threshold_metric': threshold_metric,
                 'beta': beta,
-                'all_features': all_features
             },
             'metrics': {
                 'accuracy': float(accuracy),

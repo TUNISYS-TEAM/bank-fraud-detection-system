@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, OnDestroy, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, OnDestroy, computed, effect } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { MessageService } from '../../../../core/services/message.service';
@@ -7,6 +7,8 @@ import { AuthStore } from '../../../../core/store/auth.store';
 import { Message, SendMessageRequest } from '../../../../core/models/message.model';
 import { Subscription } from 'rxjs';
 import { environment } from '../../../../../environments/environment';
+import { RapportService } from '../../../../core/services/rapport.service';
+import { Rapport, GenerateRapportRequest, RapportRecipient } from '../../../../core/models/rapport.model';
 
 export interface User {
   id: number;
@@ -30,6 +32,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   private messageService = inject(MessageService);
   private wsService = inject(WebSocketService);
   private route = inject(ActivatedRoute);
+  private rapportService = inject(RapportService);
   authStore = inject(AuthStore);
 
   // State
@@ -37,7 +40,8 @@ export class MessagesComponent implements OnInit, OnDestroy {
   sent = signal<Message[]>([]);
   unreadCount = signal(0);
   validationUnreadCount = signal(0);
-  currentTab = signal<'inbox' | 'sent' | 'compose' | 'validation' | 'archived'>('inbox');
+  reportingUnreadCount = signal(0);
+  currentTab = signal<'inbox' | 'sent' | 'compose' | 'validation' | 'archived' | 'reporting'>('inbox');
   selectedMessage = signal<Message | null>(null);
   replyContent = signal('');
   loading = signal(false);
@@ -66,6 +70,21 @@ export class MessagesComponent implements OnInit, OnDestroy {
   // Search
   searchQuery = signal('');
 
+  // Reporting state
+  receivedRapports = signal<Rapport[]>([]);
+  myRapports = signal<Rapport[]>([]);
+  selectedRapport = signal<Rapport | null>(null);
+  reportingSubTab = signal<'received' | 'mine'>('received');
+  showGenerateReportForm = signal(false);
+  showReportModels = signal(true);
+
+  reportForm = signal<GenerateRapportRequest>({
+    title: '',
+    type: 'WEEKLY',
+    description: '',
+    recipientIds: []
+  });
+
   filteredInbox = computed(() => {
     const q = this.searchQuery().toLowerCase();
     return this.inbox().filter(m =>
@@ -84,6 +103,100 @@ export class MessagesComponent implements OnInit, OnDestroy {
     );
   });
 
+  currentReportingList = computed(() =>
+    this.reportingSubTab() === 'received' ? this.receivedRapports() : this.myRapports()
+  );
+
+  // Mark report as read when selected
+  private markEffect = effect(() => {
+    const rapport = this.selectedRapport();
+    const currentUser = this.authStore.user();
+
+    // Only mark as read if I am a recipient and it's not already read
+    if (rapport && currentUser && this.reportingSubTab() === 'received' && !rapport.isRead) {
+      this.rapportService.markAsRead(rapport.rapportUuid).subscribe({
+        next: () => {
+          // Update local state to show it's read in the list
+          this.receivedRapports.update(list =>
+            list.map(r => r.rapportUuid === rapport.rapportUuid ? { ...r, isRead: true } : r)
+          );
+
+          // Also update the selected rapport object itself
+          const updatedRecipients = rapport.recipients?.map(dest =>
+            dest.recipientId === this.authStore.userId() ? { ...dest, isRead: true, readAt: new Date().toISOString() } : dest
+          );
+          this.selectedRapport.update(current => current ? { ...current, isRead: true, recipients: updatedRecipients } : null);
+
+          // Decrement the global badge
+          this.reportingUnreadCount.update(c => Math.max(0, c - 1));
+        }
+      });
+    }
+  });
+
+  toggleRecipient(userId: number): void {
+    this.selectedRecipientIds.update(current =>
+      current.includes(userId)
+        ? current.filter(id => id !== userId)
+        : [...current, userId]
+    );
+  }
+
+  openShareModal(rapport: Rapport): void {
+    this.rapportToShare.set(rapport);
+    this.shareRecipientIds.set([]); // Reset selection
+    this.isShareModalOpen.set(true);
+  }
+
+  closeShareModal(): void {
+    this.isShareModalOpen.set(false);
+    this.rapportToShare.set(null);
+    this.shareRecipientIds.set([]);
+  }
+
+  toggleShareRecipient(userId: number): void {
+    this.shareRecipientIds.update(current =>
+      current.includes(userId)
+        ? current.filter(id => id !== userId)
+        : [...current, userId]
+    );
+  }
+
+  submitShare(): void {
+    const rapport = this.rapportToShare();
+    const recipientIds = this.shareRecipientIds();
+
+    if (!rapport || recipientIds.length === 0) return;
+
+    this.isSharing.set(true);
+
+    this.rapportService.shareRapport(rapport.rapportUuid, recipientIds).subscribe({
+      next: (updatedRapport) => {
+        // Update the selected rapport if it's the one we just shared
+        if (this.selectedRapport()?.rapportUuid === updatedRapport.rapportUuid) {
+          this.selectedRapport.set(updatedRapport);
+        }
+
+        // Update it in the generated list
+        this.myRapports.update((list: Rapport[]) =>
+          list.map((r: Rapport) => r.rapportUuid === updatedRapport.rapportUuid ? updatedRapport : r)
+        );
+
+        this.closeShareModal();
+        this.isSharing.set(false);
+      },
+      error: (err) => {
+        console.error('Failed to share rapport', err);
+        this.isSharing.set(false);
+      }
+    });
+  }
+
+  anyRead(recipients: any[] | undefined): boolean {
+    if (!recipients || recipients.length === 0) return false;
+    return recipients.some(r => r.isRead === true || String(r.isRead) === 'true');
+  }
+
   filteredArchived = computed(() => {
     const q = this.searchQuery().toLowerCase();
     return this.archived().filter(m =>
@@ -101,7 +214,14 @@ export class MessagesComponent implements OnInit, OnDestroy {
   }>({ receiverId: null, subject: '', content: '' });
 
   users = signal<User[]>([]);
+  selectedRecipientIds = signal<number[]>([]);
   loadingUsers = signal(false);
+
+  // Share modal state
+  isShareModalOpen = signal(false);
+  rapportToShare = signal<Rapport | null>(null);
+  shareRecipientIds = signal<number[]>([]);
+  isSharing = signal(false);
 
   availableManagers = signal<User[]>([]);
   analystManager = signal<User | null>(null);
@@ -115,8 +235,55 @@ export class MessagesComponent implements OnInit, OnDestroy {
     return (user as any)?.managerId || null;
   });
 
-  allManagers = signal<User[]>([]);
+  getAvailableShareUsers = computed(() => {
+    const allUsers = this.filteredUsersForReporting();
+    const rapport = this.rapportToShare();
+    if (!rapport) return allUsers;
 
+    // Extract existing recipient IDs (plus the owner)
+    const existingIds = new Set(rapport.recipients?.map(r => r.recipientId) || []);
+    existingIds.add(rapport.generatedById);
+
+    return allUsers.filter(u => !existingIds.has(u.id));
+  });
+
+  filteredUsersForReporting = computed(() => {
+    let list = this.users();
+    const currentUserId = this.authStore.userId();
+
+    if (this.isAnalyst()) {
+      const managerId = this.currentUserManagerId();
+      list = list.filter(u =>
+        u.roleName === 'ADMIN' ||
+        (u.roleName === 'MANAGER' && u.id === managerId) ||
+        (u.roleName === 'ANALYST' && u.managerId === managerId)
+      );
+    } else if (this.isManager()) {
+      list = list.filter(u =>
+        u.roleName === 'ADMIN' ||
+        u.roleName === 'MANAGER'
+      );
+    }
+
+    const roleOrder: Record<string, number> = {
+      'ADMIN': 1,
+      'MANAGER': 2,
+      'ANALYST': 3
+    };
+
+    return [...list]
+      .filter(u => u.id !== currentUserId)
+      .sort((a, b) => {
+        const orderA = roleOrder[a.roleName] || 99;
+        const orderB = roleOrder[b.roleName] || 99;
+        if (orderA !== orderB) return orderA - orderB;
+        const nameA = `${a.firstName} ${a.lastName}`.toLowerCase();
+        const nameB = `${b.firstName} ${b.lastName}`.toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+  });
+
+  allManagers = signal<User[]>([]);
   private wsSubscription: Subscription;
 
   validationComment = signal('');
@@ -135,6 +302,10 @@ export class MessagesComponent implements OnInit, OnDestroy {
           this.loadUnreadCount();
         }
       }
+      if ((event as any)?.type === 'NEW_REPORT') {
+        this.loadReceivedRapports();
+        this.loadUnreadCount();
+      }
       if (event?.type === 'UNREAD_COUNT') {
         this.loadUnreadCount();
       }
@@ -148,23 +319,33 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.loadUsers();
 
     this.route.queryParams.subscribe(params => {
-      if (params['tab'] === 'validation' && params['modelUuid']) {
+      if (params['tab'] === 'validation') {
         this.currentTab.set('validation');
-        this.validationModel.set({
-          modelName: params['modelName'],
-          modelUuid: params['modelUuid'],
-          version: params['version'],
-          auc: params['auc'],
-          precision: params['precision'],
-          recall: params['recall'],
-          f1Score: params['f1Score'],
-          modelType: params['modelType'],
-          createdAt: params['createdAt']
-        });
-        this.newMessage.set({
-          ...this.newMessage(),
-          subject: `Demande de validation de modèle "${params['modelName']}"`
-        });
+        this.loadValidationMessages();
+        if (params['modelUuid']) {
+          this.validationModel.set({
+            modelName: params['modelName'],
+            modelUuid: params['modelUuid'],
+            version: params['version'],
+            auc: params['auc'],
+            precision: params['precision'],
+            recall: params['recall'],
+            f1Score: params['f1Score'],
+            modelType: params['modelType'],
+            createdAt: params['createdAt']
+          });
+          this.newMessage.set({
+            ...this.newMessage(),
+            subject: `Demande de validation de modèle "${params['modelName']}"`
+          });
+        }
+      }
+      if (params['tab'] === 'reporting') {
+        this.currentTab.set('reporting');
+        this.loadReporting();
+        if (params['rapportUuid']) {
+          (this as any).loadRapportDetailsByUuid(params['rapportUuid']);
+        }
       }
     });
 
@@ -179,13 +360,15 @@ export class MessagesComponent implements OnInit, OnDestroy {
   }
 
   // ─── Navigation ───────────────────────────────────────────────
-  switchTab(tab: 'inbox' | 'sent' | 'compose' | 'validation' | 'archived'): void {
+  switchTab(tab: 'inbox' | 'sent' | 'compose' | 'validation' | 'archived' | 'reporting'): void {
     this.currentTab.set(tab);
     this.selectedMessage.set(null);
+    this.selectedRapport.set(null);
     this.clearSelection();
     if (tab === 'sent') this.loadSent();
     if (tab === 'inbox') this.loadInbox();
     if (tab === 'archived') this.loadArchived();
+    if (tab === 'reporting') this.loadReporting();
     if (tab === 'validation') {
       if (!this.validationModel()) {
         this.loadValidationMessages();
@@ -195,6 +378,20 @@ export class MessagesComponent implements OnInit, OnDestroy {
     } else {
       this.validationModel.set(null);
     }
+  }
+
+  loadRapportDetailsByUuid(uuid: string): void {
+    this.loading.set(true);
+    this.rapportService.getRapport(uuid).subscribe({
+      next: (rapport) => {
+        this.selectedRapport.set(rapport);
+        this.loading.set(false);
+      },
+      error: (err) => {
+        console.error('Error loading rapport by uuid:', err);
+        this.loading.set(false);
+      }
+    });
   }
 
   private markValidationAsRead(): void {
@@ -213,7 +410,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ─── Selection helpers ────────────────────────────────────────
   isMessageSelected(uuid: string): boolean {
     return this.selectedMessages().has(uuid);
   }
@@ -279,10 +475,8 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.replyContent.set('');
   }
 
-  // ─── Ribbon actions ───────────────────────────────────────────
   deleteSelected(): void {
     if (this.selectedMessages().size === 0) return;
-    console.log('Supprimer:', Array.from(this.selectedMessages()));
     if (this.currentTab() === 'inbox') {
       this.inbox.update(msgs => msgs.filter(m => !this.selectedMessages().has(m.messageUuid)));
     } else {
@@ -305,7 +499,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
           this.loadInbox();
           this.loadUnreadCount();
         },
-        error: (err) => console.error('Erreur lors de la restauration:', err)
+        error: (err) => console.error(err)
       });
     } else {
       this.messageService.archiveMessages(uuids).subscribe({
@@ -319,7 +513,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
           this.selectedMessage.set(null);
           this.loadUnreadCount();
         },
-        error: (err) => console.error('Erreur lors de l\'archivage:', err)
+        error: (err) => console.error(err)
       });
     }
   }
@@ -396,6 +590,10 @@ export class MessagesComponent implements OnInit, OnDestroy {
       const unread = validationMsgs.filter(m => !m.isRead).length;
       this.validationUnreadCount.set(unread);
     });
+
+    this.rapportService.getUnreadCount().subscribe(res => {
+      this.reportingUnreadCount.set(res.count);
+    });
   }
 
   markAllAsRead(): void {
@@ -430,8 +628,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
           } else {
             this.availableManagers.set(managersList);
           }
-        } else if (this.isManager()) {
-          this.availableManagers.set(managersList);
         } else {
           this.availableManagers.set(managersList);
         }
@@ -523,10 +719,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
         this.switchTab('sent');
         this.newMessage.set({ receiverId: null, subject: '', content: '' });
       },
-      error: (err) => {
-        console.error(err);
-        this.loading.set(false);
-      }
+      error: (err) => { console.error(err); this.loading.set(false); }
     });
   }
 
@@ -686,9 +879,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
       let content = message.content.trim();
       const data = JSON.parse(content);
       return data && data.modelUuid !== undefined;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
 
   getMessagePreview(message: any): string {
@@ -701,19 +892,9 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   handleValidationAction(status: 'Validated' | 'Rejected'): void {
     const message = this.selectedMessage() || this.selectedValidation();
-    if (!message) return;
-
-    if (message.messageType !== 'VALIDATION') {
-      console.error('Cannot perform validation action on non-validation message');
-      return;
-    }
-
+    if (!message || message.messageType !== 'VALIDATION') return;
     const details = this.parseValidationContent(message.content);
-    if (!details || !details.modelUuid) {
-      console.error('Invalid validation content: modelUuid missing');
-      return;
-    }
-
+    if (!details || !details.modelUuid) return;
     this.isValidating.set(true);
     if (status === 'Rejected' && !this.validationComment()) {
       this.showRejectionWarning.set(true);
@@ -742,12 +923,208 @@ export class MessagesComponent implements OnInit, OnDestroy {
   }
 
   parseValidationContent(content: string): any {
-    try {
-      if (!content) return null;
-      return JSON.parse(content);
-    } catch (e) {
-      console.error('Error parsing validation content:', e);
-      return null;
+    try { return content ? JSON.parse(content) : null; }
+    catch (e) { return null; }
+  }
+
+  // ─── Reporting ───────────────────────────────────────────────
+  loadReporting(): void {
+    this.loadReceivedRapports();
+    this.loadMyRapports();
+    this.loadUnreadCount();
+  }
+
+  loadReceivedRapports(): void {
+    this.loading.set(true);
+    this.rapportService.getReceivedRapports(0, 50).subscribe({
+      next: (res) => {
+        this.receivedRapports.set(res.content);
+        this.loading.set(false);
+      },
+      error: (err) => { console.error(err); this.loading.set(false); }
+    });
+  }
+
+  loadMyRapports(): void {
+    this.loading.set(true);
+    this.rapportService.getGeneratedRapports(0, 50).subscribe({
+      next: (res) => {
+        this.myRapports.set(res.content);
+        this.loading.set(false);
+      },
+      error: (err) => { console.error(err); this.loading.set(false); }
+    });
+  }
+
+  selectRapport(rapport: Rapport): void {
+    // Set immediate selection for UI responsiveness
+    this.selectedRapport.set(rapport);
+
+    // Fetch latest details to have up-to-date read receipts (especially for owner)
+    this.rapportService.getRapport(rapport.rapportUuid).subscribe({
+      next: (latest) => {
+        this.selectedRapport.set(latest);
+      },
+      error: (err) => console.error('Erreur lors du chargement des détails du rapport:', err)
+    });
+  }
+
+  toggleGenerateReportForm(): void {
+    this.showGenerateReportForm.set(!this.showGenerateReportForm());
+    if (this.showGenerateReportForm()) {
+      this.selectedRapport.set(null);
+      this.reportForm.set({
+        title: `Rapport d'activité - ${new Date().toLocaleDateString()}`,
+        type: 'WEEKLY',
+        description: '',
+        recipientIds: []
+      });
+    }
+  }
+
+  parseDatasetDate(date: any): string | null {
+    if (!date) return null;
+    if (Array.isArray(date)) {
+      // Spring Boot LocalDateTime array format: [YYYY, MM, DD, HH, mm, ss]
+      if (date.length >= 5) {
+        const d = new Date(date[0], date[1] - 1, date[2], date[3], date[4], date[5] || 0);
+        return d.toISOString();
+      } else if (date.length >= 3) {
+        const d = new Date(date[0], date[1] - 1, date[2]);
+        return d.toISOString();
+      }
+    }
+    return date; // If it's already a string, return as is
+  }
+
+  getDatasetsByStatuses(datasets: any[], statuses: string[]): any[] {
+    if (!datasets || !Array.isArray(datasets)) return [];
+    return datasets.filter(d => statuses.includes(d.status));
+  }
+
+  submitGenerateReport(): void {
+    if (!this.reportForm().title) return;
+    this.loading.set(true);
+    this.rapportService.generateRapport(this.reportForm()).subscribe({
+      next: () => {
+        this.showGenerateReportForm.set(false);
+        this.reportingSubTab.set('mine');
+        this.loadMyRapports();
+        this.loading.set(false);
+      },
+      error: (err) => {
+        console.error(err);
+        this.loading.set(false);
+      }
+    });
+  }
+
+  setReportingSubTab(tab: 'received' | 'mine'): void {
+    this.reportingSubTab.set(tab);
+    this.selectedRapport.set(null);
+  }
+
+  getRiskColor(risk: string): string {
+    switch (risk) {
+      case 'CRITICAL': return '#ef4444';
+      case 'HIGH': return '#f97316';
+      case 'MEDIUM': return '#eab308';
+      case 'LOW': return '#22c55e';
+      default: return '#94a3b8';
+    }
+  }
+
+  translateRisk(risk: string): string {
+    const mapping: Record<string, string> = {
+      'CRITICAL': 'Critique',
+      'HIGH': 'Élevé',
+      'MEDIUM': 'Moyen',
+      'LOW': 'Faible'
+    };
+    return mapping[risk] || risk;
+  }
+
+  downloadPdf(rapport: Rapport) {
+    const printElement = document.getElementById('printable-report-container');
+
+    if (printElement) {
+      const printContainer = document.createElement('div');
+      printContainer.innerHTML = printElement.innerHTML;
+
+      const style = document.createElement('style');
+      style.innerHTML = `
+        @media print {
+          html {
+            font-size: 70% !important;
+          }
+          body {
+            background-color: white !important;
+          }
+
+          #printable-report-container, #report-scroll-area { 
+            overflow: visible !important; 
+            height: auto !important; 
+            max-height: none !important; 
+          }
+          
+          * { 
+            -webkit-print-color-adjust: exact !important; 
+            color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          .no-export { display: none !important; }
+          i-feather[name="file-text"] { display: none !important; visibility: hidden !important; }
+        }
+      `;
+      printContainer.appendChild(style);
+
+      printContainer.style.position = 'relative';
+      printContainer.style.width = '100%';
+      printContainer.style.height = 'auto';
+      printContainer.style.overflow = 'visible';
+      printContainer.style.backgroundColor = 'white';
+
+      const originalChildren = Array.from(document.body.children);
+      originalChildren.forEach((child: any) => {
+        if (child.style) {
+          child.dataset['originalDisplay'] = child.style.display;
+          child.style.display = 'none';
+        }
+      });
+
+      // Sauvegarder et forcer les styles de html/body
+      const htmlStyle = document.documentElement.style.cssText;
+      const bodyStyle = document.body.style.cssText;
+      document.documentElement.style.setProperty('height', 'auto', 'important');
+      document.documentElement.style.setProperty('overflow', 'visible', 'important');
+      document.body.style.setProperty('height', 'auto', 'important');
+      document.body.style.setProperty('overflow', 'visible', 'important');
+
+      document.body.appendChild(printContainer);
+
+      const originalTitle = document.title;
+      document.title = rapport.title ? rapport.title : 'Rapport_Activite';
+
+      window.print();
+
+      // Restaurer le titre original 
+      document.title = originalTitle;
+
+      // Nettoyage après impression
+      document.body.removeChild(printContainer);
+      originalChildren.forEach((child: any) => {
+        if (child.style) {
+          child.style.display = child.dataset['originalDisplay'] || '';
+        }
+      });
+
+      // Restaurer les styles globaux
+      document.documentElement.style.cssText = htmlStyle;
+      document.body.style.cssText = bodyStyle;
+
+    } else {
+      window.print();
     }
   }
 }

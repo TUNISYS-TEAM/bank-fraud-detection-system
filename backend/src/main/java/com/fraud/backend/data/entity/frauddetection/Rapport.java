@@ -1,5 +1,6 @@
 package com.fraud.backend.data.entity.frauddetection;
 
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,6 +11,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.Map;
 
@@ -29,18 +32,15 @@ public class Rapport {
     private UUID rapportUuid;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "model_id")
-    private ModelML model;
+    @JoinColumn(name = "generated_by_id")
+    private AppUser generatedBy;
 
     private String title;
     private String type;
     private String format;
 
     @Column(columnDefinition = "TEXT")
-    private String content;
-
-    @Column(name = "file_path")
-    private String filePath;
+    private String description;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "data_summary", columnDefinition = "jsonb")
@@ -63,10 +63,22 @@ public class Rapport {
 
     private String status;
 
-    @Column(name = "generated_at")
-    private LocalDateTime generatedAt;
-
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "distribution_list", columnDefinition = "jsonb")
+    @Builder.Default
+    private List<Map<String, Object>> distributionList = new ArrayList<>();
+
+    @PrePersist
+    public void prePersist() {
+        if (rapportUuid == null) {
+            rapportUuid = UUID.randomUUID();
+        }
+        if (status == null) {
+            status = "GENERATING";
+        }
+    }
 }
