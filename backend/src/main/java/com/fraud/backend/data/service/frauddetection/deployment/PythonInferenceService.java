@@ -41,7 +41,7 @@ public class PythonInferenceService implements InferenceService {
     @Value("${fraud.inference.use-mock:false}")
     private boolean useMock;
 
-    @Value("${fraud.inference.timeout-seconds:120}")
+    @Value("${fraud.inference.timeout-seconds:300}")
     private int timeoutSeconds;
 
     @Value("${fraud.inference.max-concurrent:10}")

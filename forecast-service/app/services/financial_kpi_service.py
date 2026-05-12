@@ -1,20 +1,16 @@
 """
 Service de KPI financiers – Production Ready.
-Récupère le nombre réel de clients actifs depuis le backend Java.
+Récupère le nombre réel de clients actifs depuis les transactions.
 """
 
 import logging
-import os
 from typing import Optional
-
-import requests
 
 from app.predictors.loss_forecaster import LossForecaster
 
 logger = logging.getLogger(__name__)
 
 loss_forecaster = LossForecaster()
-JAVA_BACKEND_URL = os.getenv("JAVA_BACKEND_URL", "http://java-backend:8080")
 
 FALSE_POSITIVE_COST_RATE = 0.20
 SAVED_FRAUD_RATE = 0.80
@@ -22,31 +18,21 @@ SAVED_FRAUD_RATE = 0.80
 
 def _get_active_customers(postal_code: Optional[str] = None) -> int:
     """
-    Récupère le nombre de clients actifs depuis le backend Java.
-    Retourne 1000 par défaut si l'endpoint n'est pas disponible.
+    Compte les clients distincts réels à partir du cache de transactions.
+    Retourne 1000 uniquement si les données sont indisponibles.
     """
     try:
-        url = f"{JAVA_BACKEND_URL}/api/internal/behavior-stats"
-        params = {"windowDays": 850}
+        from app.services.geo_kpi_service import _fetch_all_transactions
+        transactions = _fetch_all_transactions()
         if postal_code:
-            params["postalCode"] = postal_code
-
-        resp = requests.get(url, params=params, timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            # L'endpoint ne renvoie pas encore le nombre de clients, donc on utilise
-            # une estimation basée sur le volume de transactions
-            return 1000  # À remplacer quand l'endpoint le supportera
+            transactions = [tx for tx in transactions if tx.get("postalCode") == postal_code]
+        customers = {tx.get("customerId") for tx in transactions if tx.get("customerId")}
+        return len(customers) if customers else 1000
     except Exception:
-        pass
-    return 1000
+        return 1000
 
 
 def compute_financial_kpis(postal_code: Optional[str] = None, horizon_days: int = 7) -> dict:
-    """
-    Calcule les KPI financiers prédictifs d'une zone.
-    Retourne None si la prédiction de perte est indisponible.
-    """
     horizon_days = max(1, horizon_days)
 
     loss_prediction = loss_forecaster.predict(

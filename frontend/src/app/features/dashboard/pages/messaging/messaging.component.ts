@@ -999,7 +999,22 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   getDatasetsByStatuses(datasets: any[], statuses: string[]): any[] {
     if (!datasets || !Array.isArray(datasets)) return [];
-    return datasets.filter(d => statuses.includes(d.status));
+    let filtered = datasets.filter(d => statuses.includes(d.status));
+
+    if (statuses.includes('PROCESSED')) {
+      return filtered.filter(d => d.datasetName.toLowerCase().includes('enriched'));
+    }
+
+    return filtered;
+  }
+
+  getFilteredDatasetsCount(datasets: any[]): number {
+    if (!datasets || !Array.isArray(datasets)) return 0;
+    // On compte les QUALIFIED, PROCESSED (filtrés) et les autres statuts
+    const qualified = this.getDatasetsByStatuses(datasets, ['QUALIFIED']).length;
+    const processed = this.getDatasetsByStatuses(datasets, ['PROCESSED']).length;
+    const others = this.getDatasetsByStatuses(datasets, ['CLEANED', 'INACTIF', 'PENDING']).length;
+    return qualified + processed + others;
   }
 
   submitGenerateReport(): void {

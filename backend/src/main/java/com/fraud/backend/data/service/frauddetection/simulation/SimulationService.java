@@ -127,7 +127,7 @@ public class SimulationService {
             }
         }
 
-        boolean finished = process.waitFor(120, TimeUnit.SECONDS);
+        boolean finished = process.waitFor(300, TimeUnit.SECONDS);
         if (!finished) {
             process.destroyForcibly();
             throw new RuntimeException("Transaction generation timed out");

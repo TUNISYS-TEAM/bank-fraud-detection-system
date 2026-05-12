@@ -8,6 +8,8 @@ from typing import List, Dict, Any
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+from app.utils.geo_utils import stable_postal_code_seed
+
 
 def _parse_timestamp(tx: Dict[str, Any]):
     """Parse le timestamp d'une transaction."""
@@ -59,7 +61,6 @@ def _build_zone_aggregates(transactions: List[Dict[str, Any]], window_days: int 
             stats["avg_fraud_score"] += float(fraud_score)
             stats["score_count"] += 1
 
-    # Finaliser les moyennes
     for pc, stats in zone_stats.items():
         if stats["score_count"] > 0:
             stats["avg_fraud_score"] /= stats["score_count"]
@@ -93,25 +94,25 @@ def build_features_for_loss(transactions: List[Dict[str, Any]]) -> np.ndarray:
         fraud_score = tx.get("fraudScore") or 0.0
 
         features.append([
-            hash(pc) % 10000,              # code postal encodé
-            stats["tx_count"],              # volume de transactions récent
-            stats["fraud_count"],           # nombre de fraudes récent
-            stats["total_amount"] / 1000,   # montant total normalisé
-            stats["fraud_amount"] / 1000,   # montant fraude normalisé
-            stats["avg_fraud_score"],       # score moyen de fraude
-            amount / 1000,                  # montant de la transaction
-            float(fraud_score),             # score de fraude
-            7,                              # horizon (fixe pour entraînement)
+            stable_postal_code_seed(pc),    # 0: code postal encodé
+            stats["tx_count"],              # 1: volume de transactions récent
+            stats["fraud_count"],           # 2: nombre de fraudes récent
+            stats["total_amount"] / 1000,   # 3: montant total normalisé
+            stats["fraud_amount"] / 1000,   # 4: montant fraude normalisé
+            stats["avg_fraud_score"],       # 5: score moyen de fraude
+            amount / 1000,                  # 6: montant de la transaction
+            float(fraud_score),             # 7: score de fraude
+            7,                              # 8: horizon (fixe pour entraînement)
         ])
 
     return np.array(features, dtype=np.float32)
 
 
 def build_target_loss(transactions: List[Dict[str, Any]]) -> np.ndarray:
-    """Cible : montant de la fraude (finalDecision)."""
+    """Cible : montant de la fraude (finalDecision ou isFraud)."""
     targets = []
     for tx in transactions:
-        if tx.get("finalDecision", False):
+        if tx.get("finalDecision", False) or tx.get("isFraud", False):
             targets.append(float(tx.get("amount", 0)))
         else:
             targets.append(0.0)
@@ -130,13 +131,13 @@ def build_features_for_hotspot(transactions: List[Dict[str, Any]]) -> np.ndarray
         amount = float(tx.get("amount", 0))
 
         features.append([
-            hash(pc) % 10000,              # 0: code postal
+            stable_postal_code_seed(pc),    # 0: code postal
             stats["tx_count"],              # 1: volume
             stats["fraud_count"],           # 2: fraudes
             stats["total_amount"] / 1000,   # 3: montant total
             stats["fraud_amount"] / 1000,   # 4: montant fraude
             stats["avg_fraud_score"],       # 5: score moyen
-            amount / 1000,                  # 6: montant transaction (NOUVEAU)
+            amount / 1000,                  # 6: montant transaction
             float(fraud_score),             # 7: fraud_score
             7,                              # 8: horizon
         ])
@@ -165,7 +166,7 @@ def build_features_for_revenue(transactions: List[Dict[str, Any]]) -> np.ndarray
         fraud_score = tx.get("fraudScore") or 0.0
 
         features.append([
-            hash(pc) % 10000,
+            stable_postal_code_seed(pc),
             stats["tx_count"],
             stats["fraud_count"],
             stats["total_amount"] / 1000,
@@ -183,7 +184,7 @@ def build_target_revenue(transactions: List[Dict[str, Any]]) -> np.ndarray:
     """Cible multi-output : [revenue_at_risk, ca_impact, approval_rate, friction_score]."""
     targets = []
     for tx in transactions:
-        amount = float(tx.get("amount", 0)) if tx.get("finalDecision", False) else 0.0
+        amount = float(tx.get("amount", 0)) if (tx.get("finalDecision", False) or tx.get("isFraud", False)) else 0.0
         raR = amount
         ca_impact = raR * 0.5
         fraud_score = tx.get("fraudScore") or 0.0

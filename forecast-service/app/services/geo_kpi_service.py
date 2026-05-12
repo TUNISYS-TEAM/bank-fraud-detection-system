@@ -1,6 +1,7 @@
 from typing import Optional
 import requests
 import os
+import threading
 
 from app.schemas.responses import DetailsKPIs, OverviewZoneResponse
 from app.services.behavior_kpi_service import compute_behavior_kpis
@@ -14,6 +15,7 @@ JAVA_BACKEND_URL = os.getenv("JAVA_BACKEND_URL", "http://java-backend:8080")
 
 _transactions_cache = None
 _transactions_timestamp = 0
+_cache_lock = threading.RLock()
 
 
 def _resolve_risk_level(hotspot_score: Optional[float]) -> Optional[str]:
@@ -32,19 +34,25 @@ def _fetch_all_transactions() -> list:
     global _transactions_cache, _transactions_timestamp
     import time
     now = time.time()
-    if _transactions_cache is not None and (now - _transactions_timestamp) < 300:
-        return _transactions_cache
-    try:
-        url = f"{JAVA_BACKEND_URL}/api/internal/training-data"
-        resp = requests.get(url, params={"windowDays": 850}, timeout=60)
-        if resp.status_code == 200:
-            data = resp.json()
-            _transactions_cache = data.get("transactions", [])
-            _transactions_timestamp = now
+
+    with _cache_lock:
+        # Return cached data if still valid
+        if _transactions_cache is not None and (now - _transactions_timestamp) < 300:
             return _transactions_cache
-    except Exception:
-        pass
-    return _transactions_cache or []
+
+        # Fetch new data while holding the lock to avoid parallel requests
+        try:
+            url = f"{JAVA_BACKEND_URL}/api/internal/training-data"
+            resp = requests.get(url, params={"windowDays": 850}, timeout=60)
+            if resp.status_code == 200:
+                data = resp.json()
+                _transactions_cache = data.get("transactions", [])
+                _transactions_timestamp = now
+        except Exception:
+            # Keep old cache on failure; if still None, return empty list
+            pass
+
+        return _transactions_cache if _transactions_cache is not None else []
 
 
 def _get_zones_with_fraud() -> dict:
@@ -62,7 +70,6 @@ def _get_zones_with_fraud() -> dict:
         if tx.get("isFraud") or tx.get("finalDecision"):
             zones[pc]["fraud_count"] += 1
 
-    # Garder uniquement les zones avec au moins une fraude
     return {pc: stats for pc, stats in zones.items() if stats["fraud_count"] > 0}
 
 
@@ -73,7 +80,7 @@ def _predict_anomalies_for_zone(postal_code: str, hotspot_score: Optional[float]
 
     zones_with_fraud = _get_zones_with_fraud()
     if postal_code not in zones_with_fraud:
-        return None  # pas de fraude historique → pas de prédiction
+        return None
 
     stats = zones_with_fraud[postal_code]
     estimated_volume = int(stats["volume"] * horizon_days / 850)
@@ -86,7 +93,8 @@ def _predict_anomalies_for_zone(postal_code: str, hotspot_score: Optional[float]
 
 def _predict_global_anomalies(horizon_days: int) -> Optional[int]:
     """
-    Somme des anomalies prédites pour toutes les zones ayant des fraudes historiques.
+    Sum of predicted anomalies for all zones that have historical fraud.
+    Uses each zone's actual hotspot_score (from the model) instead of a fixed average.
     """
     zones_with_fraud = _get_zones_with_fraud()
     if not zones_with_fraud:
@@ -95,9 +103,21 @@ def _predict_global_anomalies(horizon_days: int) -> Optional[int]:
     total = 0
     for pc, stats in zones_with_fraud.items():
         estimated_volume = int(stats["volume"] * horizon_days / 850)
-        if estimated_volume > 0:
-            # Utiliser un hotspot moyen de 0.28 (prédiction globale du modèle)
-            total += int(0.28 * estimated_volume)
+        if estimated_volume <= 0:
+            continue
+
+        # Retrieve the zone's hotspot score from cache (if available)
+        cache_key = f"kpi:{pc}:{horizon_days}"
+        cached = cache.get(cache_key)
+        if cached and cached.get("hotspot_score") is not None:
+            hotspot = cached["hotspot_score"]
+        else:
+            # Fallback: compute the hotspot for this zone on the fly
+            from app.services.hotspot_service import compute_risk_geo_kpis
+            geo = compute_risk_geo_kpis(postal_code=pc, horizon_days=horizon_days)
+            hotspot = geo.get("hotspot_score", 0.28)
+
+        total += int(hotspot * estimated_volume)
 
     return total if total > 0 else None
 

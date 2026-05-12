@@ -1267,7 +1267,7 @@
                                                         class="text-sm font-black uppercase tracking-widest text-gray-900">
                                                         Suivi des datasets d'entraînement</h3>
                                                     <span
-                                                        class="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-md">{{rapport.dataSummary.datasets.length}}</span>
+                                                        class="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-md">{{getFilteredDatasetsCount(rapport.dataSummary.datasets)}}</span>
                                                 </div>
                                             </div>
 
@@ -1300,7 +1300,7 @@
                                                                                 <div class="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0 group-hover:scale-110 transition-transform">
                                                                                     <i-feather name="database" class="w-4 h-4"></i-feather>
                                                                                 </div>
-                                                                                <span class="font-black text-gray-900 truncate max-w-[200px]" [title]="dataset.datasetName">{{dataset.datasetName}}</span>
+                                                                                <span class="font-black text-gray-900 whitespace-normal break-all max-w-[250px]" [title]="dataset.datasetName">{{dataset.datasetName}}</span>
                                                                             </div>
                                                                         </td>
                                                                         <td class="px-6 py-4">
@@ -1348,7 +1348,7 @@
                                                                                 <div class="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 group-hover:scale-110 transition-transform">
                                                                                     <i-feather name="database" class="w-4 h-4"></i-feather>
                                                                                 </div>
-                                                                                <span class="font-black text-gray-900 truncate max-w-[200px]" [title]="dataset.datasetName">{{dataset.datasetName}}</span>
+                                                                                <span class="font-black text-gray-900 whitespace-normal break-all max-w-[250px]" [title]="dataset.datasetName">{{dataset.datasetName}}</span>
                                                                             </div>
                                                                         </td>
                                                                         <td class="px-6 py-4">
@@ -1396,7 +1396,7 @@
                                                                                 <div class="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 shrink-0 group-hover:scale-110 transition-transform">
                                                                                     <i-feather name="database" class="w-4 h-4"></i-feather>
                                                                                 </div>
-                                                                                <span class="font-black text-gray-900 truncate max-w-[200px]" [title]="dataset.datasetName">{{dataset.datasetName}}</span>
+                                                                                <span class="font-black text-gray-900 whitespace-normal break-all max-w-[250px]" [title]="dataset.datasetName">{{dataset.datasetName}}</span>
                                                                             </div>
                                                                         </td>
                                                                         <td class="px-6 py-4">
@@ -2006,22 +2006,22 @@
                                         </div>
                                     </div>
 
-                                    <div class="flex justify-end gap-6 pt-6">
+                                    <div class="flex justify-end gap-4 pt-6">
                                         <button type="button" (click)="toggleGenerateReportForm()"
-                                            class="px-10 py-5 text-sm font-black text-gray-400 hover:text-rose-500 transition-all uppercase tracking-[0.2em] hover:bg-rose-50 rounded-2xl">
+                                            class="px-6 py-3 text-xs font-black text-gray-400 hover:text-rose-500 transition-all uppercase tracking-[0.2em] hover:bg-rose-50 rounded-xl">
                                             Annuler
                                         </button>
                                         <button type="submit" [disabled]="!reportForm().title || loading()"
-                                            class="px-16 py-5 bg-indigo-600 text-white font-black text-sm rounded-2xl shadow-2xl shadow-indigo-100 hover:shadow-indigo-200 hover:-translate-y-1 transition-all disabled:opacity-50 disabled:translate-y-0 group">
-                                            <div class="flex items-center gap-4">
+                                            class="px-8 py-3 bg-indigo-600 text-white font-bold text-sm rounded-xl shadow-xl shadow-indigo-100 hover:shadow-indigo-200 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:translate-y-0 group">
+                                            <div class="flex items-center gap-2">
                                                 @if (loading()) {
                                                 <div
-                                                    class="animate-spin h-5 w-5 border-2 border-white/30 border-t-white rounded-full">
+                                                    class="animate-spin h-4 w-4 border-2 border-white/30 border-t-white rounded-full">
                                                 </div>
                                                 }
                                                 <span>Lancer la génération</span>
                                                 <i-feather name="send"
-                                                    class="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"></i-feather>
+                                                    class="w-4 h-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"></i-feather>
                                             </div>
                                         </button>
                                     </div>

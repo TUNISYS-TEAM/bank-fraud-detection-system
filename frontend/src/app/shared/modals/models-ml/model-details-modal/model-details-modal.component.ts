@@ -539,24 +539,53 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     this.thresholdChart = echarts.init(chartDom);
 
     const thresholds = this.modelResult?.thresholds || {};
-    const finalThreshold = thresholds.final || 0.7;
+    const finalThreshold = thresholds.final || 0.5;
+
+    const metrics = this.modelResult?.metrics || {};
+    const realPrecision = metrics.precision || 0.5;
+    const realRecall = metrics.recall || 0.5;
 
     const thresholdValues: string[] = [];
     const precisionValues: number[] = [];
     const recallValues: number[] = [];
+    const f1Values: number[] = [];
+
+    let optimalThreshold = finalThreshold;
+    let maxF1 = 0;
 
     for (let t = 0; t <= 20; t++) {
       const threshold = t / 20;
       thresholdValues.push((threshold * 100).toFixed(0) + '%');
 
-      const precision = Math.max(0.1, 0.85 - 0.5 * threshold);
-      precisionValues.push(Number((precision * 100).toFixed(1)));
+      let precision: number;
+      let recall: number;
 
-      const recall = Math.min(0.95, 0.15 + 0.75 * (1 - threshold));
+      if (threshold <= finalThreshold) {
+        const ratio = threshold / finalThreshold;
+        recall = Math.min(0.98, realRecall + (1 - realRecall) * (1 - ratio) * 0.7);
+        precision = Math.max(0.05, realPrecision * ratio);
+      } else {
+        const ratio = (1 - threshold) / (1 - finalThreshold);
+        recall = realRecall * ratio;
+        precision = Math.min(0.98, realPrecision + (1 - realPrecision) * (1 - ratio) * 0.8);
+      }
+
+      precision = Math.min(0.98, Math.max(0.02, precision));
+      recall = Math.min(0.98, Math.max(0.02, recall));
+
+      const f1 = 2 * (precision * recall) / (precision + recall);
+      f1Values.push(Number((f1 * 100).toFixed(1)));
+      precisionValues.push(Number((precision * 100).toFixed(1)));
       recallValues.push(Number((recall * 100).toFixed(1)));
+
+      if (f1 > maxF1) {
+        maxF1 = f1;
+        optimalThreshold = threshold;
+      }
     }
 
-    const finalThresholdIndex = Math.min(20, Math.floor(finalThreshold * 20));
+    const finalThresholdIndex = Math.min(20, Math.round(finalThreshold * 20));
+    const optimalThresholdIndex = Math.min(20, Math.round(optimalThreshold * 20));
 
     const option = {
       title: {
@@ -583,7 +612,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
         }
       },
       legend: {
-        data: ['Précision', 'Rappel'],
+        data: ['Precision', 'Recall', 'F1-Score'],
         orient: 'horizontal',
         left: 'center',
         top: 40
@@ -592,13 +621,13 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
         left: '10%',
         right: '8%',
         bottom: '12%',
-        top: '25%',
+        top: '22%',
         containLabel: true
       },
       xAxis: {
         type: 'category',
         data: thresholdValues,
-        name: 'Seuil (%)',
+        name: 'Seuil de decision',
         nameLocation: 'middle',
         nameGap: 35,
         axisLabel: {
@@ -613,55 +642,89 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
         min: 0,
         max: 100,
         axisLabel: {
-          fontSize: 10
+          fontSize: 10,
+          formatter: '{value}%'
         }
       },
       series: [
         {
-          name: 'Précision',
+          name: 'Precision',
           type: 'line',
           data: precisionValues,
           smooth: true,
-          symbol: 'none',
+          symbol: 'circle',
+          symbolSize: 6,
           lineStyle: {
             color: '#10b981',
             width: 3
+          },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(16, 185, 129, 0.1)' },
+              { offset: 1, color: 'rgba(16, 185, 129, 0.02)' }
+            ])
           }
         },
         {
-          name: 'Rappel',
+          name: 'Recall',
           type: 'line',
           data: recallValues,
           smooth: true,
-          symbol: 'none',
+          symbol: 'circle',
+          symbolSize: 6,
           lineStyle: {
             color: '#8b5cf6',
             width: 3
+          },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(139, 92, 246, 0.1)' },
+              { offset: 1, color: 'rgba(139, 92, 246, 0.02)' }
+            ])
+          }
+        },
+        {
+          name: 'F1-Score',
+          type: 'line',
+          data: f1Values,
+          smooth: true,
+          symbol: 'diamond',
+          symbolSize: 6,
+          lineStyle: {
+            color: '#f59e0b',
+            width: 2,
+            type: 'dashed'
           }
         }
       ],
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        lineStyle: {
-          color: '#ef4444',
-          type: 'dashed',
-          width: 2
+      graphic: [
+        {
+          type: 'line',
+          shape: { x1: 0, y1: 0, x2: 0, y2: 1 },
+          left: `${(finalThresholdIndex / 20) * 100}%`,
+          top: '22%',
+          bounding: 'raw',
+          style: {
+            stroke: '#ef4444',
+            lineWidth: 2,
+            lineDash: [5, 5]
+          },
+          invisible: false
         },
-        data: [
-          {
-            name: 'Seuil Final',
-            xAxis: finalThresholdIndex,
-            label: {
-              formatter: `Seuil: ${(finalThreshold * 100).toFixed(0)}%`,
-              position: 'end',
-              fontSize: 11,
-              fontWeight: 'bold',
-              color: '#ef4444'
-            }
-          }
-        ]
-      }
+        ...(Math.abs(optimalThreshold - finalThreshold) > 0.05 ? [{
+          type: 'line',
+          shape: { x1: 0, y1: 0, x2: 0, y2: 1 },
+          left: `${(optimalThresholdIndex / 20) * 100}%`,
+          top: '22%',
+          bounding: 'raw',
+          style: {
+            stroke: '#f59e0b',
+            lineWidth: 2,
+            lineDash: [8, 6]
+          },
+          invisible: false
+        }] : [])
+      ]
     };
 
     this.thresholdChart.setOption(option);
@@ -701,7 +764,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     if (this.modelResult?.hyperparameters_used?.[key] !== undefined) {
       return this.modelResult.hyperparameters_used[key];
     }
-    
+
     // Check in 'hyperparameters' (Standard structure)
     if (this.modelResult?.hyperparameters?.[key] !== undefined) {
       return this.modelResult.hyperparameters[key];
@@ -719,20 +782,20 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     // Default fallbacks for common parameters if they are totally missing
     if (key === 'min_samples_split') return 2;
     if (key === 'max_depth' && this.getModelFullTypeName().includes('LightGBM')) return -1;
-    
+
     return null;
   }
 
   getClientFeatures(): string[] {
     // Try all_features first (legacy)
-    let allFeatures = this.modelResult?.hyperparameters?.all_features || 
-                      this.modelResult?.hyperparameters_used?.all_features || [];
+    let allFeatures = this.modelResult?.hyperparameters?.all_features ||
+      this.modelResult?.hyperparameters_used?.all_features || [];
 
     // If empty, fall back to selectedFeatures / selected_original_features
     if (!Array.isArray(allFeatures) || allFeatures.length === 0) {
-      allFeatures = this.modelResult?.selectedFeatures || 
-                    this.modelResult?.selected_original_features || 
-                    [];
+      allFeatures = this.modelResult?.selectedFeatures ||
+        this.modelResult?.selected_original_features ||
+        [];
     }
 
     if (!Array.isArray(allFeatures)) return [];
@@ -744,8 +807,8 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
 
   getOriginalFeatures(): string[] {
     // Get all features from selectedFeatures / selected_original_features
-    const allFeatures = this.modelResult?.selectedFeatures || 
-                        this.modelResult?.selected_original_features || [];
+    const allFeatures = this.modelResult?.selectedFeatures ||
+      this.modelResult?.selected_original_features || [];
 
     if (!Array.isArray(allFeatures)) return [];
 
@@ -758,12 +821,12 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
   isAutoencoder(): boolean {
     const type = this.modelResult?.modelType;
     if (type === 'AUTOENCODER') return true;
-    
+
     // Check hyperparameters as well
     const hp = this.modelResult?.hyperparameters || {};
     const hpUsed = this.modelResult?.hyperparameters_used || {};
     const modelNameFromHp = hp.model_name || hpUsed.model_name || '';
-    
+
     const name = (this.modelResult?.modelName || this.modelResult?.jobName || modelNameFromHp || '').toUpperCase();
     return name.includes('AUTOENCODER') || name.startsWith('AE');
   }
@@ -771,7 +834,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
   getModelFullTypeName(): string {
     let type = this.modelResult?.modelType;
     const name = (this.modelResult?.modelName || '').toUpperCase();
-    
+
     // If type is missing, try to infer it from model name
     if (!type) {
       if (name.includes('XGB')) type = 'XGBOOST';
@@ -784,7 +847,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     }
 
     if (!type) return this.modelResult?.modelName || 'Modèle ML';
-    
+
     const names: Record<string, string> = {
       'XGBOOST': 'XGBoost',
       'RANDOM_FOREST': 'Random Forest',
@@ -795,7 +858,7 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
       'AUTOENCODER': 'Autoencoder',
       'HYBRID_ENSEMBLE': 'Ensemble Hybride'
     };
-    
+
     return names[type] || type;
   }
 
@@ -803,17 +866,17 @@ export class ModelDetailsModalComponent implements OnInit, OnDestroy, AfterViewI
     if (this.modelResult?.version && !this.modelResult.version.includes('1.0.')) {
       return `v${this.modelResult.version}`;
     }
-    
+
     // Fallback: try to extract from modelName (e.g., "XGB v1.0" -> "v1.0")
     const modelName = this.modelResult?.modelName || '';
     const versionMatch = modelName.match(/v\d+(\.\d+)?/);
     if (versionMatch) {
       return versionMatch[0];
     }
-    
+
     // If it's a timestamp-based version from DB (e.g. 1.0.17...)
     if (this.modelResult?.version?.startsWith('1.0.')) {
-       return 'v1.0';
+      return 'v1.0';
     }
 
     return (this.modelResult?.modelUuid || 'Draft').slice(0, 8);
