@@ -18,7 +18,7 @@ import java.util.List;
 public class SystemSettingService {
 
     private final SystemSettingRepository repository;
-    private final KeycloakService keycloakService;
+    private final KeycloakService keycloakService;  // No circular dependency now
 
     public List<SystemSetting> getAll() {
         return repository.findAll();
@@ -64,11 +64,9 @@ public class SystemSettingService {
                     keycloakService.updateMaxLoginAttempts(Integer.parseInt(value));
                 case "password_expiry_days" ->
                     keycloakService.updatePasswordExpiryDays(Integer.parseInt(value));
-                // audit_log_enabled and others are DB-only, no Keycloak sync needed
                 default -> log.debug("No Keycloak sync needed for setting: {}", key);
             }
         } catch (Exception e) {
-            // Don't fail the DB save if Keycloak sync fails — log and continue
             log.error("Failed to sync setting '{}' to Keycloak: {}", key, e.getMessage());
         }
     }

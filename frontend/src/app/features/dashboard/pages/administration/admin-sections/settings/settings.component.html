@@ -139,7 +139,7 @@
                         </div>
                         <div>
                             <p class="text-sm font-medium text-gray-700">Sauvegarde automatique</p>
-                            <p class="text-xs text-gray-500">Backup quotidien des logs et sessions </p>
+                            <p class="text-xs text-gray-500">Backup quotidien des logs et sessions</p>
                         </div>
                     </div>
                     <span class="text-xs px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg font-medium">
@@ -167,24 +167,6 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                     </svg>
                 </div>
-
-                <!-- Notifications email -->
-                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                    <div class="flex items-center space-x-3">
-                        <div class="relative">
-                            <input type="checkbox" id="emailNotifications"
-                                [checked]="settings.system.emailNotifications"
-                                (change)="updateSetting('email_notifications', $event)" class="sr-only peer">
-                            <label for="emailNotifications"
-                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
-                            </label>
-                        </div>
-                        <div>
-                            <p class="text-sm font-medium text-gray-700">Notifications email</p>
-                            <p class="text-xs text-gray-500">Alertes importantes par email</p>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -207,12 +189,38 @@
             </div>
 
             <div class="p-6 space-y-4">
-                <!-- Alertes critiques -->
+                <!-- Notifications email (Master Control) -->
+                <div class="flex items-center justify-between p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <input type="checkbox" id="emailNotificationsMaster"
+                                [checked]="settings.notifications.emailNotificationsEnabled"
+                                (change)="toggleMasterEmailNotifications($event)" class="sr-only peer">
+                            <label for="emailNotificationsMaster"
+                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
+                            </label>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-gray-800">Notifications email</p>
+                            <p class="text-xs text-gray-600">Activer/désactiver tous les emails système <span
+                                    class="text-indigo-600 font-medium">(OTP toujours actif)</span></p>
+                        </div>
+                    </div>
+                    <span class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-lg font-medium">
+                        {{ settings.notifications.emailNotificationsEnabled ? 'Tous les emails activés' : 'Seuls les OTP activés' }}
+                    </span>
+                </div>
+
+                <div class="border-t border-gray-100 my-2"></div>
+
+                <!-- Alertes critiques - REMOVED disabled attribute -->
                 <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                     <div class="flex items-center space-x-3">
                         <div class="relative">
-                            <input type="checkbox" id="criticalAlerts" [checked]="settings.notifications.criticalAlerts"
-                                (change)="updateSetting('critical_alerts', $event)" class="sr-only peer">
+                            <input type="checkbox" id="criticalAlerts" 
+                                [checked]="settings.notifications.criticalAlerts"
+                                (change)="onChildNotificationChange('critical_alerts', $event)" 
+                                class="sr-only peer">
                             <label for="criticalAlerts"
                                 class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
                             </label>
@@ -224,46 +232,33 @@
                     </div>
                 </div>
 
-                <!-- Rapports quotidiens -->
+                <!-- Dérive du modèle - REMOVED disabled attribute -->
                 <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                     <div class="flex items-center space-x-3">
                         <div class="relative">
-                            <input type="checkbox" id="dailyReports" [checked]="settings.notifications.dailyReports"
-                                (change)="updateSetting('daily_reports', $event)" class="sr-only peer">
-                            <label for="dailyReports"
-                                class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
-                            </label>
-                        </div>
-                        <div>
-                            <p class="text-sm font-medium text-gray-700">Rapports quotidiens</p>
-                            <p class="text-xs text-gray-500">Résumé journalier par email</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Dérive du modèle -->
-                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                    <div class="flex items-center space-x-3">
-                        <div class="relative">
-                            <input type="checkbox" id="modelDrift" [checked]="settings.notifications.modelDrift"
-                                (change)="updateSetting('model_drift', $event)" class="sr-only peer">
+                            <input type="checkbox" id="modelDrift" 
+                                [checked]="settings.notifications.modelDrift"
+                                (change)="onChildNotificationChange('model_drift', $event)" 
+                                class="sr-only peer">
                             <label for="modelDrift"
                                 class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
                             </label>
                         </div>
                         <div>
                             <p class="text-sm font-medium text-gray-700">Dérive du modèle</p>
-                            <p class="text-xs text-gray-500">Alert si performances dégradées</p>
+                            <p class="text-xs text-gray-500">Alertes lorsque les performances du modèle se dégradent</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Nouvelles versions -->
+                <!-- Nouvelles versions - REMOVED disabled attribute -->
                 <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                     <div class="flex items-center space-x-3">
                         <div class="relative">
-                            <input type="checkbox" id="versionUpdates" [checked]="settings.notifications.versionUpdates"
-                                (change)="updateSetting('version_updates', $event)" class="sr-only peer">
+                            <input type="checkbox" id="versionUpdates" 
+                                [checked]="settings.notifications.versionUpdates"
+                                (change)="onChildNotificationChange('version_updates', $event)" 
+                                class="sr-only peer">
                             <label for="versionUpdates"
                                 class="w-12 h-6 bg-gray-300 rounded-full peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all cursor-pointer block">
                             </label>
@@ -273,6 +268,17 @@
                             <p class="text-xs text-gray-500">Mises à jour système disponibles</p>
                         </div>
                     </div>
+                </div>
+
+                <!-- Info note -->
+                <div class="p-3 bg-blue-50 rounded-xl border border-blue-100 mt-2">
+                    <p class="text-xs text-blue-700 flex items-center">
+                        <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Les emails de vérification OTP sont toujours envoyés indépendamment de ce paramètre pour des raisons de sécurité.
+                    </p>
                 </div>
             </div>
         </div>

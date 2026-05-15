@@ -3,6 +3,7 @@ package com.fraud.backend.api.controller.accessmanagement;
 import com.fraud.backend.api.dto.accessmanagement.settings.SystemSettingRequest;
 import com.fraud.backend.api.dto.accessmanagement.settings.SystemSettingResponse;
 import com.fraud.backend.data.entity.accessmanagement.SystemSetting;
+import com.fraud.backend.data.service.accessmanagement.EmailSettingsService;  // Add this
 import com.fraud.backend.data.service.accessmanagement.SystemSettingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,7 @@ import java.util.Map;
 public class SystemSettingController {
 
     private final SystemSettingService systemSettingService;
+    private final EmailSettingsService emailSettingsService;  // Add this
 
     // GET /api/settings
     @GetMapping
@@ -43,6 +45,17 @@ public class SystemSettingController {
             @PathVariable String key,
             @RequestBody SystemSettingRequest request) {
         return ResponseEntity.ok(toResponse(systemSettingService.update(key, request.getValue())));
+    }
+
+    // PATCH /api/settings/batch - Batch update email notification settings
+    @PatchMapping("/batch")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, Object>> batchUpdate(
+            @RequestBody Map<String, String> updates) {
+        for (Map.Entry<String, String> entry : updates.entrySet()) {
+            emailSettingsService.updateSetting(entry.getKey(), entry.getValue());
+        }
+        return ResponseEntity.ok(Map.of("status", "success", "updated", updates.keySet()));
     }
 
     // GET /api/settings/audit-log

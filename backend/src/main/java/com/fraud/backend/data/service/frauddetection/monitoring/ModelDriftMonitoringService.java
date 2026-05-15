@@ -1,12 +1,15 @@
 package com.fraud.backend.data.service.frauddetection.monitoring;
 
+import com.fraud.backend.data.entity.accessmanagement.AppUser;
 import com.fraud.backend.data.entity.frauddetection.FraudAlert;
 import com.fraud.backend.data.entity.frauddetection.ModelDeploymentHistory;
 import com.fraud.backend.data.entity.frauddetection.ModelML;
+import com.fraud.backend.data.repository.accessmanagement.AppUserRepository;
 import com.fraud.backend.data.repository.corebanking.TransactionRepository;
 import com.fraud.backend.data.repository.frauddetection.FraudAlertRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelDeploymentHistoryRepository;
 import com.fraud.backend.data.repository.frauddetection.ModelMLRepository;
+import com.fraud.backend.data.service.accessmanagement.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -28,6 +31,8 @@ public class ModelDriftMonitoringService {
     private final ModelDeploymentHistoryRepository deploymentHistoryRepository;
     private final FraudAlertRepository fraudAlertRepository;
     private final TransactionRepository transactionRepository;
+    private final EmailService emailService;               // ADDED
+    private final AppUserRepository appUserRepository;     // ADDED
 
     // Base thresholds – used only as fallback when no history available
     private static final double DEFAULT_PERFORMANCE_WARNING_THRESHOLD = 0.08;
@@ -135,6 +140,11 @@ public class ModelDriftMonitoringService {
         String driftStatus = (String) driftAnalysis.get("drift_status");
         if (!"NORMAL".equals(driftStatus)) {
             log.warn("Model drift detected: {}. Consider retraining model.", driftStatus);
+        }
+
+        // ========== SEND EMAIL ON CRITICAL DRIFT ==========
+        if ("CRITICAL_DRIFT".equals(driftStatus)) {
+            sendCriticalDriftAlert(model, driftAnalysis);
         }
 
         return driftAnalysis;
@@ -586,7 +596,7 @@ public class ModelDriftMonitoringService {
     }
 
     // -------------------------------------------------------------------------
-    // Existing helper methods (unchanged except for minor adjustments)
+    // Existing helper methods
     // -------------------------------------------------------------------------
     private Optional<ModelDeploymentHistory> getActiveDeployment(Long managerId) {
         if (managerId != null)
@@ -881,5 +891,36 @@ public class ModelDriftMonitoringService {
 
     private double round(double value, int places) {
         return BigDecimal.valueOf(value).setScale(places, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    // ======================== NEW METHOD: Send Email on Critical Drift ========================
+
+    private void sendCriticalDriftAlert(ModelML model, Map<String, Object> driftAnalysis) {
+        List<AppUser> adminsAndManagers = appUserRepository.findByRoleNames(List.of("ADMIN", "MANAGER"));
+        if (adminsAndManagers.isEmpty()) {
+            log.warn("No ADMIN or MANAGER users found to send critical drift alert.");
+            return;
+        }
+
+        Map<String, Object> emailData = new HashMap<>();
+        emailData.put("modelName", model.getModelName());
+        emailData.put("driftStatus", driftAnalysis.get("drift_status"));
+        emailData.put("f1Drift", driftAnalysis.get("f1_drift"));
+        emailData.put("scoreDrift", driftAnalysis.get("score_distribution_drift"));
+        emailData.put("psi", driftAnalysis.get("score_psi"));
+        emailData.put("checkedAt", driftAnalysis.get("checked_at"));
+        emailData.put("platformUrl", "http:localhost:4200/"); // Replace with actual URL
+
+        for (AppUser user : adminsAndManagers) {
+            try {
+                emailService.sendCriticalModelDriftAlert(
+                        user.getEmail(),
+                        user.getFirstName() + " " + user.getLastName(),
+                        emailData
+                );
+            } catch (Exception e) {
+                log.error("Failed to send critical drift alert to {}: {}", user.getEmail(), e.getMessage());
+            }
+        }
     }
 }

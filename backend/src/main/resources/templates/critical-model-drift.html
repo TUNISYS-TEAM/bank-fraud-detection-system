@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Critical Model Drift Alert</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: #b91c1c;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .content {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .drift-box {
+            background: #fff3f3;
+            border-left: 4px solid #b91c1c;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+            margin-top: 20px;
+        }
+
+        .button {
+            background: #b91c1c;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            display: inline-block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>🚨 Critical Model Drift Detected</h2>
+        </div>
+        <div class="content">
+            <p>Dear <strong th:text="${name}">Admin</strong>,</p>
+            <p>The active fraud detection model has experienced <strong>critical drift</strong> and may no longer be
+                reliable.</p>
+
+            <div class="drift-box">
+                <h3>Drift Analysis Summary</h3>
+                <p><strong>Model:</strong> <span th:text="${drift.modelName}">-</span></p>
+                <p><strong>Drift Status:</strong> <span style="color:#b91c1c;"
+                        th:text="${drift.driftStatus}">CRITICAL_DRIFT</span></p>
+                <p><strong>F1 Score Drift:</strong> <span th:text="${drift.f1Drift} + '%'">-</span></p>
+                <p><strong>Score Distribution Drift:</strong> <span th:text="${drift.scoreDrift} + '%'">-</span></p>
+                <p><strong>Population Stability Index (PSI):</strong> <span th:text="${drift.psi}">-</span></p>
+                <p><strong>Date Detected:</strong> <span th:text="${drift.checkedAt}">-</span></p>
+            </div>
+
+            <p><strong>Recommended Action:</strong> Retrain the model with recent data or rollback to a previous stable
+                version.</p>
+
+            <a th:href="${drift.platformUrl}" class="button">Go to Model Monitoring</a>
+
+            <p style="margin-top: 20px;">This is an automated alert. Please investigate immediately.</p>
+        </div>
+        <div class="footer">
+            <p>&copy; <span th:text="${year}">2025</span> Fraud Detection Platform.</p>
+            <p>Contact <a th:href="'mailto:' + ${supportEmail}" th:text="${supportEmail}">support</a></p>
+        </div>
+    </div>
+</body>
+
+</html>
