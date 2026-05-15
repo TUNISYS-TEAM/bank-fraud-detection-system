@@ -1,10 +1,3 @@
-"""
-Pure inference service – model loading, feature extraction, scoring, AND explainability.
-Uses a saved preprocessing pipeline + a separate model artifact.
-
-v2.1 – PRODUCTION EDITION (no prints, guaranteed explainability)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -30,20 +23,9 @@ __all__ = ["FraudInferenceEngine"]
 
 
 class FraudInferenceEngine:
-    """
-    Handles preprocessing + model inference + EXPLAINABILITY.
 
-    Contract:
-    - pipeline_path: sklearn-compatible transformer pipeline
-    - model_path: .onnx or .joblib classifier artifact
-    - explainability_config: dict with keys:
-        - threshold (float): model threshold for risk levels
-        - dl_model_path (str, optional): path to DL model for Captum
-        - dl_input_dim (int, optional): input dimension for DL model
-        - dl_method (str, optional): attribution method
-        - config_path (str, optional): path to explainability config JSON
-        - background_data_path (str, optional): path to .npy background data
-    """
+    MAX_EXPLAIN_PER_BATCH = 50
+    EXPLAIN_THRESHOLD = 0.7
 
     def __init__(self, model_path: str, pipeline_path: str,
                  explainability_config: Optional[Dict] = None):
@@ -63,7 +45,6 @@ class FraudInferenceEngine:
         self._load_model()
         self._init_explainability()
 
-    # ─── MODEL LOADING ─────────────────────────────────────────────────
     def _load_model(self) -> None:
         if self.model_path.endswith(".onnx"):
             if not ONNX_AVAILABLE:
@@ -86,7 +67,6 @@ class FraudInferenceEngine:
         else:
             self.sklearn_model = joblib.load(self.model_path)
 
-    # ─── EXPLAINABILITY INITIALIZATION ─────────────────────────────────
     def _init_explainability(self) -> None:
         try:
             self.feature_names = self.get_feature_names()
@@ -126,7 +106,6 @@ class FraudInferenceEngine:
             logger.error("Failed to initialize explainability engine", exc_info=True)
             self.explainability_engine = None
 
-    # ─── MODEL ACCESSORS ───────────────────────────────────────────────
     def _get_classifier(self):
         if self.sklearn_model is None:
             return None
@@ -165,7 +144,6 @@ class FraudInferenceEngine:
     def get_threshold(self) -> float:
         return self.explainability_config.get("threshold", 0.5)
 
-    # ─── ONNX OUTPUT EXTRACTION ────────────────────────────────────────
     def _extract_fraud_scores_from_onnx_outputs(self, outputs) -> np.ndarray:
         output_names = [o.name.lower() for o in self.session.get_outputs()]
         candidate_indices = []
@@ -242,7 +220,6 @@ class FraudInferenceEngine:
             calibration = getattr(self.sklearn_model, "calibration_sigmoid", None)
         return calibration
 
-    # ─── TRANSFORM / SCORE ─────────────────────────────────────────────
     def transform(self, df_raw: pd.DataFrame) -> np.ndarray:
         X_processed = self.preprocessor.transform(df_raw)
 
@@ -250,6 +227,7 @@ class FraudInferenceEngine:
             X_processed = X_processed.toarray()
 
         X_processed = np.asarray(X_processed, dtype=np.float32)
+        X_processed = np.ascontiguousarray(X_processed)
 
         if self.expected_input_dim_ is not None and X_processed.shape[1] != self.expected_input_dim_:
             raise RuntimeError(
@@ -284,14 +262,9 @@ class FraudInferenceEngine:
 
         return np.clip(np.asarray(fraud_scores, dtype=np.float32), 0.0, 1.0)
 
-    # ─── SCORE + EXPLAIN (SINGLE TRANSACTION) ──────────────────────────
     def predict_with_explanation(self, df_raw: pd.DataFrame,
                                   transaction_data: Optional[Dict] = None,
                                   behavior_data: Optional[Dict] = None) -> Dict[str, Any]:
-        """
-        Score a single transaction AND generate an explanation.
-        GARANTIE : 'contributions' will NEVER be empty.
-        """
         fraud_score = float(self.predict_scores(df_raw)[0])
 
         if transaction_data is None:
@@ -326,55 +299,64 @@ class FraudInferenceEngine:
 
         return self._build_minimal_result(fraud_score, behavior_data)
 
-    # ─── BATCH SCORE + EXPLAIN ─────────────────────────────────────────
     def predict_batch_with_explanation(self, df_raw: pd.DataFrame,
                                         batch_items: List[Dict]) -> List[Dict]:
-        """
-        Score a batch of transactions AND generate explanations.
-        GARANTIE : 'contributions' in each result will NEVER be empty.
-        """
+        X_processed = self.transform(df_raw)
         fraud_scores = self.predict_scores(df_raw)
+
+        explain_engine = self.explainability_engine
+        n = len(fraud_scores)
+
+        if explain_engine is not None:
+            high_risk_mask = fraud_scores >= self.EXPLAIN_THRESHOLD
+            high_risk_indices = np.where(high_risk_mask)[0]
+            if len(high_risk_indices) > self.MAX_EXPLAIN_PER_BATCH:
+                top_k = np.argpartition(fraud_scores, -self.MAX_EXPLAIN_PER_BATCH)[-self.MAX_EXPLAIN_PER_BATCH:]
+                explain_indices = set(top_k)
+            else:
+                explain_indices = set(high_risk_indices)
+        else:
+            explain_indices = set()
+
         results = []
 
         for i, item in enumerate(batch_items):
+            fraud_score = float(fraud_scores[i])
             transaction_data = item.get("transaction", {})
             behavior_data = item.get("existing_behavior", {})
-            fraud_score = float(fraud_scores[i])
 
-            if self.explainability_engine is not None:
-                try:
-                    X_processed = self.transform(df_raw.iloc[[i]])
-                    features = X_processed[0]
+            if i not in explain_indices:
+                results.append(self._build_minimal_result(fraud_score, behavior_data))
+                continue
 
-                    result = self.explainability_engine.explain_fraud(
-                        features=features,
-                        fraud_score=fraud_score,
-                        transaction_data=transaction_data,
-                        behavior_data=behavior_data
-                    )
+            try:
+                features = X_processed[i]
 
-                    results.append({
-                        "fraud_score": fraud_score,
-                        "risk_level": result["fraud_reason_json"]["risk_level"],
-                        "alert_type": result["alert_type"],
-                        "fraud_reason": result["fraud_reason_json"],
-                        "supervised_score": fraud_score,
-                        "anomaly_score": fraud_score * 0.8,
-                        "behavioral_signals": behavior_data
-                    })
-                    continue
+                result = explain_engine.explain_fraud(
+                    features=features,
+                    fraud_score=fraud_score,
+                    transaction_data=transaction_data,
+                    behavior_data=behavior_data
+                )
 
-                except Exception:
-                    logger.error("Explainability failed for batch item %d", i, exc_info=True)
+                results.append({
+                    "fraud_score": fraud_score,
+                    "risk_level": result["fraud_reason_json"]["risk_level"],
+                    "alert_type": result["alert_type"],
+                    "fraud_reason": result["fraud_reason_json"],
+                    "supervised_score": fraud_score,
+                    "anomaly_score": fraud_score * 0.8,
+                    "behavioral_signals": behavior_data
+                })
 
-            results.append(self._build_minimal_result(fraud_score, behavior_data))
+            except Exception:
+                logger.error("Explainability failed for batch item %d", i, exc_info=True)
+                results.append(self._build_minimal_result(fraud_score, behavior_data))
 
         return results
 
-    # ─── MINIMAL FALLBACK (GUARANTEED NON-EMPTY) ───────────────────────
     def _build_minimal_result(self, fraud_score: float,
                                behavior_data: Optional[Dict] = None) -> Dict[str, Any]:
-        """Build a minimal result with guaranteed non-empty contributions."""
         threshold = self.get_threshold()
 
         if fraud_score >= threshold + (1.0 - threshold) * 0.6:
