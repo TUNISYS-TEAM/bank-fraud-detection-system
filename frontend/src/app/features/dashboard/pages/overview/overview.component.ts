@@ -198,7 +198,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     const trend = s?.activeAlertsTrend ?? '';
     return {
       label: 'Alertes Actives',
-      value: s?.activeAlerts ?? '...',
+      value: s ? s.activeAlerts : 'N/A',
       icon: 'bell',
       trend,
       trendUp: trend.startsWith('+'),
@@ -213,7 +213,7 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     const trend = s?.fraudRateTrend ?? '';
     return {
       label: 'Taux de Fraude',
-      value: s ? s.fraudRate.toFixed(1) + '%' : '...',
+      value: s ? s.fraudRate.toFixed(1) + '%' : 'N/A',
       icon: 'trending-up',
       trend,
       trendUp: trend.startsWith('+'),
@@ -227,9 +227,9 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
     const s = this.stats();
     return {
       label: 'Transactions Critiques',
-      value: s?.criticalTransactions ?? '...',
+      value: s ? s.criticalTransactions : 'N/A',
       icon: 'alert-octagon',
-      trend: 'Action requise',
+      trend: s ? 'Action requise' : undefined,
       trendUp: false,
       isStable: true,
       color: '#ef4444',
@@ -246,8 +246,8 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
         ? `${s.activeModel.accuracy.toFixed(1)}% précision`
         : undefined,
       trendUp: true,
-      color: '#10b981',
-      description: 'Déployé',
+      color: s?.activeModel ? '#10b981' : '#94a3b8',
+      description: s?.activeModel ? 'Déployé' : 'Aucun modèle',
     };
   });
 
@@ -257,54 +257,119 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   riskProfile = signal<RiskProfile | null>(null);
 
   riskiestChannelCard = computed((): KpiCard => {
+    const s = this.stats();
     const r = this.riskProfile()?.riskiestChannel;
+
+    // Si on est encore en train de charger (l'un des signaux est null)
+    if (!s || !this.riskProfile()) {
+      return {
+        label: 'Canal le Plus Risqué',
+        value: '...',
+        icon: 'radio',
+        color: '#94a3b8',
+        description: 'Chargement...'
+      };
+    }
+
+    const hasModel = !!s.activeModel;
+    const hasFraud = r && r.fraudCount > 0;
+    const displayNA = !hasModel || !hasFraud;
+
     return {
       label: 'Canal le Plus Risqué',
-      value: r ? this.translateChannel(r.name!) : '...',
+      value: displayNA ? 'N/A' : this.translateChannel(r!.name!),
       icon: 'radio',
-      trend: r ? `${r.fraudCount} fraudes` : undefined,
-      trendUp: true,
-      color: '#ef4444',
-      description: r ? `Taux: ${r.fraudRate.toFixed(1)}%` : 'Analyse globale',
+      trend: !displayNA ? `${r!.fraudCount} fraudes` : undefined,
+      trendUp: !displayNA,
+      color: displayNA ? '#94a3b8' : '#ef4444',
+      description: displayNA ? 'Indisponible' : `Taux: ${r!.fraudRate.toFixed(1)}%`,
     };
   });
 
   riskiestCategoryCard = computed((): KpiCard => {
+    const s = this.stats();
     const r = this.riskProfile()?.riskiestCategory;
+
+    if (!s || !this.riskProfile()) {
+      return {
+        label: 'Catégorie la Plus Risquée',
+        value: '...',
+        icon: 'shopping-bag',
+        color: '#94a3b8',
+        description: 'Chargement...'
+      };
+    }
+
+    const hasModel = !!s.activeModel;
+    const hasFraud = r && r.fraudCount > 0;
+    const displayNA = !hasModel || !hasFraud;
+
     return {
       label: 'Catégorie la Plus Risquée',
-      value: r?.name || '...',
+      value: displayNA ? 'N/A' : (r?.name || 'N/A'),
       icon: 'shopping-bag',
-      trend: r ? `${r.fraudCount} fraudes` : undefined,
-      trendUp: true,
-      color: '#f59e0b',
-      description: r ? `Taux: ${r.fraudRate.toFixed(1)}%` : 'Analyse globale',
+      trend: !displayNA ? `${r!.fraudCount} fraudes` : undefined,
+      trendUp: !displayNA,
+      color: displayNA ? '#94a3b8' : '#f59e0b',
+      description: displayNA ? 'Indisponible' : `Taux: ${r!.fraudRate.toFixed(1)}%`,
     };
   });
 
   riskiestHourCard = computed((): KpiCard => {
+    const s = this.stats();
     const r = this.riskProfile()?.riskiestHour;
+
+    if (!s || !this.riskProfile()) {
+      return {
+        label: 'Heure la Plus Risquée',
+        value: '...',
+        icon: 'clock',
+        color: '#94a3b8',
+        description: 'Chargement...'
+      };
+    }
+
+    const hasModel = !!s.activeModel;
+    const hasFraud = r && r.fraudCount > 0;
+    const displayNA = !hasModel || !hasFraud;
+
     return {
       label: 'Heure la Plus Risquée',
-      value: r?.label || '...',
+      value: displayNA ? 'N/A' : (r?.label || 'N/A'),
       icon: 'clock',
-      trend: r ? `${r.fraudCount} fraudes` : undefined,
-      trendUp: true,
-      color: '#8b5cf6',
-      description: r ? `Taux: ${r.fraudRate.toFixed(1)}%` : 'Analyse globale',
+      trend: !displayNA ? `${r!.fraudCount} fraudes` : undefined,
+      trendUp: !displayNA,
+      color: displayNA ? '#94a3b8' : '#8b5cf6',
+      description: displayNA ? 'Indisponible' : `Taux: ${r!.fraudRate.toFixed(1)}%`,
     };
   });
 
   riskiestAccountTypeCard = computed((): KpiCard => {
+    const s = this.stats();
     const r = this.riskProfile()?.riskiestAccountType;
+
+    if (!s || !this.riskProfile()) {
+      return {
+        label: 'Type de Compte le Plus Risqué',
+        value: '...',
+        icon: 'credit-card',
+        color: '#94a3b8',
+        description: 'Chargement...'
+      };
+    }
+
+    const hasModel = !!s.activeModel;
+    const hasFraud = r && r.fraudCount > 0;
+    const displayNA = !hasModel || !hasFraud;
+
     return {
       label: 'Type de Compte le Plus Risqué',
-      value: r ? this.translateAccountType(r.name!) : '...',
+      value: displayNA ? 'N/A' : this.translateAccountType(r!.name!),
       icon: 'credit-card',
-      trend: r ? `${r.fraudCount} fraudes` : undefined,
-      trendUp: true,
-      color: '#3b82f6',
-      description: r ? `Taux: ${r.fraudRate.toFixed(1)}%` : 'Analyse globale',
+      trend: !displayNA ? `${r!.fraudCount} fraudes` : undefined,
+      trendUp: !displayNA,
+      color: displayNA ? '#94a3b8' : '#3b82f6',
+      description: displayNA ? 'Indisponible' : `Taux: ${r!.fraudRate.toFixed(1)}%`,
     };
   });
 
@@ -368,16 +433,24 @@ export class OverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   });
 
   forecastAnomaliesCard = computed((): KpiCard => {
+    const s = this.stats();
     const kpis = this.selectedZoneKpis();
-    // Utiliser total_anomalies (somme) pour la vue globale, hotspot_score × 100 pour une zone
-    const val = kpis?.total_anomalies ?? (kpis?.hotspot_score != null ? Math.round(kpis.hotspot_score * 100) : null);
+
+    if (!s || !kpis) {
+      return { label: 'Anomalies Prévues', value: '...', icon: 'alert-circle', color: '#94a3b8' };
+    }
+
+    const hasModel = !!s.activeModel;
+    const val = kpis.total_anomalies ?? (kpis.hotspot_score != null ? Math.round(kpis.hotspot_score * 100) : null);
+    const displayNA = !hasModel || val === null;
+
     return {
       label: 'Anomalies Prévues',
-      value: val != null ? val : 'N/A',
+      value: displayNA ? 'N/A' : val,
       icon: 'alert-circle',
-      trend: val != null ? 'Volume estimé' : 'Indisponible',
-      trendUp: true,
-      color: '#6366f1',
+      trend: !displayNA ? 'Volume estimé' : 'Indisponible',
+      trendUp: !displayNA,
+      color: displayNA ? '#94a3b8' : '#6366f1',
     };
   });
 

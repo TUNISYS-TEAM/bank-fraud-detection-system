@@ -37,9 +37,9 @@ public class SessionController {
         List<UserSession> allSessions = userSessionService.getAllSessions();
         
         // Filter by active status if requested
-        if (activeOnly != null && activeOnly) {
+        if (activeOnly != null) {
             allSessions = allSessions.stream()
-                    .filter(UserSession::getIsActive)
+                    .filter(session -> session.getIsActive().equals(activeOnly))
                     .collect(Collectors.toList());
         }
         
@@ -49,7 +49,7 @@ public class SessionController {
                 .collect(Collectors.toList());
         
         // Manual pagination
-        int start = page * size;
+        int start = Math.min(page * size, sessionResponses.size());
         int end = Math.min(start + size, sessionResponses.size());
         
         List<SessionResponse> pageContent = sessionResponses.subList(start, end);

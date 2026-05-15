@@ -87,15 +87,8 @@ export class SessionsComponent implements OnInit {
     this.loadSessions();
   }
 
-  toggleActiveFilter(): void {
-    const current = this.activeOnly();
-    if (current === undefined) {
-      this.activeOnly.set(true);
-    } else if (current === true) {
-      this.activeOnly.set(false);
-    } else {
-      this.activeOnly.set(undefined);
-    }
+  setActiveFilter(value: boolean | undefined): void {
+    this.activeOnly.set(value);
     this.currentPage.set(0);
     this.loadSessions();
   }
@@ -104,7 +97,7 @@ export class SessionsComponent implements OnInit {
     const current = this.activeOnly();
     if (current === undefined) return 'Toutes';
     if (current === true) return 'Actives';
-    return 'Inactives';
+    return 'Terminées';
   }
 
   terminateSession(session: Session): void {
@@ -254,7 +247,6 @@ export class SessionsComponent implements OnInit {
     return rangeWithDots;
   }
 
-  // NOUVELLE MÉTHODE AJOUTÉE
   getUserInitials(session: Session): string {
     if (session.userName) {
       const names = session.userName.split(' ');

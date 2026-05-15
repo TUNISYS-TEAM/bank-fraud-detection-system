@@ -13,10 +13,10 @@ public class ArchiveScheduler {
 
     private final ArchiveJobService archiveJobService;
 
-    // Runs every day at 04:44:00 (UTC Server Time).
-    @Scheduled(cron = "0 44 4 * * *")
+    // Runs every day at 19:10:00 (UTC Server Time).
+    @Scheduled(cron = "0 10 19 * * *")
     public void runScheduledArchive() {
-        log.info("Starting scheduled archive job at 04:44 UTC...");
+        log.info("Starting scheduled archive job at 19:10 UTC...");
         try {
             archiveJobService.runAuditLogArchive();
             archiveJobService.runUserSessionArchive();

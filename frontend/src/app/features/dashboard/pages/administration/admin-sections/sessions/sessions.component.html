@@ -10,21 +10,21 @@
         <div class="flex items-center space-x-3">
             <!-- Filtre par statut -->
             <div class="flex items-center p-1 bg-gray-100 rounded-lg">
-                <button (click)="toggleActiveFilter()"
+                <button (click)="setActiveFilter(undefined)"
                         class="px-3 py-1.5 text-xs font-medium rounded-md transition-all"
                         [class.bg-white]="activeOnly() === undefined"
                         [class.text-gray-700]="activeOnly() === undefined"
                         [class.text-gray-500]="activeOnly() !== undefined">
                     Toutes
                 </button>
-                <button (click)="toggleActiveFilter()"
+                <button (click)="setActiveFilter(true)"
                         class="px-3 py-1.5 text-xs font-medium rounded-md transition-all"
                         [class.bg-white]="activeOnly() === true"
                         [class.text-green-700]="activeOnly() === true"
                         [class.text-gray-500]="activeOnly() !== true" >
                     Actives
                 </button>
-                <button (click)="toggleActiveFilter()"
+                <button (click)="setActiveFilter(false)"
                         class="px-3 py-1.5 text-xs font-medium rounded-md transition-all"
                         [class.bg-white]="activeOnly() === false"
                         [class.text-gray-700]="activeOnly() === false"
