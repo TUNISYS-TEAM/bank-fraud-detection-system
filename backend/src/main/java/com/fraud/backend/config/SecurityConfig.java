@@ -38,6 +38,7 @@ public class SecurityConfig {
                 "/api/auth/csrf",   
                 "/api/auth/request-otp",     
                 "/api/auth/verify-otp",       
+                "/api/auth/forgot-password",
                 "/api/auth/resend-verification", 
                 "/api/messages/**",
                 "/public/**",
@@ -80,7 +81,8 @@ public class SecurityConfig {
                                                 "/api/auth/login",
                                                 "/api/auth/request-otp",
                                                 "/api/auth/verify-otp",
-                                                "/api/auth/resend-verification"
+                                                "/api/auth/resend-verification",
+                                                "/api/auth/forgot-password"
                                         )
                                 )
                                 .sessionManagement(session -> session

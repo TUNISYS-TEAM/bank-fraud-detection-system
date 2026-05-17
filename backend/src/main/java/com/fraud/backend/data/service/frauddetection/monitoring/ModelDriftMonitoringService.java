@@ -830,24 +830,6 @@ public class ModelDriftMonitoringService {
                 "model_version", model.getVersion());
     }
 
-    private int extractValidationSize(ModelML model) {
-        try {
-            Map<String, Object> params = model.getHyperparameters();
-            if (params != null && params.containsKey("_trainingResults")) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> results = (Map<String, Object>) params.get("_trainingResults");
-                if (results.containsKey("training_stats")) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> stats = (Map<String, Object>) results.get("training_stats");
-                    if (stats.containsKey("test_rows"))
-                        return ((Number) stats.get("test_rows")).intValue();
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Could not extract validation size, using default 1000: {}", e.getMessage());
-        }
-        return 1000;
-    }
 
     private double extractModelThreshold(ModelML model) {
         try {

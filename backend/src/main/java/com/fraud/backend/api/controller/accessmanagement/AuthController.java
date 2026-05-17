@@ -47,7 +47,7 @@ public class AuthController {
     private final UserService userService;
     private final KeycloakMappingRepository keycloakMappingRepository;
     private final KeycloakService keycloakService;
-    private final OtpService otpService;   // <-- NEW Kafka‑based OTP service
+    private final OtpService otpService; // <-- NEW Kafka‑based OTP service
 
     @Value("${keycloak.server-url}")
     private String keycloakUrl;
@@ -87,7 +87,8 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("message", "CSRF cookie set by Spring Security"));
     }
 
-    // ==================== OTP EMAIL VERIFICATION ENDPOINTS (Kafka‑based) ====================
+    // ==================== OTP EMAIL VERIFICATION ENDPOINTS (Kafka‑based)
+    // ====================
 
     @PostMapping("/request-otp")
     public ResponseEntity<Map<String, String>> requestOTP(@RequestBody Map<String, String> request) {
@@ -231,13 +232,14 @@ public class AuthController {
 
             AppUser user = userService.getByEmail(request.getEmail());
 
-            // Check email verification – if not verified, return error (frontend will request OTP)
-            /*if (!isEmailVerified(user)) {
+            // Check email verification – if not verified, return error (frontend will
+            // request OTP)
+            if (!isEmailVerified(user)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(Map.of(
                                 "error", "EMAIL_NOT_VERIFIED",
                                 "message", "Votre email n'est pas encore vérifié. Veuillez demander un code OTP."));
-            }*/
+            }
 
             // Ensure KeycloakMapping exists
             try {
@@ -518,5 +520,81 @@ public class AuthController {
             log.error("Failed to extract keycloak ID from token", e);
         }
         return null;
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Email requis"));
+        }
+
+        try {
+            userService.resetPassword(email);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Un mot de passe temporaire a été envoyé à votre adresse email."));
+        } catch (EntityNotFoundException e) {
+            // Sécurité : ne pas révéler si l'email existe ou non
+            return ResponseEntity.ok(Map.of(
+                    "message", "Si l'email existe, un mot de passe temporaire a été envoyé."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/change-password/initiate")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, String>> initiatePasswordChange(
+            @RequestBody Map<String, String> request) {
+
+        String email = request.get("email");
+        String currentPassword = request.get("currentPassword");
+        String newPassword = request.get("newPassword");
+
+        if (email == null || currentPassword == null || newPassword == null) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Email, mot de passe actuel et nouveau mot de passe requis"));
+        }
+
+        try {
+            userService.initiatePasswordChange(email, currentPassword, newPassword);
+            return ResponseEntity.ok(Map.of(
+                    "message",
+                    "Un code de vérification a été envoyé à votre email pour confirmer le changement de mot de passe.",
+                    "requiresOtp", "true"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Failed to initiate password change for: {}", email, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Erreur lors de l'initiation du changement de mot de passe"));
+        }
+    }
+
+    @PostMapping("/change-password/confirm")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, String>> confirmPasswordChange(
+            @RequestBody Map<String, String> request) {
+
+        String email = request.get("email");
+        String otpCode = request.get("otpCode");
+        String newPassword = request.get("newPassword");
+
+        if (email == null || otpCode == null || newPassword == null) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Email, code OTP et nouveau mot de passe requis"));
+        }
+
+        try {
+            userService.confirmPasswordChange(email, otpCode, newPassword);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Mot de passe modifié avec succès"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Failed to confirm password change for: {}", email, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Erreur lors de la confirmation du changement de mot de passe"));
+        }
     }
 }

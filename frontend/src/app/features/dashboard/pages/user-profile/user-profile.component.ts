@@ -1,8 +1,11 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors, AsyncValidatorFn } from '@angular/forms';
-import { ProfileService, UserProfile } from '../../../../core/services/profile.service';
+import { HttpClient } from '@angular/common/http';
 import { AuthStore } from '../../../../core/store/auth.store';
+import { ProfileService, UserProfile } from '../../../../core/services/profile.service';
+import { environment } from '../../../../../environments/environment';
 import { catchError, map, Observable, of, switchMap, timer } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
 
 @Component({
   selector: 'app-user-profile',
@@ -11,6 +14,7 @@ import { catchError, map, Observable, of, switchMap, timer } from 'rxjs';
 })
 export class UserProfileComponent implements OnInit {
   private fb = inject(FormBuilder);
+  private http = inject(HttpClient);
   private profileService = inject(ProfileService);
   authStore = inject(AuthStore);
 
@@ -37,6 +41,14 @@ export class UserProfileComponent implements OnInit {
   // Forms
   profileForm!: FormGroup;
   passwordForm!: FormGroup;
+
+  // État du changement de mot de passe OTP
+  passwordChangeStep = signal<'password' | 'otp'>('password');
+  otpDigits = signal<string[]>(['', '', '', '', '', '']);
+  isInitiating = signal(false);
+  isConfirming = signal(false);
+  passwordChangeMessage = signal('');
+  passwordChangeError = signal(false);
 
   ngOnInit(): void {
     this.initForms();
@@ -111,13 +123,10 @@ export class UserProfileComponent implements OnInit {
         this.profile.set(updatedProfile);
         this.saving.set(false);
         this.successMessage.set('Profil mis à jour avec succès');
-        
-        // Push changes to global AuthStore immediately for sidebar/header updates
         this.authStore.updateUser({
           firstName: updatedProfile.firstName,
           lastName: updatedProfile.lastName
         });
-
         this.autoClearMessage('success');
       },
       error: (err) => {
@@ -128,42 +137,142 @@ export class UserProfileComponent implements OnInit {
     });
   }
 
-  changePassword(): void {
-    if (this.passwordForm.invalid) return;
-    this.changingPassword.set(true);
-    this.clearPasswordMessages();
+  // ==================== CHANGEMENT DE MOT DE PASSE AVEC OTP ====================
+
+  /** Étape 1 : Soumettre mot de passe actuel + nouveau -> envoi OTP */
+  initiatePasswordChange(): void {
+    if (this.passwordForm.invalid || this.isInitiating()) return;
 
     const data = this.passwordForm.value;
+    this.isInitiating.set(true);
+    this.passwordChangeMessage.set('');
+    this.passwordChangeError.set(false);
 
-    this.profileService.changePassword({
+    this.http.post(`${environment.apiUrl}/auth/change-password/initiate`, {
+      email: this.profile()?.email,
       currentPassword: data.currentPassword,
       newPassword: data.newPassword
     }).subscribe({
-      next: () => {
-        this.changingPassword.set(false);
-        this.passwordSuccess.set('Mot de passe modifié avec succès');
-        this.passwordForm.reset();
-        this.autoClearMessage('passwordSuccess');
+      next: (response: any) => {
+        this.isInitiating.set(false);
+        this.passwordChangeStep.set('otp');
+        this.passwordChangeMessage.set(response.message || 'Un code de vérification a été envoyé à votre email.');
+        this.passwordChangeError.set(false);
+        this.otpDigits.set(['', '', '', '', '', '']);
       },
-      error: (err) => {
-        this.changingPassword.set(false);
-        this.passwordError.set(err.error?.message || 'Erreur lors du changement de mot de passe');
-        this.autoClearMessage('passwordError');
+      error: (error: HttpErrorResponse) => {
+        this.isInitiating.set(false);
+        this.passwordChangeMessage.set(error.error?.error || 'Erreur lors de l\'envoi du code.');
+        this.passwordChangeError.set(true);
       }
     });
   }
 
-  // VALIDATION UNIQUE PHONE
+  /** Étape 2 : Confirmer avec OTP + nouveau mot de passe */
+  confirmPasswordChange(): void {
+    const otp = this.otpDigits().join('');
+    if (otp.length !== 6 || this.isConfirming()) return;
+
+    const newPassword = this.passwordForm.get('newPassword')?.value;
+    this.isConfirming.set(true);
+    this.passwordChangeMessage.set('');
+    this.passwordChangeError.set(false);
+
+    this.http.post(`${environment.apiUrl}/auth/change-password/confirm`, {
+      email: this.profile()?.email,
+      otpCode: otp,
+      newPassword: newPassword
+    }).subscribe({
+      next: (response: any) => {
+        this.isConfirming.set(false);
+        this.passwordSuccess.set(response.message || 'Mot de passe modifié avec succès');
+        this.passwordForm.reset();
+        this.passwordChangeStep.set('password');
+        this.otpDigits.set(['', '', '', '', '', '']);
+        this.passwordChangeMessage.set('');
+        this.autoClearMessage('passwordSuccess');
+      },
+      error: (error: HttpErrorResponse) => {
+        this.isConfirming.set(false);
+        this.passwordChangeMessage.set(error.error?.error || 'Code OTP invalide ou expiré');
+        this.passwordChangeError.set(true);
+        this.otpDigits.set(['', '', '', '', '', '']);
+      }
+    });
+  }
+
+  onOtpInput(index: number, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const value = input.value;
+    const currentDigits = [...this.otpDigits()];
+
+    if (value && !/^\d$/.test(value)) {
+      currentDigits[index] = '';
+      this.otpDigits.set(currentDigits);
+      input.value = '';
+      return;
+    }
+
+    currentDigits[index] = value;
+    this.otpDigits.set(currentDigits);
+    input.value = value;
+
+    if (value && index < 5) {
+      const inputs = document.querySelectorAll('.otp-input');
+      const nextInput = inputs[index + 1] as HTMLInputElement;
+      if (nextInput) nextInput.focus();
+    }
+
+    if (this.isOtpValid()) {
+      this.confirmPasswordChange();
+    }
+  }
+
+  onOtpKeydown(index: number, event: KeyboardEvent): void {
+    if (event.key === 'Backspace' && !this.otpDigits()[index] && index > 0) {
+      const inputs = document.querySelectorAll('.otp-input');
+      const prevInput = inputs[index - 1] as HTMLInputElement;
+      if (prevInput) prevInput.focus();
+    }
+  }
+
+  onOtpPaste(event: ClipboardEvent): void {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData('text/plain').trim() || '';
+    if (/^\d{6}$/.test(pasted)) {
+      const digits = pasted.split('');
+      this.otpDigits.set(digits);
+      const inputs = document.querySelectorAll('.otp-input');
+      digits.forEach((d, i) => {
+        if (inputs[i]) (inputs[i] as HTMLInputElement).value = d;
+      });
+      this.confirmPasswordChange();
+    }
+  }
+
+  isOtpValid(): boolean {
+    const code = this.otpDigits().join('');
+    return code.length === 6 && /^\d{6}$/.test(code);
+  }
+
+  backToPasswordStep(): void {
+    this.passwordChangeStep.set('password');
+    this.passwordChangeMessage.set('');
+    this.passwordChangeError.set(false);
+    this.otpDigits.set(['', '', '', '', '', '']);
+  }
+
+  /** TrackBy pour la boucle des inputs OTP */
+  trackByIndex(index: number): number {
+    return index;
+  }
+
+  // ==================== VALIDATION PHONE ====================
   private phoneUniqueValidator(): AsyncValidatorFn {
     return (control: AbstractControl): Observable<ValidationErrors | null> => {
-      if (!control.value || control.pristine) {
-        return of(null);
-      }
-
+      if (!control.value || control.pristine) return of(null);
       const currentPhone = this.profile()?.phoneNumber;
-      if (control.value === currentPhone) {
-        return of(null);
-      }
+      if (control.value === currentPhone) return of(null);
 
       return timer(200).pipe(
         switchMap(() => this.profileService.checkPhoneTaken(control.value)),
@@ -180,7 +289,7 @@ export class UserProfileComponent implements OnInit {
     };
   }
 
-  // HELPERS (REQUIRED BY TEMPLATE)
+  // ==================== UTILITAIRES D'AFFICHAGE ====================
   getInitials(): string {
     const p = this.profile();
     if (!p) return '?';
@@ -198,22 +307,12 @@ export class UserProfileComponent implements OnInit {
 
   formatDate(date: string | null | undefined): string {
     if (!date) return '—';
-    return new Date(date).toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric'
-    });
+    return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   }
 
   formatDateTime(date: string | null | undefined): string {
     if (!date) return '—';
-    return new Date(date).toLocaleString('fr-FR', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return new Date(date).toLocaleString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   getPasswordStrength(): { label: string; class: string; width: string } {
@@ -233,14 +332,10 @@ export class UserProfileComponent implements OnInit {
     return { label: 'Très fort', class: 'strength-very-strong', width: '100%' };
   }
 
+  // ==================== NETTOYAGE MESSAGES ====================
   private clearMessages(): void {
     this.successMessage.set('');
     this.errorMessage.set('');
-  }
-
-  private clearPasswordMessages(): void {
-    this.passwordSuccess.set('');
-    this.passwordError.set('');
   }
 
   private autoClearMessage(type: string): void {

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.UnsupportedEncodingException;
+import java.time.LocalDateTime;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +24,7 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
-    private final EmailSettingsService emailSettingsService;  // Use dedicated service
+    private final EmailSettingsService emailSettingsService; // Use dedicated service
 
     @Value("${spring.mail.username}")
     private String fromEmail;
@@ -68,7 +69,7 @@ public class EmailService {
             log.info("Email notifications disabled, skipping verification success email to: {}", to);
             return;
         }
-        
+
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -100,7 +101,7 @@ public class EmailService {
             log.info("Email notifications or critical alerts disabled, skipping summary to: {}", to);
             return;
         }
-        
+
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -134,7 +135,7 @@ public class EmailService {
             log.info("Email notifications or model drift alerts disabled, skipping drift alert to: {}", to);
             return;
         }
-        
+
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -157,6 +158,93 @@ public class EmailService {
         } catch (MessagingException | UnsupportedEncodingException e) {
             log.error("Failed to send critical model drift alert to {}: {}", to, e.getMessage());
             throw new RuntimeException("Failed to send critical model drift alert email", e);
+        }
+    }
+
+    /**
+     * Send temporary password email after password reset request
+     */
+    public void sendTemporaryPasswordEmail(String to, String name, String temporaryPassword) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(to);
+            helper.setSubject("Fraud Detection Platform - Mot de passe temporaire");
+            helper.setReplyTo("support@fraud-detection.com");
+
+            Context context = new Context();
+            context.setVariable("name", name);
+            context.setVariable("temporaryPassword", temporaryPassword);
+            context.setVariable("year", java.time.Year.now().getValue());
+            context.setVariable("supportEmail", "support@fraud-detection.com");
+
+            String htmlContent = templateEngine.process("temporary-password-email", context);
+            helper.setText(htmlContent, true);
+
+            mailSender.send(message);
+            log.info("Temporary password email sent to: {}", to);
+        } catch (MessagingException | UnsupportedEncodingException e) {
+            log.error("Failed to send temporary password email to {}: {}", to, e.getMessage());
+            throw new RuntimeException("Failed to send temporary password email", e);
+        }
+    }
+
+    public void sendPasswordChangeConfirmationEmail(String to, String name) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(to);
+            helper.setSubject("Fraud Detection Platform - Mot de passe modifié avec succès");
+            helper.setReplyTo("support@fraud-detection.com");
+
+            Context context = new Context();
+            context.setVariable("name", name);
+            context.setVariable("changeDate", LocalDateTime.now());
+            context.setVariable("year", java.time.Year.now().getValue());
+            context.setVariable("supportEmail", "support@fraud-detection.com");
+
+            String htmlContent = templateEngine.process("password-change-confirmation", context);
+            helper.setText(htmlContent, true);
+
+            mailSender.send(message);
+            log.info("Password change confirmation email sent to: {}", to);
+        } catch (MessagingException | UnsupportedEncodingException e) {
+            log.error("Failed to send password change confirmation email to {}: {}", to, e.getMessage());
+            throw new RuntimeException("Failed to send password change confirmation email", e);
+        }
+    }
+
+    /**
+     * Send security alert email BEFORE OTP for password change
+     */
+    public void sendPasswordChangeAlertEmail(String to, String name, String userEmail) {
+        // Email critique - pas de vérification des paramètres de notification
+
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(to);
+            helper.setSubject("Alerte de sécurité - Tentative de changement de mot de passe");
+            helper.setReplyTo("support@fraud-detection.com");
+
+            Context context = new Context();
+            context.setVariable("name", name);
+            context.setVariable("email", userEmail);
+            context.setVariable("changeDate", LocalDateTime.now());
+            context.setVariable("year", java.time.Year.now().getValue());
+            context.setVariable("supportEmail", "support@fraud-detection.com");
+
+            String htmlContent = templateEngine.process("password-change-alert", context);
+            helper.setText(htmlContent, true);
+
+            mailSender.send(message);
+            log.info("Password change alert email sent to: {}", to);
+        } catch (MessagingException | UnsupportedEncodingException e) {
+            log.error("Failed to send password change alert email to {}: {}", to, e.getMessage());
+            // Ne pas lancer d'exception pour ne pas bloquer le flux OTP
         }
     }
 }

@@ -17,9 +17,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -34,10 +36,10 @@ public class UserService {
     private final UserSessionRepository userSessionRepository;
     private final RoleRepository roleRepository;
     private final KeycloakService keycloakService;
-    private final OtpService otpService;  // ADDED: OTP Service dependency
+    private final EmailService emailService;
+    private final OtpService otpService;
     private final BCryptPasswordEncoder passwordEncoder;
 
-    // Hierarchical rules for manager assignment
     private static final Map<String, List<String>> ALLOWED_MANAGER_ROLES = new HashMap<>();
 
     static {
@@ -46,13 +48,13 @@ public class UserService {
         ALLOWED_MANAGER_ROLES.put("ADMIN", Collections.emptyList());
     }
 
-    // Constructor with all dependencies (replaces @RequiredArgsConstructor for clarity)
     public UserService(
             AppUserRepository appUserRepository,
             KeycloakMappingRepository keycloakMappingRepository,
             UserSessionRepository userSessionRepository,
             RoleRepository roleRepository,
             KeycloakService keycloakService,
+            EmailService emailService,
             OtpService otpService,
             BCryptPasswordEncoder passwordEncoder) {
         this.appUserRepository = appUserRepository;
@@ -60,10 +62,12 @@ public class UserService {
         this.userSessionRepository = userSessionRepository;
         this.roleRepository = roleRepository;
         this.keycloakService = keycloakService;
+        this.emailService = emailService;
         this.otpService = otpService;
         this.passwordEncoder = passwordEncoder;
     }
 
+    // ==================== HIERARCHY CONFIG ====================
     public void setAllowedManagerRolesForCustomRole(String customRoleName, List<String> allowedManagerRoles) {
         ALLOWED_MANAGER_ROLES.put(customRoleName, allowedManagerRoles);
         log.info("Allowed manager roles for role '{}' set to: {}", customRoleName, allowedManagerRoles);
@@ -73,27 +77,21 @@ public class UserService {
     private void validateManagerAssignment(AppUser user, AppUser manager) {
         if (manager == null)
             return;
-
         String userRole = user.getRole().getName();
         String managerRole = manager.getRole().getName();
-
         List<String> allowedRoles = ALLOWED_MANAGER_ROLES.getOrDefault(userRole, Collections.emptyList());
-
-        if (allowedRoles.isEmpty() && manager != null) {
+        if (allowedRoles.isEmpty()) {
             throw new IllegalArgumentException(
                     String.format("L'utilisateur avec le rôle '%s' ne peut pas avoir de manager", userRole));
         }
-
         if (!allowedRoles.contains(managerRole)) {
             throw new IllegalArgumentException(
                     String.format("Un utilisateur avec le rôle '%s' ne peut pas avoir un manager avec le rôle '%s'. " +
                             "Managers autorisés: %s", userRole, managerRole, allowedRoles));
         }
-
         if (manager.getId().equals(user.getId())) {
             throw new IllegalArgumentException("Un utilisateur ne peut pas être son propre manager");
         }
-
         if (isCircularReference(user, manager)) {
             throw new IllegalArgumentException("La hiérarchie ne peut pas créer une référence circulaire");
         }
@@ -102,11 +100,9 @@ public class UserService {
     private boolean isCircularReference(AppUser user, AppUser potentialManager) {
         Set<Long> visited = new HashSet<>();
         AppUser current = potentialManager;
-
         while (current != null && !visited.contains(current.getId())) {
-            if (current.getId().equals(user.getId())) {
+            if (current.getId().equals(user.getId()))
                 return true;
-            }
             visited.add(current.getId());
             current = current.getManager();
         }
@@ -115,14 +111,11 @@ public class UserService {
 
     private void validateManagerCapability(AppUser potentialManager) {
         String managerRole = potentialManager.getRole().getName();
-
         boolean canBeManager = ALLOWED_MANAGER_ROLES.entrySet().stream()
                 .anyMatch(entry -> entry.getValue().contains(managerRole));
-
         if (!canBeManager) {
             throw new IllegalArgumentException(
-                    String.format(
-                            "Le rôle '%s' ne peut pas être manager. Seuls les rôles suivants peuvent être managers: %s",
+                    String.format("Le rôle '%s' ne peut pas être manager. Managers autorisés: %s",
                             managerRole, getAllRolesThatCanBeManagers()));
         }
     }
@@ -170,12 +163,10 @@ public class UserService {
 
     private AppUser getManagerForRole(String roleName) {
         List<String> allowedManagers = ALLOWED_MANAGER_ROLES.getOrDefault(roleName, Collections.emptyList());
-
         for (String managerRole : allowedManagers) {
             Optional<AppUser> manager = appUserRepository.findFirstByRoleName(managerRole);
-            if (manager.isPresent()) {
+            if (manager.isPresent())
                 return manager.get();
-            }
         }
         return null;
     }
@@ -191,7 +182,6 @@ public class UserService {
         if (appUserRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email déjà existant: " + email);
         }
-
         if (normalizedPhone != null && appUserRepository.existsByPhoneNumber(normalizedPhone)) {
             throw new IllegalArgumentException("Numéro de téléphone déjà existant: " + normalizedPhone);
         }
@@ -199,7 +189,6 @@ public class UserService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new EntityNotFoundException("Rôle non trouvé: " + roleId));
 
-        // Create user in Keycloak using the keycloak role name
         String keycloakId = keycloakService.createUser(email, firstName, lastName, password, role.getName());
 
         try {
@@ -218,7 +207,6 @@ public class UserService {
                     .isActive(active)
                     .build();
 
-            // Manager assignment
             if (managerId != null) {
                 AppUser manager = getById(managerId);
                 validateManagerCapability(manager);
@@ -226,14 +214,12 @@ public class UserService {
                 user.setManager(manager);
             } else {
                 AppUser autoManager = getManagerForRole(role.getName());
-                if (autoManager != null) {
+                if (autoManager != null)
                     user.setManager(autoManager);
-                }
             }
 
             AppUser savedUser = appUserRepository.save(user);
 
-            // Save Keycloak mapping
             KeycloakMapping mapping = KeycloakMapping.builder()
                     .keycloakId(keycloakId)
                     .user(savedUser)
@@ -253,7 +239,6 @@ public class UserService {
 
             return savedUser;
         } catch (Exception e) {
-            // Rollback: delete user from Keycloak if DB save fails
             log.error("Erreur lors de la création en BD, rollback Keycloak pour l'utilisateur: {}", email, e);
             try {
                 keycloakService.deleteUser(keycloakId);
@@ -265,116 +250,76 @@ public class UserService {
         }
     }
 
-    // ==================== EMAIL VERIFICATION METHODS (UPDATED FOR OTP) ====================
-
-    /**
-     * Called when user tries to login but email is not verified
-     * This will generate and send OTP instead of Keycloak email
-     */
+    // ==================== EMAIL VERIFICATION (OTP) ====================
     @Transactional
     public void sendVerificationOnLoginAttempt(String email) {
         AppUser user = getByEmail(email);
-
         if (user.getIsActive() == null || !user.getIsActive()) {
             throw new IllegalArgumentException("Compte désactivé");
         }
-
-        // Use OtpService instead of KeycloakService
         otpService.generateAndSendOtp(email, user.getFirstName(), "VERIFICATION");
         log.info("OTP sent automatically on login attempt for: {}", email);
     }
 
-    /**
-     * Verify email using OTP code (used after user enters code)
-     */
     @Transactional
     public boolean verifyEmailWithOTP(String email, String otpCode) {
-        // Verify OTP using KeycloakService which delegates to OtpCacheService
         if (!keycloakService.verifyOTP(email, otpCode)) {
             log.warn("Invalid OTP for email: {}", email);
             return false;
         }
-
-        // Get user and mark email as verified in Keycloak
         AppUser user = getByEmail(email);
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Keycloak mapping non trouvé pour l'utilisateur: " + user.getId()));
-
         keycloakService.markEmailAsVerified(mapping.getKeycloakId(), email, user.getFirstName());
         log.info("Email successfully verified via OTP for: {}", email);
-
         return true;
     }
 
-    /**
-     * Verify email (used after user enters code) - kept for backward compatibility
-     */
     @Transactional
     public void verifyEmail(Long userId) {
         AppUser user = getById(userId);
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(userId)
                 .orElseThrow(
                         () -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + userId));
-
         keycloakService.markEmailAsVerified(mapping.getKeycloakId(), user.getEmail(), user.getFirstName());
         log.info("Email successfully verified for user: {} ({})", user.getEmail(), userId);
     }
 
-    /**
-     * Verify email using email address (for login flow) - uses OTP verification
-     */
     @Transactional
     public boolean verifyEmailByEmailWithOTP(String email, String otpCode) {
         return verifyEmailWithOTP(email, otpCode);
     }
 
-    /**
-     * Verify email using email address (for login flow) - kept for backward compatibility
-     * This now uses OTP
-     */
     @Transactional
     public void verifyEmailByEmail(String email) {
-        // This method is kept for compatibility but should not be used directly
-        // Use verifyEmailWithOTP instead
         throw new UnsupportedOperationException("Use verifyEmailWithOTP with OTP code instead");
     }
 
-    /**
-     * Resend OTP for verification
-     */
     @Transactional
     public void resendVerificationEmail(Long userId) {
         AppUser user = getById(userId);
-        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(userId)
-                .orElseThrow(
-                        () -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + userId));
-
         if (user.getIsActive() == null || !user.getIsActive()) {
             throw new IllegalArgumentException(
                     "Impossible d'envoyer un email de vérification à un utilisateur désactivé");
         }
-
-        // Use OtpService instead of KeycloakService
         otpService.generateAndSendOtp(user.getEmail(), user.getFirstName(), "VERIFICATION");
         log.info("OTP resent to user: {}", user.getEmail());
     }
 
-    // ==================== UPDATE, ROLE, MANAGER, DELETE METHODS ====================
+    // ==================== UPDATE / ROLE / MANAGER / DELETE ====================
     @Transactional
     public AppUser updateUser(Long id, String firstName, String lastName, String email,
             String phoneNumber, String address, LocalDate dateOfBirth,
             Long roleId, Boolean isActive, Long managerId) {
 
         String normalizedPhone = normalizePhoneNumber(phoneNumber);
-
         AppUser user = getById(id);
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
                 .orElseThrow(
                         () -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
 
         boolean emailChanged = !user.getEmail().equals(email);
-
         if (emailChanged) {
             Optional<AppUser> existingUserOpt = appUserRepository.findByEmail(email);
             if (existingUserOpt.isPresent()) {
@@ -383,6 +328,7 @@ public class UserService {
                         + existingUser.getFirstName() + " " + existingUser.getLastName());
             }
         }
+
         boolean roleChanged = roleId != null && !user.getRole().getId().equals(roleId);
         boolean activeChanged = isActive != null && user.getIsActive() != isActive;
         boolean managerChanged = managerId != null
@@ -409,15 +355,13 @@ public class UserService {
         }
 
         if (activeChanged) {
-            if (isActive) {
+            if (isActive)
                 keycloakService.enableUser(mapping.getKeycloakId());
-            } else {
+            else
                 keycloakService.disableUser(mapping.getKeycloakId());
-            }
             user.setIsActive(isActive);
         }
 
-        // Check phone number uniqueness if it changed
         if (normalizedPhone != null && !normalizedPhone.equals(user.getPhoneNumber())) {
             if (appUserRepository.existsByPhoneNumberAndUuidNot(normalizedPhone, user.getUuid())) {
                 throw new IllegalArgumentException("Numéro de téléphone déjà existant: " + normalizedPhone);
@@ -444,7 +388,6 @@ public class UserService {
         AppUser user = getById(id);
         Role newRole = roleRepository.findById(newRoleId)
                 .orElseThrow(() -> new EntityNotFoundException("Rôle non trouvé: " + newRoleId));
-
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
                 .orElseThrow(
                         () -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
@@ -453,7 +396,6 @@ public class UserService {
         keycloakService.assignRole(mapping.getKeycloakId(), newRole.getKeycloakRoleName());
 
         user.setRole(newRole);
-
         AppUser newManager = getManagerForRole(newRole.getName());
         if (newManager != null) {
             validateManagerCapability(newManager);
@@ -462,14 +404,12 @@ public class UserService {
         } else {
             user.setManager(null);
         }
-
         return appUserRepository.save(user);
     }
 
     @Transactional
     public AppUser changeManager(Long id, Long managerId) {
         AppUser user = getById(id);
-
         if (managerId == null) {
             user.setManager(null);
         } else {
@@ -478,7 +418,6 @@ public class UserService {
             validateManagerAssignment(user, newManager);
             user.setManager(newManager);
         }
-
         return appUserRepository.save(user);
     }
 
@@ -492,7 +431,6 @@ public class UserService {
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
                 .orElseThrow(
                         () -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
-
         keycloakService.disableUser(mapping.getKeycloakId());
         user.setIsActive(false);
         appUserRepository.save(user);
@@ -504,7 +442,6 @@ public class UserService {
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
                 .orElseThrow(
                         () -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
-
         keycloakService.enableUser(mapping.getKeycloakId());
         user.setIsActive(true);
         appUserRepository.save(user);
@@ -514,96 +451,176 @@ public class UserService {
     public void deleteUser(Long id) {
         AppUser user = getById(id);
         userSessionRepository.deleteByUserId(id);
-
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(id)
                 .orElseThrow(
                         () -> new EntityNotFoundException("Keycloak mapping non trouvé pour l'utilisateur: " + id));
-
         try {
             keycloakService.deleteUser(mapping.getKeycloakId());
         } catch (Exception e) {
             log.error("Erreur lors de la suppression dans Keycloak: {}", e.getMessage());
         }
-
         keycloakMappingRepository.delete(mapping);
         appUserRepository.delete(user);
     }
 
-    public Long getRoleIdByUserId(Long userId) {
-        AppUser user = getById(userId);
-        return user.getRole().getId();
-    }
-
-    // ==================== SELF-SERVICE PROFILE METHODS ====================
-
-    /**
-     * Update own profile (self-service) — only personal info, no role/active/manager changes
-     */
+    // ==================== SELF-SERVICE PROFILE ====================
     @Transactional
     public AppUser updateProfile(String email, String firstName, String lastName,
             String phoneNumber, String address, LocalDate dateOfBirth) {
-
         String normalizedPhone = normalizePhoneNumber(phoneNumber);
-
         AppUser user = getByEmail(email);
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Keycloak mapping non trouvé pour l'utilisateur: " + user.getId()));
 
-        // Update Keycloak (first/last name only — email stays the same)
         keycloakService.updateUser(mapping.getKeycloakId(), firstName, lastName, email);
 
-        // Check phone number uniqueness if it changed
         if (normalizedPhone != null && !normalizedPhone.equals(user.getPhoneNumber())) {
             if (appUserRepository.existsByPhoneNumberAndUuidNot(normalizedPhone, user.getUuid())) {
                 throw new IllegalArgumentException("Numéro de téléphone déjà existant: " + normalizedPhone);
             }
         }
 
-        // Update local DB
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setPhoneNumber(normalizedPhone);
         user.setAddress(address);
         user.setDateOfBirth(dateOfBirth);
 
-        // Sync keycloak mapping
         mapping.setLastSync(LocalDateTime.now());
         keycloakMappingRepository.save(mapping);
-
         return appUserRepository.save(user);
     }
 
-    /**
-     * Change own password (self-service) — verifies current password first
-     */
+    // ==================== MOT DE PASSE OUBLIÉ (RÉINITIALISATION)
+    // ====================
     @Transactional
-    public void changePassword(String email, String currentPassword, String newPassword) {
-
+    public void resetPassword(String email) {
         AppUser user = getByEmail(email);
+        if (user.getIsActive() == null || !user.getIsActive()) {
+            throw new IllegalArgumentException("Le compte est désactivé, impossible de réinitialiser le mot de passe.");
+        }
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Keycloak mapping non trouvé pour l'utilisateur: " + user.getId() +
+                                ". L'utilisateur n'a peut-être jamais été synchronisé avec Keycloak."));
 
-        // Verify current password
+        try {
+            keycloakService.getRealm().users().get(mapping.getKeycloakId()).toRepresentation();
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "L'utilisateur Keycloak " + mapping.getKeycloakId() +
+                            " n'existe plus. Veuillez contacter un administrateur.");
+        }
+
+        String tempPassword = generateRandomPassword();
+        keycloakService.setPassword(mapping.getKeycloakId(), tempPassword);
+        user.setPasswordHash(passwordEncoder.encode(tempPassword));
+        appUserRepository.save(user);
+        emailService.sendTemporaryPasswordEmail(email, user.getFirstName(), tempPassword);
+        log.info("Mot de passe temporaire envoyé pour l'utilisateur : {}", email);
+    }
+
+    private String generateRandomPassword() {
+        final String UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        final String LOWER = "abcdefghijklmnopqrstuvwxyz";
+        final String DIGITS = "0123456789";
+        final String SPECIAL = "!@#$%^&*_-+=";
+        final String ALL = UPPER + LOWER + DIGITS + SPECIAL;
+        final int LENGTH = 20;
+
+        SecureRandom random = new SecureRandom();
+        List<Character> chars = new ArrayList<>();
+        chars.add(UPPER.charAt(random.nextInt(UPPER.length())));
+        chars.add(LOWER.charAt(random.nextInt(LOWER.length())));
+        chars.add(DIGITS.charAt(random.nextInt(DIGITS.length())));
+        chars.add(SPECIAL.charAt(random.nextInt(SPECIAL.length())));
+        for (int i = 4; i < LENGTH; i++) {
+            chars.add(ALL.charAt(random.nextInt(ALL.length())));
+        }
+        Collections.shuffle(chars, random);
+        return chars.stream().map(String::valueOf).collect(Collectors.joining());
+    }
+
+    // ==================== CHANGEMENT DE MOT DE PASSE AVEC OTP ====================
+    @Transactional
+    public void initiatePasswordChange(String email, String currentPassword, String newPassword) {
+        AppUser user = getByEmail(email);
         if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
             throw new IllegalArgumentException("Le mot de passe actuel est incorrect");
         }
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("Le nouveau mot de passe doit être différent de l'ancien");
+        }
+        validatePasswordStrength(newPassword);
 
+        emailService.sendPasswordChangeAlertEmail(email, user.getFirstName(), email);
+        log.info("Security alert sent before OTP for: {}", email);
+
+        otpService.generateAndSendOtp(email, user.getFirstName(), "PASSWORD_CHANGE");
+        log.info("Password change OTP sent to: {}", email);
+    }
+
+    @Transactional
+    public void confirmPasswordChange(String email, String otpCode, String newPassword) {
+        if (!keycloakService.verifyOTP(email, otpCode)) {
+            throw new IllegalArgumentException("Code OTP invalide ou expiré");
+        }
+        AppUser user = getByEmail(email);
         KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Keycloak mapping non trouvé pour l'utilisateur: " + user.getId()));
 
-        // Update password in Keycloak
         keycloakService.setPassword(mapping.getKeycloakId(), newPassword);
-
-        // Update password hash in local DB
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         appUserRepository.save(user);
-
+        emailService.sendPasswordChangeConfirmationEmail(email, user.getFirstName());
         log.info("Password changed successfully for user: {}", email);
     }
 
+    private void validatePasswordStrength(String password) {
+        if (password.length() < 8) {
+            throw new IllegalArgumentException("Le mot de passe doit contenir au moins 8 caractères");
+        }
+        if (!password.matches(".*[A-Z].*")) {
+            throw new IllegalArgumentException("Le mot de passe doit contenir au moins une majuscule");
+        }
+        if (!password.matches(".*[a-z].*")) {
+            throw new IllegalArgumentException("Le mot de passe doit contenir au moins une minuscule");
+        }
+        if (!password.matches(".*\\d.*")) {
+            throw new IllegalArgumentException("Le mot de passe doit contenir au moins un chiffre");
+        }
+        if (!password.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?].*")) {
+            throw new IllegalArgumentException("Le mot de passe doit contenir au moins un caractère spécial");
+        }
+    }
+
+    // ==================== ANCIENNE MÉTHODE (COMPATIBILITÉ) ====================
+    @Deprecated
+    @Transactional
+    public void changePassword(String email, String currentPassword, String newPassword) {
+        AppUser user = getByEmail(email);
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("Le mot de passe actuel est incorrect");
+        }
+        KeycloakMapping mapping = keycloakMappingRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Keycloak mapping non trouvé pour l'utilisateur: " + user.getId()));
+
+        keycloakService.setPassword(mapping.getKeycloakId(), newPassword);
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        appUserRepository.save(user);
+        log.info("Password changed (direct) for user: {}", email);
+    }
+
+    // ==================== UTILITAIRES ====================
+    public Long getRoleIdByUserId(Long userId) {
+        return getById(userId).getRole().getId();
+    }
+
     public String getRoleNameByUserId(Long userId) {
-        AppUser user = getById(userId);
-        return user.getRole().getName();
+        return getById(userId).getRole().getName();
     }
 
     public Page<AppUser> getUsersByRoleId(Long roleId, Pageable pageable) {
@@ -611,29 +628,23 @@ public class UserService {
     }
 
     private String normalizePhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
+        if (phoneNumber == null || phoneNumber.trim().isEmpty())
             return null;
-        }
         String normalized = phoneNumber.trim().replaceAll("\\s+", "");
-
-        if (normalized.startsWith("00216")) {
+        if (normalized.startsWith("00216"))
             normalized = "+216" + normalized.substring(5);
-        } else if (!normalized.startsWith("+216") && !normalized.startsWith("+")) {
-            // Assume it's a local number, prepend +216
+        else if (!normalized.startsWith("+216") && !normalized.startsWith("+"))
             normalized = "+216" + normalized;
-        }
         return normalized;
     }
 
     public boolean isPhoneTaken(String phone, UUID excludeUuid) {
-        String normalizedPhone = normalizePhoneNumber(phone);
-        if (normalizedPhone == null) {
+        String normalized = normalizePhoneNumber(phone);
+        if (normalized == null)
             return false;
-        }
-        if (excludeUuid != null) {
-            return appUserRepository.existsByPhoneNumberAndUuidNot(normalizedPhone, excludeUuid);
-        }
-        return appUserRepository.existsByPhoneNumber(normalizedPhone);
+        return excludeUuid != null
+                ? appUserRepository.existsByPhoneNumberAndUuidNot(normalized, excludeUuid)
+                : appUserRepository.existsByPhoneNumber(normalized);
     }
 
     public AppUser getCurrentUser() {
@@ -641,8 +652,6 @@ public class UserService {
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
             return null;
         }
-
-        // Utilisation directe du repository pour éviter l'exception EntityNotFoundException
         return appUserRepository.findByEmail(auth.getName()).orElse(null);
     }
 }

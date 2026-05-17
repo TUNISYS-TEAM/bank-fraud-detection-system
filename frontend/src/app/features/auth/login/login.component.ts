@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, OnDestroy, signal } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, FormControl, Validators } from '@angular/forms';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { AuthStore } from '../../../core/store/auth.store';
@@ -31,6 +31,12 @@ export class LoginComponent implements OnInit, OnDestroy {
   // 6-digit OTP array as signal
   otpDigits = signal<string[]>(['', '', '', '', '', '']);
 
+  // Nouveaux signaux pour le mot de passe oublié
+  showForgotPassword = signal<boolean>(false);
+  forgotPasswordMessage = signal<string>('');
+  forgotPasswordError = signal<boolean>(false);
+  isSendingForgotPassword = signal<boolean>(false);
+
   loginForm: FormGroup = this.fb.group({
     username: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(6)]]
@@ -39,6 +45,9 @@ export class LoginComponent implements OnInit, OnDestroy {
   verificationForm: FormGroup = this.fb.group({
     code: ['', [Validators.required, Validators.pattern('^[0-9]{6}$')]]
   });
+
+  // Nouveau contrôle pour l'email de réinitialisation
+  forgotEmailControl = new FormControl('', [Validators.required, Validators.email]);
 
   ngOnInit(): void {
     if (this.isElectron()) {
@@ -64,6 +73,39 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.showPassword.update(value => !value);
   }
 
+  // ==================== ENVOI MOT DE PASSE OUBLIÉ ====================
+  sendForgotPassword(): void {
+    if (this.forgotEmailControl.invalid || this.isSendingForgotPassword()) return;
+
+    this.isSendingForgotPassword.set(true);
+    this.forgotPasswordMessage.set('');
+    this.forgotPasswordError.set(false);
+
+    const email = this.forgotEmailControl.value?.trim();
+    if (!email) {
+      this.forgotPasswordMessage.set('Veuillez saisir un email.');
+      this.forgotPasswordError.set(true);
+      this.isSendingForgotPassword.set(false);
+      return;
+    }
+
+    this.http.post(`${environment.apiUrl}/auth/forgot-password`, { email })
+      .subscribe({
+        next: (response: any) => {
+          this.forgotPasswordMessage.set(response.message || 'Un email vous a été envoyé.');
+          this.forgotPasswordError.set(false);
+          this.isSendingForgotPassword.set(false);
+          this.forgotEmailControl.reset();
+        },
+        error: (error: HttpErrorResponse) => {
+          this.forgotPasswordMessage.set(error.error?.error || 'Une erreur est survenue.');
+          this.forgotPasswordError.set(true);
+          this.isSendingForgotPassword.set(false);
+        }
+      });
+  }
+
+  // ==================== LOGIN ====================
   onSubmit(): void {
     if (this.loginForm.valid) {
       const credentials = {
@@ -111,24 +153,16 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Check if OTP code is valid (6 digits)
-   */
+  // ==================== OTP ====================
   isOtpValid(): boolean {
     const code = this.otpDigits().join('');
     return code.length === 6 && /^\d{6}$/.test(code);
   }
 
-  /**
-   * Get OTP code as string
-   */
   getOtpCode(): string {
     return this.otpDigits().join('');
   }
 
-  /**
-   * Handle OTP input - auto-focus next box
-   */
   onOtpInput(index: number, event: Event): void {
     const input = event.target as HTMLInputElement;
     const value = input.value;
@@ -161,12 +195,8 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Handle keydown for backspace navigation
-   */
   onOtpKeydown(index: number, event: KeyboardEvent): void {
     if (event.key === 'Backspace' && !this.otpDigits()[index] && index > 0) {
-      // Move to previous input on backspace when current is empty
       const inputs = document.querySelectorAll('.otp-input');
       const prevInput = inputs[index - 1] as HTMLInputElement;
       if (prevInput) {
@@ -175,19 +205,14 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Handle paste event for 6-digit code
-   */
   onOtpPaste(event: ClipboardEvent): void {
     event.preventDefault();
     const pastedData = event.clipboardData?.getData('text/plain').trim() || '';
     
-    // Check if pasted data is a 6-digit number
     if (/^\d{6}$/.test(pastedData)) {
       const digits = pastedData.split('');
       this.otpDigits.set(digits);
       
-      // Update input values
       const inputs = document.querySelectorAll('.otp-input');
       digits.forEach((digit: string, idx: number) => {
         if (inputs[idx]) {
@@ -195,7 +220,6 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
       });
       
-      // Auto-verify after paste
       this.onVerifyCode();
     }
   }
@@ -317,6 +341,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     return !!(window as any).require;
   }
 
+  // ==================== ERROR GETTERS ====================
   get usernameErrors(): string {
     const control = this.loginForm.get('username');
     if (control?.touched && control?.errors) {
