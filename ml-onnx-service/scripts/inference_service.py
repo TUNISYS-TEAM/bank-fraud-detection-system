@@ -128,25 +128,11 @@ def build_input_dataframe(batch: list[dict]) -> tuple[pd.DataFrame, dict, dict]:
     df["Device_Id"] = df["Device_Id"].astype(np.float32)
     df["Account_Id"] = df["Account_Id"].astype(np.float32)
 
-    # Behavioral defaults
-    behavioral_defaults = {
-        "client_AVG_TX_Amount": 0.0, "client_AVG_TX_PerDay": 0.0,
-        "client_amount_deviation": 0.0, "client_abs_amount_deviation": 0.0,
-        "client_amount_max_ratio": 0.0, "client_amount_z_score": 0.0,
-        "client_is_new_max": 0.0, "client_is_new_min": 0.0,
-        "client_total_transactions": 0.0, "client_time_since_last_tx": 0.0,
-        "client_hours_since_last_tx": 0.0, "client_total_days_since_first": 0.0,
-        "client_usual_region": "Unknown", "client_is_unusual_region": 0.0,
-        "client_region_freq": 0.0, "client_usual_channel": "Unknown",
-        "client_is_unusual_channel": 0.0, "client_channel_freq": 0.0,
-        "client_usual_category": "Unknown", "client_is_unusual_category": 0.0,
-        "client_category_freq": 0.0, "client_gap_z_score": 0.0,
-        "client_risk_score": 0.0,
-    }
-    for col, default_value in behavioral_defaults.items():
-        if col not in df.columns:
-            df[col] = default_value
-
+    # Note: Le pipeline d'entraînement (ClientBehaviorTransformer) gère les colonnes
+    # comportementales manquantes (client_*) lors du transform.
+    # Les colonnes requises pour le pipeline sont déjà présentes ci-dessus.
+    # Aucun remplissage par défaut ici - le pipeline applique les stats du training.
+    
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df[numeric_cols] = df[numeric_cols].astype(np.float32)
 
